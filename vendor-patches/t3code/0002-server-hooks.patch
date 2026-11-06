@@ -4,6 +4,151 @@ server.ts provides BatonServerLayer.services and starts BatonServerLayer.workers
 upstream's reactors. ws.ts merges BatonRpcGroup onto the socket's group, adds its handlers and
 its own scope middleware (upstream's throws for methods its table does not list).
 
+diff --git a/apps/server/src/auth/EnvironmentAuth.test.ts b/apps/server/src/auth/EnvironmentAuth.test.ts
+index 3c05047e4a4c3ed60ced53af81026dadfdd77a60..c431d3c627a53cc61523b571a7a8bb54314ffc89 100644
+--- a/apps/server/src/auth/EnvironmentAuth.test.ts
++++ b/apps/server/src/auth/EnvironmentAuth.test.ts
+@@ -337,6 +337,51 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodePlatformCrypto.layer))(
+       }).pipe(Effect.provide(layerEnvironmentAuth({ mode: "web", host: "192.168.1.50" }))),
+     );
+ 
++    it.effect("a cookie bought with a token's pairing keeps the token's provenance", () =>
++      Effect.gen(function* () {
++        const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
++        const sessions = yield* SessionStore.SessionStore;
++        const cookieFrom = (delegatedByToken: boolean) =>
++          Effect.gen(function* () {
++            const pairing = yield* serverAuth.issuePairingCredential(
++              { scopes: ["orchestration:read"] },
++              { delegatedByToken },
++            );
++            const exchange = yield* serverAuth.createBrowserSession(
++              pairing.credential,
++              requestMetadata,
++            );
++            return yield* serverAuth.authenticateHttpRequest({
++              cookies: { [sessions.cookieName]: exchange.sessionToken },
++              headers: {},
++            } as unknown as Parameters<
++              EnvironmentAuth.EnvironmentAuth["Service"]["authenticateHttpRequest"]
++            >[0]);
++          });
++        const bought = yield* cookieFrom(true);
++        expect(bought.method).toBe("browser-session-cookie");
++        expect(bought.subject).toBe(EnvironmentAuth.TOKEN_DELEGATED_SUBJECT);
++        // It cannot launder that through a second pairing of its own.
++        expect(EnvironmentAuth.delegatesAsToken(bought, false)).toBe(true);
++        const his = yield* cookieFrom(false);
++        expect(his.subject).not.toBe(EnvironmentAuth.TOKEN_DELEGATED_SUBJECT);
++        expect(EnvironmentAuth.delegatesAsToken(his, false)).toBe(false);
++        expect(
++          EnvironmentAuth.delegatesAsToken({ method: "bearer-access-token", subject: "x" }, false),
++        ).toBe(true);
++        // Unknown provenance fails closed.
++        expect(
++          EnvironmentAuth.delegatesAsToken(
++            { method: "browser-session-cookie", subject: "new-path" },
++            false,
++          ),
++        ).toBe(true);
++        expect(
++          EnvironmentAuth.delegatesAsToken({ method: "bearer-access-token", subject: "x" }, true),
++        ).toBe(false);
++      }).pipe(Effect.provide(layerEnvironmentAuth())),
++    );
++
+     it.effect("preserves pairing grants after rejecting scopes they do not grant", () =>
+       Effect.gen(function* () {
+         const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
+diff --git a/apps/server/src/auth/EnvironmentAuth.ts b/apps/server/src/auth/EnvironmentAuth.ts
+index b6bf63792bf62b2e6bfe47b886d0c354f1683155..30c18cf29467610658b0c298bdd5c682fc7183cd 100644
+--- a/apps/server/src/auth/EnvironmentAuth.ts
++++ b/apps/server/src/auth/EnvironmentAuth.ts
+@@ -85,6 +85,34 @@ export interface McpClientSession {
+   readonly peerLink: boolean;
+ }
+ 
++/**
++ * The subject of a pairing a token holder (not a person's browser or the desktop app) minted, kept by the session it
++ * becomes, so a cookie bought with a token is still known as the token's (Tessaya's ask provenance).
++ */
++export const TOKEN_DELEGATED_SUBJECT = "token-delegated";
++
++/**
++ * The pairings a person made: on the host (`t3 pair`, `t3 auth pairing create`), from the desktop app or a browser he
++ * paired, the startup link, dev auth and his T3 Connect account. Any other subject, including one added later, is a
++ * token's until it is listed here.
++ */
++export const OWN_PAIRING_SUBJECTS: ReadonlySet<string> = new Set([
++  "one-time-token",
++  "desktop-bootstrap",
++  INTERNAL_ADMINISTRATIVE_BOOTSTRAP_SUBJECT,
++  "reusable-dev-token",
++  "reusable-dev-token-child",
++  "cloud-connect",
++]);
++
++/** Whether a pairing this session mints is a token's: only the desktop app and a browser he paired mint his own. */
++export const delegatesAsToken = (
++  session: Pick<AuthenticatedSession, "method" | "subject">,
++  isDesktopApp: boolean,
++): boolean =>
++  !isDesktopApp &&
++  !(session.method === "browser-session-cookie" && OWN_PAIRING_SUBJECTS.has(session.subject));
++
+ export interface AuthenticatedSession {
+   readonly sessionId: AuthSessionId;
+   readonly subject: string;
+@@ -494,6 +522,7 @@ export class EnvironmentAuth extends Context.Service<
+     >;
+     readonly issuePairingCredential: (
+       input?: AuthCreatePairingCredentialInput,
++      issuer?: { readonly delegatedByToken: boolean },
+     ) => Effect.Effect<
+       AuthPairingCredentialResult,
+       ServerAuthInternalError | ManagedLimits.ManagedPolicyRefusedError
+@@ -1130,10 +1159,13 @@ export const make = Effect.gen(function* () {
+       Effect.withSpan("EnvironmentAuth.revokeOtherSessionsExcept"),
+     );
+ 
+-  const issuePairingCredential: EnvironmentAuth["Service"]["issuePairingCredential"] = (input) =>
++  const issuePairingCredential: EnvironmentAuth["Service"]["issuePairingCredential"] = (
++    input,
++    issuer,
++  ) =>
+     createPairingLink({
+       scopes: input?.scopes ?? AuthStandardClientScopes,
+-      subject: "one-time-token",
++      subject: issuer?.delegatedByToken === true ? TOKEN_DELEGATED_SUBJECT : "one-time-token",
+       ...(input?.label ? { label: input.label } : {}),
+     }).pipe(
+       Effect.map(toPairingCredential),
+diff --git a/apps/server/src/auth/http.ts b/apps/server/src/auth/http.ts
+index 1dd273dbe64ce41e473ec144e0b8cb754dc3bb9a..baa4f5acb50c7fd5afbf8009468d7eb466cf6d46 100644
+--- a/apps/server/src/auth/http.ts
++++ b/apps/server/src/auth/http.ts
+@@ -1,6 +1,7 @@
+ import {
+   authScopeRequiredResponse,
+   AuthAccessWriteScope,
++  AuthBatonHandsHostScope,
+   AuthStandardClientScopes,
+   AuthGrantScope,
+   EnvironmentAuthInvalidError,
+@@ -458,7 +459,12 @@ export const layer = HttpApiBuilder.group(
+                 return yield* failEnvironmentScopeRequired(delegatedScope);
+               }
+             }
+-            return yield* serverAuth.issuePairingCredential(args.payload);
++            return yield* serverAuth.issuePairingCredential(args.payload, {
++              delegatedByToken: EnvironmentAuth.delegatesAsToken(
++                session,
++                session.scopes.has(AuthBatonHandsHostScope),
++              ),
++            });
+           },
+           Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
+             failEnvironmentInternal("pairing_credential_issuance_failed", error),
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.migration.test.ts b/apps/server/src/orchestration-v2/Orchestrator.migration.test.ts
 index 911c1b8de7df58ba468a2c530ae3ae49f834d0ca..4eee02669579c4e1160a4705fc8165a2037fd38e 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.migration.test.ts
@@ -528,7 +673,7 @@ index 5c9ab9c433ffc56e8536f7d0b3ce7da440777ad2..778262f9628a2f209289d6054ef24f56
      Ws.layer,
      speechStreamRouteLayer,
 diff --git a/apps/server/src/ws.ts b/apps/server/src/ws.ts
-index 035f8b1688d44a9c4ff39ebad30099fffdc3a9d2..73927347a27f8e492cb628f683c22bf8f1ede552 100644
+index 035f8b1688d44a9c4ff39ebad30099fffdc3a9d2..52a48d55b3a64d3fcc3a61d707336d2739f6511f 100644
 --- a/apps/server/src/ws.ts
 +++ b/apps/server/src/ws.ts
 @@ -232,6 +232,10 @@ import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
@@ -596,7 +741,7 @@ index 035f8b1688d44a9c4ff39ebad30099fffdc3a9d2..73927347a27f8e492cb628f683c22bf8
                          .pipe(Effect.ignore);
                  }),
 -                rpcInstrumentationLayer,
-+                Layer.merge(rpcInstrumentationLayer, BatonRpcAuthorization.layer(session.scopes)),
++                Layer.merge(rpcInstrumentationLayer, BatonRpcAuthorization.layer(session)),
                ),
              ),
              Effect.forkScoped,

@@ -420,6 +420,8 @@ export interface ScreenCompanion {
       readonly session?: string | null;
       /** The wake word that opened this turn; it picks who answers. */
       readonly wake?: string | null;
+      /** A device's or agent's words, not his: always the assistant, whose gate asks. */
+      readonly outside?: boolean;
     },
   ) => Promise<{ readonly kind: "handled" } | { readonly kind: "refused"; readonly reply: string }>;
   readonly setActions: (actions: AssistantActions) => void;
@@ -441,6 +443,7 @@ export interface ScreenCompanion {
   /** The phone's words, run as a typed ask; the short reply and the card text come back instead of only being shown. */
   readonly askFromPhone: (
     text: string,
+    source: "phone" | "device",
   ) => Promise<{ readonly spoken: string; readonly card: string }>;
   /** Mirrors the questions it asks him to his phone; null stops. The first answer, here or there, counts. */
   readonly setPhoneMirror: (mirror: PhoneMirror | null) => void;
@@ -606,6 +609,9 @@ export const startScreenCompanion = (input: {
   /** While the phone's ask runs, what the assistant says and shows is kept for the phone as well. */
   let phoneCapture: { readonly spoken: string[]; card: string | null } | null = null;
   let phoneTurn = false;
+  /** Whether the running turn's words are a device's, and every such sentence, so none counts as his. */
+  let outsideTurn = false;
+  const outsideSaid = new Set<string>();
   let phoneMirror: PhoneMirror | null = null;
   /** False when nothing goes to the voice (written answers, nothing to say). */
   const say = (text: string, onStart?: () => void): boolean => {
@@ -932,9 +938,11 @@ export const startScreenCompanion = (input: {
     noOnExpiry = false,
     needs?: "cloud-approve",
   ): Promise<number> => {
-    const shown = phoneTurn
-      ? { ...box, detail: `${box.detail}\n\n(You asked this from your phone.)` }
-      : box;
+    const shown = !phoneTurn
+      ? box
+      : outsideTurn
+        ? { ...box, detail: `${box.detail}\n\n(A paired device asked this, not you.)` }
+        : { ...box, detail: `${box.detail}\n\n(You asked this from your phone.)` };
     const mirrored =
       box.buttons.length < 2
         ? null
@@ -1632,7 +1640,12 @@ export const startScreenCompanion = (input: {
         NodeFS.appendFileSync(NodePath.join(input.stateDir, "social-actions.ndjson"), `${line}\n`),
     },
     taint: agentTaint,
-    textIsHis: (text) => textIsFromConversation(text, conversation.recent(12)),
+    textIsHis: (text) =>
+      textIsFromConversation(
+        text,
+        conversation.recent(12).filter((t) => !outsideSaid.has(t.said)),
+      ),
+    outside: () => outsideTurn,
     focusedWindow: gateWindow,
     confirm: async (p) =>
       (await askHandsFree(
@@ -1862,7 +1875,7 @@ export const startScreenCompanion = (input: {
       write: (text) => Electron.clipboard.writeText(text),
       clear: () => Electron.clipboard.clear(),
     },
-    tainted: () => agentTaint.on(),
+    tainted: () => outsideTurn || agentTaint.on(),
     audit: vaultState.audit,
     hello: (message) => windowsHello(message, input.platform),
     askToUnlock: () => input.onOpenTab?.("vault"),
@@ -2357,13 +2370,14 @@ export const startScreenCompanion = (input: {
         memory.learn(
           said,
           reply,
-          agentTaint.on(),
+          outsideTurn || agentTaint.on(),
           project,
           before === undefined ? "" : `he said: ${before.said}\nyou replied: ${before.reply}`,
         );
       },
-      beginTurn: (said) => {
+      beginTurn: (said, outside) => {
         memory.beginTurn();
+        outsideTurn = outside;
         agentTaint.reset(said);
         planGrant = null;
         keysAllowed = null;
@@ -2381,6 +2395,7 @@ export const startScreenCompanion = (input: {
     started: number,
     direct: boolean,
     focusedSession: string | null,
+    outside = false,
   ) => {
     answering += 1;
     const mine = turns.ask();
@@ -2435,6 +2450,7 @@ export const startScreenCompanion = (input: {
       const reply = await agentOf().say(
         direct ? `(to the focused session) ${text}` : text,
         {
+          outside,
           window: windowLabel,
           session: focusedSession,
           project,
@@ -2507,7 +2523,7 @@ export const startScreenCompanion = (input: {
 
   const said: ScreenCompanion["said"] = async (
     text,
-    { direct, typed = false, session = null, wake = null },
+    { direct, typed = false, session = null, wake = null, outside = false },
   ) => {
     const started = Date.now();
     voiceTurn = !typed;
@@ -2534,9 +2550,10 @@ export const startScreenCompanion = (input: {
     askFocus = null;
     // Stop and its kin never wait on a model; everything else goes to the one assistant.
     // His own "teach:", "drive:" and "look:" prefixes name the mode: they are not for the assistant's judgement.
-    const instant = instantDecision(text, busy);
+    // A device's words always go to the assistant, whose gate asks; they never pick a mode or a control.
+    const instant = outside ? null : instantDecision(text, busy);
     if (instant === null) {
-      void agentTurn(text, started, direct, session);
+      void agentTurn(text, started, direct, session, outside);
       return { kind: "handled" };
     }
     const decision = guardDecision(instant, text);
@@ -2557,19 +2574,24 @@ export const startScreenCompanion = (input: {
   };
 
   /** Typed asks: the same decision, with the card and the voice standing in for the voice side. */
-  const typed = async (text: string) => {
-    const result = await said(text, { direct: false, typed: true });
+  const typed = async (text: string, outside = false) => {
+    const result = await said(text, { direct: false, typed: true, outside });
     if (result.kind === "handled") return;
     say(result.reply);
     linger("Tessaya", result.reply);
   };
 
-  const askFromPhone = async (text: string) => {
+  const askFromPhone = async (text: string, source: "phone" | "device") => {
     const mine: { spoken: string[]; card: string | null } = { spoken: [], card: null };
     phoneCapture = mine;
     phoneTurn = true;
+    if (source === "device") {
+      outsideSaid.add(text);
+      // The oldest goes first, so recent device sentences are never forgotten as not his.
+      if (outsideSaid.size > 200) outsideSaid.delete(outsideSaid.values().next().value!);
+    }
     try {
-      await typed(text);
+      await typed(text, source === "device");
       for (let step = 0; step < PHONE_SETTLE_STEPS && mine.card === null; step += 1)
         await sleep(500);
     } finally {

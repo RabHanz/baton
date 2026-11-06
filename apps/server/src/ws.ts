@@ -3564,7 +3564,7 @@ export const layer = Layer.unwrap(
                         })
                         .pipe(Effect.ignore);
                 }),
-                Layer.merge(rpcInstrumentationLayer, BatonRpcAuthorization.layer(session.scopes)),
+                Layer.merge(rpcInstrumentationLayer, BatonRpcAuthorization.layer(session)),
               ),
             ),
             Effect.forkScoped,

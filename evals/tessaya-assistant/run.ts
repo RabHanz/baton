@@ -56,6 +56,7 @@ const sample = async (c: AssistantCase): Promise<Sample> => {
     where: {
       window: c.window ?? "Notepad",
       session: null,
+      ...(c.outside === true ? { outside: true } : {}),
       ...(face === undefined
         ? {}
         : {

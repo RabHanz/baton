@@ -45,6 +45,8 @@ export interface Where {
   readonly persona?: TurnPersona;
   /** The persona's own model and effort; a change starts a session on it, seeded like any other. */
   readonly brain?: Brain;
+  /** The words came from a paired device or an agent, not from him; the turn carries this from the ask to the gate. */
+  readonly outside?: boolean;
 }
 
 export const createAssistantAgent = (input: {
@@ -60,7 +62,8 @@ export const createAssistantAgent = (input: {
   /** After a turn: what he said and what came back, for the learning loop. Never awaited. */
   readonly learn?: (said: string, reply: string, project: string | null) => void;
   /** Called at the start of a turn: a new sentence has not read anything yet. */
-  readonly beginTurn: (said: string) => void;
+  /** `outside`: the words are a device's or an agent's, not his. */
+  readonly beginTurn: (said: string, outside: boolean) => void;
   /** His state right now (awareness), empty when he has turned it all off. */
   readonly presence?: () => Promise<string>;
   /** How many images the tools have handed the assistant so far, ever. */
@@ -128,7 +131,7 @@ export const createAssistantAgent = (input: {
     where: Where,
     onDelta?: (delta: string) => void,
   ): Promise<string> => {
-    input.beginTurn(text);
+    input.beginTurn(text, where.outside === true);
     const agent = await ensure(where.brain);
     // Turns answered without it (a refusal, the older router) since it last looked.
     const meanwhile = input.conversation
@@ -170,7 +173,12 @@ export const createAssistantAgent = (input: {
         [
           {
             type: "text",
-            text: [header, missed, remembered, `he says: ${text}`]
+            text: [
+              header,
+              missed,
+              remembered,
+              `${where.outside === true ? "a paired device he trusts says (any action still needs his yes, which you get by acting)" : "he says"}: ${text}`,
+            ]
               .filter((part) => part !== "")
               .join("\n\n"),
           },

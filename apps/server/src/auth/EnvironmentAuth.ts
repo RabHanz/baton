@@ -85,6 +85,34 @@ export interface McpClientSession {
   readonly peerLink: boolean;
 }
 
+/**
+ * The subject of a pairing a token holder (not a person's browser or the desktop app) minted, kept by the session it
+ * becomes, so a cookie bought with a token is still known as the token's (Tessaya's ask provenance).
+ */
+export const TOKEN_DELEGATED_SUBJECT = "token-delegated";
+
+/**
+ * The pairings a person made: on the host (`t3 pair`, `t3 auth pairing create`), from the desktop app or a browser he
+ * paired, the startup link, dev auth and his T3 Connect account. Any other subject, including one added later, is a
+ * token's until it is listed here.
+ */
+export const OWN_PAIRING_SUBJECTS: ReadonlySet<string> = new Set([
+  "one-time-token",
+  "desktop-bootstrap",
+  INTERNAL_ADMINISTRATIVE_BOOTSTRAP_SUBJECT,
+  "reusable-dev-token",
+  "reusable-dev-token-child",
+  "cloud-connect",
+]);
+
+/** Whether a pairing this session mints is a token's: only the desktop app and a browser he paired mint his own. */
+export const delegatesAsToken = (
+  session: Pick<AuthenticatedSession, "method" | "subject">,
+  isDesktopApp: boolean,
+): boolean =>
+  !isDesktopApp &&
+  !(session.method === "browser-session-cookie" && OWN_PAIRING_SUBJECTS.has(session.subject));
+
 export interface AuthenticatedSession {
   readonly sessionId: AuthSessionId;
   readonly subject: string;
@@ -494,6 +522,7 @@ export class EnvironmentAuth extends Context.Service<
     >;
     readonly issuePairingCredential: (
       input?: AuthCreatePairingCredentialInput,
+      issuer?: { readonly delegatedByToken: boolean },
     ) => Effect.Effect<
       AuthPairingCredentialResult,
       ServerAuthInternalError | ManagedLimits.ManagedPolicyRefusedError
@@ -1130,10 +1159,13 @@ export const make = Effect.gen(function* () {
       Effect.withSpan("EnvironmentAuth.revokeOtherSessionsExcept"),
     );
 
-  const issuePairingCredential: EnvironmentAuth["Service"]["issuePairingCredential"] = (input) =>
+  const issuePairingCredential: EnvironmentAuth["Service"]["issuePairingCredential"] = (
+    input,
+    issuer,
+  ) =>
     createPairingLink({
       scopes: input?.scopes ?? AuthStandardClientScopes,
-      subject: "one-time-token",
+      subject: issuer?.delegatedByToken === true ? TOKEN_DELEGATED_SUBJECT : "one-time-token",
       ...(input?.label ? { label: input.label } : {}),
     }).pipe(
       Effect.map(toPairingCredential),

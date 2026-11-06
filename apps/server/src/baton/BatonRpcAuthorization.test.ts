@@ -8,15 +8,18 @@ import {
   BATON_CLOUD_WS_METHODS,
   BATON_JOB_WS_METHODS,
   BATON_MEMORY_WS_METHODS,
+  BATON_PHONE_WS_METHODS,
   BATON_RECORD_WS_METHODS,
   BatonRecordAppendInput,
 } from "@t3tools/baton-contracts";
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
+import { TOKEN_DELEGATED_SUBJECT } from "../auth/EnvironmentAuth.ts";
 import {
   BATON_RPC_REQUIRED_SCOPES,
   DESK_METHODS,
+  askSourceOf,
   missingBatonScope,
 } from "./BatonRpcAuthorization.ts";
 
@@ -55,6 +58,18 @@ describe("who may import memory from a folder", () => {
     );
     expect(missingBatonScope(BATON_MEMORY_WS_METHODS.import, AuthStandardClientScopes)).toBeNull();
     expect(missingBatonScope(BATON_MEMORY_WS_METHODS.list, narrowed)).toBeNull();
+  });
+
+  it("lets only the desktop app's own session work the phone inbox; a client may only ask", () => {
+    const call = BATON_PHONE_WS_METHODS.call;
+    const desktop = [...AuthStandardClientScopes, AuthBatonHandsHostScope];
+    for (const op of ["take", "answer", "fail", "prompt", "promptPoll", "promptClose"]) {
+      expect(missingBatonScope(call, AuthStandardClientScopes, { op, args: {} })).toBe(
+        AuthBatonHandsHostScope,
+      );
+      expect(missingBatonScope(call, desktop, { op, args: {} })).toBeNull();
+    }
+    expect(missingBatonScope(call, AuthStandardClientScopes, { op: "ask", args: {} })).toBeNull();
   });
 
   it("lets only the desktop app's own session search through walls", () => {
@@ -105,5 +120,43 @@ describe("who may write the Record", () => {
     expect(decodes({ kind: "standing_job", outcome: "held" })).toBe(true);
     expect(decodes({ kind: "assistant_turn", outcome: "approved" })).toBe(false);
     expect(decodes({ kind: "approval", outcome: "ran" })).toBe(false);
+  });
+});
+
+describe("whose words an ask carries", () => {
+  it("is his from a paired browser or the desktop app's own session, and a device's from any other token", () => {
+    const standard = AuthStandardClientScopes;
+    expect(
+      askSourceOf({
+        method: "browser-session-cookie",
+        scopes: standard,
+        subject: "one-time-token",
+      }),
+    ).toBe("phone");
+    // A cookie a token bought through a pairing of its own is still the token's.
+    expect(
+      askSourceOf({
+        method: "browser-session-cookie",
+        scopes: standard,
+        subject: TOKEN_DELEGATED_SUBJECT,
+      }),
+    ).toBe("device");
+    // A cookie from a pairing path nobody listed as his is not his either.
+    expect(
+      askSourceOf({ method: "browser-session-cookie", scopes: standard, subject: "new-path" }),
+    ).toBe("device");
+    expect(
+      askSourceOf({
+        method: "bearer-access-token",
+        scopes: [...standard, AuthBatonHandsHostScope],
+        subject: "desktop-bootstrap",
+      }),
+    ).toBe("phone");
+    expect(askSourceOf({ method: "bearer-access-token", scopes: standard, subject: "x" })).toBe(
+      "device",
+    );
+    expect(askSourceOf({ method: "dpop-access-token", scopes: standard, subject: "x" })).toBe(
+      "device",
+    );
   });
 });

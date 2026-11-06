@@ -18,12 +18,15 @@ export const CLIENT_ID = /^[A-Za-z0-9_-]{8,64}$/;
 
 export const NOT_CONNECTED = "Your computer is not connected; it will answer when it is back.";
 
+export type AskSource = "phone" | "device";
+
 export type AskStatus = "queued" | "taken" | "answered" | "failed" | "expired";
 
 export interface PhoneAsk {
   readonly id: string;
   readonly text: string;
-  readonly source: "phone";
+  /** "phone": his own (the paired phone page or the desktop app); "device": a token's words, which may be an agent's. */
+  readonly source: AskSource;
   readonly status: AskStatus;
   readonly createdAt: number;
   readonly expiresAt: number;
