@@ -1,7 +1,12 @@
 import type { ClaudeLiveSession } from "@t3tools/baton-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { createSessionCatalog, type CatalogPorts, type TranscriptInfo } from "./SessionCatalog.ts";
+import {
+  createSessionCatalog,
+  sendOutcome,
+  type CatalogPorts,
+  type TranscriptInfo,
+} from "./SessionCatalog.ts";
 
 const ID = "11111111-2222-3333-4444-555555555555";
 const OLD = "99999999-2222-3333-4444-555555555555";
@@ -374,5 +379,116 @@ describe("starting a new session", () => {
       detail: "The folder /nowhere is not on this machine.",
     });
     expect(batonCalls).toEqual([]);
+  });
+});
+
+describe("kept messages", () => {
+  const disk = (start: Record<string, ReadonlyArray<string>>) => {
+    const box = { all: start };
+    return {
+      box,
+      kept: {
+        read: () => box.all,
+        write: (all: Record<string, ReadonlyArray<string>>) => void (box.all = all),
+      },
+    };
+  };
+
+  it("the watchdog's resume leaves them kept; only a user's send or Resume sends them", async () => {
+    const { box, kept } = disk({ [ID]: ["old"] });
+    const { catalog, typed } = machine({ kept });
+    expect(await catalog.resume({ sessionId: ID, deliver: false })).toMatchObject({
+      state: "running",
+    });
+    expect(typed).toEqual([]);
+    expect(box.all).toEqual({ [ID]: ["old"] });
+  });
+
+  it("a send that fails mid-resume does not leave the session stuck resuming", async () => {
+    const { box, kept } = disk({});
+    let fail = true;
+    const typed: string[] = [];
+    const { catalog } = machine({
+      kept,
+      type: async (_pane, text) => {
+        if (fail) throw ((fail = false), new Error("herdr crashed"));
+        typed.push(text);
+        return "sent" as const;
+      },
+    });
+    await expect(catalog.send({ sessionId: ID, text: "hello" })).rejects.toThrow("herdr crashed");
+    expect(await catalog.send({ sessionId: ID, text: "again" })).toMatchObject({ delivered: true });
+    expect(typed).toEqual(["hello", "again"]);
+    expect(box.all).toEqual({});
+  });
+
+  it("a send during a resume that then fails is sent by that send, not promised to a flush that never runs", async () => {
+    let calls = 0;
+    const { catalog, typed } = machine({
+      // Stopped when the resume looks, then up in Herdr but mid-turn, so the resume times out waiting for ready.
+      live: async () => (calls++ === 0 ? [] : [live({ status: "busy" })]),
+    });
+    const resumed = catalog.resume({ sessionId: ID });
+    const sent = await catalog.send({ sessionId: ID, text: "hi" });
+    expect(sent).toMatchObject({ delivered: true });
+    expect(typed).toEqual([["fab-shop~p1", "hi"]]);
+    await resumed;
+  });
+
+  it("an unsure send in one flush is not reported against a later, unrelated send", async () => {
+    const { kept } = disk({ [ID]: ["a"] });
+    let outcome: "sent" | "unsure" = "unsure";
+    const { catalog } = machine({ kept, type: async () => outcome });
+    await catalog.resume({ sessionId: ID });
+    outcome = "sent";
+    expect(await catalog.send({ sessionId: ID, text: "b" })).toEqual({
+      state: "running",
+      delivered: true,
+      detail: null,
+    });
+  });
+
+  it("a refusal that is not a question says so, and the message stays kept", async () => {
+    const { box, kept } = disk({});
+    const { catalog } = machine({
+      kept,
+      live: async () => [live()],
+      type: async () => "refused" as const,
+    });
+    const sent = await catalog.send({ sessionId: ID, text: "hi" });
+    expect(sent.detail).not.toMatch(/question/);
+    expect(sent.detail).toMatch(/nothing was typed/);
+    expect(box.all).toEqual({ [ID]: ["hi"] });
+  });
+
+  it("are dropped, and no longer counted, once the session's transcript is gone", async () => {
+    const { box, kept } = disk({ [ID]: ["keep me"], gone: ["lost"] });
+    const { catalog } = machine({ kept, hasTranscript: (id) => id === ID });
+    await catalog.list({});
+    expect(box.all).toEqual({ [ID]: ["keep me"] });
+  });
+});
+
+describe("sendOutcome", () => {
+  // The real answers from HerdrAdapterLive.sendInput and herdrSend: only these keep a message.
+  it.each([
+    [{ delivered: true, detail: "sent to shop and submitted." }, "sent"],
+    [
+      {
+        delivered: false,
+        detail:
+          "shop is waiting on a question or an approval in its terminal, so nothing was sent. Answer it there first, then send again.",
+      },
+      "blocked",
+    ],
+    [{ delivered: false, detail: "No Herdr pane fab-shop~p1 is running here now." }, "refused"],
+    [
+      { delivered: false, detail: "Herdr is not available here: herdr is not installed" },
+      "refused",
+    ],
+    [{ delivered: false, detail: "Not sent: TimeoutException" }, "unsure"],
+    [{ delivered: false, detail: "the text reached shop, but return did not: exit 1" }, "unsure"],
+  ] as const)("%j is %s", (result, expected) => {
+    expect(sendOutcome(result)).toBe(expected);
   });
 });

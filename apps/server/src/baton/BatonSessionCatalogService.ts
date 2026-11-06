@@ -407,8 +407,14 @@ export const layer = Layer.effect(
         write: (all) => {
           try {
             writeKeptFile(keptFile, all);
-          } catch {
-            // a read-only data directory keeps them in memory only
+          } catch (cause) {
+            // A read-only data directory keeps them in memory only.
+            void Effect.runPromiseWith(services)(
+              Effect.logWarning("Tessaya kept messages not saved", {
+                keptFile,
+                cause: String(cause),
+              }),
+            );
           }
         },
       },
@@ -531,6 +537,7 @@ export const layer = Layer.effect(
         saveAutoState();
         const result = await catalog.resume({
           sessionId: t.sessionId,
+          deliver: false,
           ...(t.cwd === null ? {} : { cwd: t.cwd }),
         });
         if (result.state !== "running") {

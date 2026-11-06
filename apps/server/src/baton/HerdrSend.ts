@@ -28,7 +28,9 @@ export const herdrSend = (
     if (candidate === undefined) {
       return {
         delivered: false,
-        detail: found.available ? `No Herdr pane ${input.pane} is running here now.` : found.reason,
+        detail: found.available
+          ? `No Herdr pane ${input.pane} is running here now.`
+          : `Herdr is not available here: ${found.reason}`,
       };
     }
     const session = yield* adopted.register({

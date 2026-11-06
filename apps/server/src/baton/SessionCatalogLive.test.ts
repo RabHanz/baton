@@ -67,7 +67,11 @@ describe("the kept-messages file", () => {
         expect(read.problem).toMatch(/moved to/);
         expect(NodeFS.existsSync(file)).toBe(false);
       }
-      expect(NodeFS.readdirSync(dir).filter((n) => n.includes(".bad-"))).toHaveLength(2);
+      // Unreadable (here a directory where the file should be) is moved aside too, not left to fail every start.
+      NodeFS.mkdirSync(file);
+      expect(readKeptFile(file).problem).toMatch(/could not be read; moved to/);
+      expect(NodeFS.existsSync(file)).toBe(false);
+      expect(NodeFS.readdirSync(dir).filter((n) => n.includes(".bad-"))).toHaveLength(3);
     } finally {
       NodeFS.rmSync(dir, { recursive: true, force: true });
     }

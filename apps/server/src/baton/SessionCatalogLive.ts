@@ -187,6 +187,12 @@ export const realCatalogPorts = (type: CatalogPorts["type"]): CatalogPorts => ({
           resolve({ ok: error === null, out: `${stdout}${stderr}`.trim() }),
       ),
     ),
+  hasTranscript: (sessionId) => {
+    scanned ??= scanTranscriptTimes(claudeConfigDirs(), new Set(), null, Date.now());
+    for (const { files } of scanned.folders.values())
+      if (files.has(`${sessionId}.jsonl`)) return true;
+    return false;
+  },
   type,
   screen: (session, pane) =>
     new Promise((resolve) =>
@@ -208,16 +214,14 @@ export const realCatalogPorts = (type: CatalogPorts["type"]): CatalogPorts => ({
 export const readKeptFile = (
   file: string,
 ): { readonly kept: Record<string, ReadonlyArray<string>>; readonly problem: string | null } => {
-  let raw: string;
+  let raw: string | null = null;
   try {
     raw = NodeFS.readFileSync(file, "utf8");
   } catch (error) {
-    return (error as NodeJS.ErrnoException).code === "ENOENT"
-      ? { kept: {}, problem: null }
-      : { kept: {}, problem: `could not read ${file}: ${String(error)}` };
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { kept: {}, problem: null };
   }
   try {
-    const parsed: unknown = JSON.parse(raw);
+    const parsed: unknown = raw === null ? null : JSON.parse(raw);
     if (
       typeof parsed === "object" &&
       parsed !== null &&
@@ -232,7 +236,10 @@ export const readKeptFile = (
   try {
     NodeFS.renameSync(file, aside);
   } catch {}
-  return { kept: {}, problem: `${file} was not a kept-messages file; moved to ${aside}` };
+  return {
+    kept: {},
+    problem: `${file} ${raw === null ? "could not be read" : "was not a kept-messages file"}; moved to ${aside}`,
+  };
 };
 
 /** Written whole to a temporary file and renamed over, so a crash mid-write never leaves half a file. */

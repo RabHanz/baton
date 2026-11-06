@@ -29,18 +29,26 @@ export interface HistoryHit {
   readonly at: string | null;
 }
 
-export type SendOutcome = "sent" | "refused" | "unsure";
+/** `blocked`: it waits on a question; `refused`: nothing was typed for another reason (no pane, no Herdr). */
+export type SendOutcome = "sent" | "blocked" | "refused" | "unsure";
 
-/** What a Herdr send's answer means for a kept message: only a definite refusal keeps it; anything else may have been typed. */
+/**
+ * What a Herdr send's answer means for a kept message: only a definite refusal keeps it; anything else may have been
+ * typed. Matches the wording of HerdrAdapterLive's agent_blocked answer and HerdrSend's no-pane and no-Herdr answers.
+ */
 export const sendOutcome = (result: {
   readonly delivered: boolean;
   readonly detail: string;
 }): SendOutcome =>
   result.delivered
     ? "sent"
-    : /waiting on a question|No Herdr pane/.test(result.detail)
-      ? "refused"
-      : "unsure";
+    : /is waiting on a question or an approval in its terminal, so nothing was sent/.test(
+          result.detail,
+        )
+      ? "blocked"
+      : /^(No Herdr pane \S+ is running here now|Herdr is not available here)/.test(result.detail)
+        ? "refused"
+        : "unsure";
 
 export interface CatalogPorts {
   readonly machine: string;
@@ -81,6 +89,8 @@ export interface CatalogPorts {
     readonly read: () => Record<string, ReadonlyArray<string>>;
     readonly write: (all: Record<string, ReadonlyArray<string>>) => void;
   };
+  /** Whether the session's transcript is still on this machine; kept messages for one that is gone are dropped. */
+  readonly hasTranscript?: (sessionId: string) => boolean;
   /** What the Herdr pane shows now (the last lines), to explain a session that never became ready. */
   readonly screen?: (session: string, pane: string) => Promise<string>;
   readonly sleep: (ms: number) => Promise<void>;
@@ -130,23 +140,32 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
   const failed = new Map<string, string>();
   /** Sends in progress per session, so a second caller only appends and the one loop sends it, in order. */
   const flushing = new Set<string>();
-  /** Messages a send could not confirm, per session: dropped, never sent again, and reported once. */
+  /** Messages the last flush could not confirm, per session: dropped, never sent again, and reported once. */
   const unsure = new Map<string, number>();
+  /** Resumes that should send what is kept once up: a user's Resume or send, never the watchdog alone. */
+  const deliverOnResume = new Set<string>();
+  /** Why the last flush stopped with messages still kept, for the reply to a send that waited on a resume. */
+  const stoppedBy = new Map<string, "blocked" | "refused">();
   /**
    * Sends what waits for a session, oldest first, one at a time, until nothing new has arrived. A definite refusal
-   * keeps it and everything after it; an unsure send drops that one. Each sent message leaves the kept file at once.
+   * keeps it and everything after it; an unsure send drops that one. Each sent message leaves the kept file at once,
+   * so delivery is at-least-once: a crash between typing and that write sends it again after a restart.
    */
   const flush = async (
     sessionId: string,
     put: (text: string) => Promise<SendOutcome>,
-  ): Promise<"done" | "refused"> => {
+  ): Promise<"done" | "blocked" | "refused"> => {
+    if (waiting.has(sessionId)) unsure.delete(sessionId);
     flushing.add(sessionId);
     try {
       for (;;) {
         const head = waiting.get(sessionId)?.[0];
         if (head === undefined) return "done";
         const outcome = await put(head);
-        if (outcome === "refused") return "refused";
+        if (outcome === "blocked" || outcome === "refused") {
+          stoppedBy.set(sessionId, outcome);
+          return outcome;
+        }
         if (outcome === "unsure") unsure.set(sessionId, (unsure.get(sessionId) ?? 0) + 1);
         keep(sessionId, (waiting.get(sessionId) ?? []).slice(1));
       }
@@ -219,6 +238,14 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
     const limit = Math.max(1, Math.min(200, input.limit ?? 50));
     const liveSessions = await ports.live();
     const transcripts = await ports.transcripts(600);
+    if (ports.hasTranscript !== undefined)
+      for (const id of waiting.keys())
+        if (
+          !resuming.has(id) &&
+          !liveSessions.some((s) => s.sessionId === id) &&
+          !ports.hasTranscript(id)
+        )
+          keep(id, []);
     const byId = new Map<string, BatonCatalogSession>();
     for (const t of transcripts)
       if (t.background !== true || input.background === true) byId.set(t.sessionId, stoppedRow(t));
@@ -366,31 +393,43 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
   /** Threads a resume brought back (machines with no Herdr), so the row can say where it is once it exists. */
   const resumedThreads = new Map<string, string>();
   const RESUME_WAIT_MS = ports.resumeWaitMs ?? 8_000;
-  const resume = (input: { sessionId: string; cwd?: string }): Promise<ResumeResult> => {
+  /** `deliver: false` (the watchdog) brings it back and leaves kept messages kept unless a user joins the resume. */
+  const resume = (input: {
+    sessionId: string;
+    cwd?: string;
+    deliver?: boolean;
+  }): Promise<ResumeResult> => {
+    if (input.deliver !== false) deliverOnResume.add(input.sessionId);
     const existing = resuming.get(input.sessionId);
     if (existing !== undefined)
       return Promise.resolve({ state: "resuming" as const, pane: null, detail: IMPORTING });
-    const job = doResume(input.sessionId, input.cwd).then(async (r) => {
-      if (r.threadId !== undefined) resumedThreads.set(input.sessionId, r.threadId);
-      if (r.state === "failed") failed.set(input.sessionId, r.detail ?? "It could not be resumed.");
-      else failed.delete(input.sessionId);
-      // What waited goes now, in order, once; `resuming` stays set until it has, so a second tap cannot type it twice.
-      if (r.state === "running" && r.pane !== null) {
-        const pane = r.pane;
-        await flush(input.sessionId, (text) => ports.type(pane, text));
+    const job = (async () => {
+      try {
+        const r = await doResume(input.sessionId, input.cwd);
+        if (r.threadId !== undefined) resumedThreads.set(input.sessionId, r.threadId);
+        if (r.state === "failed")
+          failed.set(input.sessionId, r.detail ?? "It could not be resumed.");
+        else failed.delete(input.sessionId);
+        // What waited goes now, in order, once; `resuming` stays set until it has, so a second tap cannot type it twice.
+        if (r.state === "running" && r.pane !== null && deliverOnResume.has(input.sessionId)) {
+          const pane = r.pane;
+          await flush(input.sessionId, (text) => ports.type(pane, text));
+        }
+        // No Herdr: the session came back as a thread, so what waited goes there. Anything not taken stays kept.
+        if (r.state === "running" && r.pane === null && deliverOnResume.has(input.sessionId))
+          await flush(input.sessionId, async (text) =>
+            r.threadId !== undefined &&
+            ports.threadSend !== undefined &&
+            (await ports.threadSend(r.threadId, text).catch(() => false))
+              ? "sent"
+              : "refused",
+          );
+        return r;
+      } finally {
+        resuming.delete(input.sessionId);
+        deliverOnResume.delete(input.sessionId);
       }
-      // No Herdr: the session came back as a thread, so what waited goes there. Anything not taken stays kept.
-      if (r.state === "running" && r.pane === null)
-        await flush(input.sessionId, async (text) =>
-          r.threadId !== undefined &&
-          ports.threadSend !== undefined &&
-          (await ports.threadSend(r.threadId, text).catch(() => false))
-            ? "sent"
-            : "refused",
-        );
-      resuming.delete(input.sessionId);
-      return r;
-    });
+    })();
     resuming.set(input.sessionId, job);
     // Bringing a long conversation in as a thread can take minutes (a 70 MB transcript): answer "resuming" after a few
     // seconds and let the import finish on its own; the list says when it has a thread, or why it failed.
@@ -408,14 +447,20 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
 
   const QUEUED_BEHIND =
     "Earlier messages to it are still being sent; this one goes after them, in order.";
-  const afterFlush = (sessionId: string, outcome: "done" | "refused") => {
+  const afterFlush = (sessionId: string, outcome: "done" | "blocked" | "refused") => {
     const maybe = unsure.get(sessionId) ?? 0;
     unsure.delete(sessionId);
-    if (outcome === "refused")
+    if (outcome === "blocked")
       return {
         delivered: false,
         detail:
           "It is waiting on a question in its terminal. Your message is kept; answer the question, then send again and it goes first.",
+      };
+    if (outcome === "refused")
+      return {
+        delivered: false,
+        detail:
+          "Its Herdr pane did not take the message, so nothing was typed. Your message is kept and goes first on the next send or Resume.",
       };
     return maybe === 0
       ? { delivered: true, detail: null }
@@ -430,7 +475,11 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
     if (live !== undefined && live.herdrPane !== null) {
       // Anything kept from before goes first, then this one; a send already under way takes it in order.
       keep(input.sessionId, [...(waiting.get(input.sessionId) ?? []), input.text]);
-      if (flushing.has(input.sessionId) || resuming.has(input.sessionId))
+      if (flushing.has(input.sessionId))
+        return { state: "running" as const, delivered: false, detail: QUEUED_BEHIND };
+      // A resume still settling may fail before sending anything, so wait for it and send from here.
+      await resuming.get(input.sessionId)?.catch(() => undefined);
+      if (flushing.has(input.sessionId))
         return { state: "running" as const, delivered: false, detail: QUEUED_BEHIND };
       const pane = live.herdrPane;
       const outcome = await flush(input.sessionId, (text) => ports.type(pane, text));
@@ -461,7 +510,10 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
     if (result.state === "running")
       return {
         state: "running" as const,
-        ...afterFlush(input.sessionId, waiting.has(input.sessionId) ? "refused" : "done"),
+        ...afterFlush(
+          input.sessionId,
+          waiting.has(input.sessionId) ? (stoppedBy.get(input.sessionId) ?? "blocked") : "done",
+        ),
       };
     if (result.state === "resuming")
       return {
