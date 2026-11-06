@@ -151,6 +151,7 @@ import type { SidecarInput } from "../voice/dictationSidecar.ts";
 import type { HomeControl } from "../home/batonHome.ts";
 import { POCKET_VOICES, type PocketVoice } from "../voice/pocketVoice.ts";
 import { actLabel, actTarget, type Act } from "./actCursor.ts";
+import { markPhase } from "../lifecycle/mainStall.ts";
 import { createPointerOverlay, type OverlayCard } from "./pointerOverlay.ts";
 import type { EscapeRank } from "./escapeKey.ts";
 import {
@@ -161,6 +162,12 @@ import {
   shotOf,
   type CapturedScreen,
 } from "./screenCapture.ts";
+
+/** Names a step of building the screen's controls for the stall log; adds nothing. */
+const stepMark = (name: string): [] => {
+  markPhase(name);
+  return [];
+};
 
 // F5 to F8 are voice and dictation, and Airdeck has F9 to F12.
 export const ASK_HOTKEY = "Control+Alt+Shift+B";
@@ -2988,11 +2995,13 @@ export const startScreenCompanion = (input: {
         : []),
     ],
     controls: () => [
+      ...stepMark("home-state:screen-learned"),
       ...learnedControls(skillsDir(), {
         lastTurn: lastTurn?.trace.said ?? null,
         busy: learning,
         now: new Date(),
       }),
+      ...stepMark("home-state:screen-settings"),
       {
         id: "s.assistantModel",
         section: "Answers and voice",

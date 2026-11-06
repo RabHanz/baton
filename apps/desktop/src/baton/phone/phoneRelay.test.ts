@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
-import { createPhoneRelay, nextPollMs } from "./phoneRelay.ts";
+import { createPhoneRelay, guardedPhoneCall, nextPollMs } from "./phoneRelay.ts";
 
 const make = (
   over: {
@@ -94,5 +94,49 @@ describe("the desktop's phone relay", () => {
       5_000, 5_000, 15_000, 15_000, 30_000, 30_000,
     ]);
     expect(Math.max(...[0, 12, 60].map(nextPollMs))).toBeLessThan(45_000);
+  });
+});
+
+describe("the relay's call into the app", () => {
+  const marks: string[] = [];
+  const mark = (name: string) => void marks.push(name);
+  it("does not ask while the app's window is closed, and marks the call", async () => {
+    marks.length = 0;
+    let asked = false;
+    const call = guardedPhoneCall({
+      windowUp: async () => false,
+      request: async () => {
+        asked = true;
+        return null;
+      },
+      mark,
+    });
+    await expect(call("take", {})).rejects.toThrow(/not open/);
+    expect(asked).toBe(false);
+    expect(marks).toEqual(["phone-call:begin", "phone-call:end"]);
+  });
+  it("gives up on an app that never answers, so the loop goes on", async () => {
+    vi.useFakeTimers();
+    const call = guardedPhoneCall({
+      windowUp: async () => true,
+      request: () => new Promise(() => undefined),
+      mark,
+      timeoutMs: 1_000,
+    });
+    const result = call("take", {});
+    const checked = expect(result).rejects.toThrow(/in time/);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await checked;
+    vi.useRealTimers();
+  });
+  it("turns a synchronous throw into a rejection instead of breaking the loop", async () => {
+    const call = guardedPhoneCall({
+      windowUp: () => {
+        throw new Error("boom");
+      },
+      request: async () => null,
+      mark,
+    });
+    await expect(call("take", {})).rejects.toThrow("boom");
   });
 });
