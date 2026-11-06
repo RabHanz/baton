@@ -32,6 +32,7 @@ import {
   isBad,
   markHealthy,
 } from "@t3tools/baton-shared/startGuard";
+import { approvalRecord } from "@t3tools/baton-shared/approvals";
 import { releasesUrl } from "@t3tools/baton-shared/repo";
 import { adoptTessayaEnv } from "@t3tools/baton-shared/tessayaEnv";
 import { readGuard, writeGuard } from "./health/startGuardFile.ts";
@@ -417,7 +418,11 @@ export const startBatonDesktop = Effect.gen(function* () {
           turnLog.timings({ ...timings, reply: spokenThisTurn.join(" ") });
           spokenThisTurn.length = 0;
         },
-        onAction: (entry) => turnLog.note("action", entry),
+        onAction: (entry) => {
+          turnLog.note("action", entry);
+          const answer = approvalRecord(entry);
+          if (answer !== null) void direct("baton.record.append", answer).catch(() => undefined);
+        },
         stopSpeech: speaker.cancel,
         holdEscape,
         ownEscape: holdEscape.own,

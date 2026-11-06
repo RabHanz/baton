@@ -1118,7 +1118,14 @@ export const startScreenCompanion = (input: {
     });
     const action = describeToolCall(call);
     const record = (outcome: string) =>
-      input.onAction?.({ by: settings.operator, tool: call.tool, action, outcome });
+      input.onAction?.({
+        by: settings.operator,
+        persona: face.name,
+        tool: call.tool,
+        action,
+        outcome,
+        ...(judged.verdict === "allow" ? {} : { why: judged.why }),
+      });
     if (judged.verdict === "deny") {
       record("refused");
       return { allow: false as const, reason: `${judged.why} Tell him why and stop.` };
@@ -1649,7 +1656,7 @@ export const startScreenCompanion = (input: {
         // Not "Thinking" while it clicks and types: the pill is the one line that says what it is doing.
         input.onActivity?.("Working");
       }
-      input.onAction?.({ by: "assistant", ...entry });
+      input.onAction?.({ by: "assistant", persona: face.name, ...entry });
     },
   });
   /** Built-in tools go through the gate here; Baton's own run it inside the tool server. */

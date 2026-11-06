@@ -7,7 +7,13 @@
  */
 import * as NodePath from "node:path";
 
-import { BATON_CLOUD_ACT_OPS, BATON_CLOUD_APPROVE_OPS, BATON_CLOUD_READ_OPS, type BatonCloudCallInput, type BatonCloudCallResult } from "@t3tools/baton-contracts";
+import {
+  BATON_CLOUD_ACT_OPS,
+  BATON_CLOUD_APPROVE_OPS,
+  BATON_CLOUD_READ_OPS,
+  type BatonCloudCallInput,
+  type BatonCloudCallResult,
+} from "@t3tools/baton-contracts";
 import { buildLocalProviders, settingsFromEnv } from "@t3tools/baton-shared/cloud/build";
 import { serveCloudCall } from "@t3tools/baton-shared/cloud/hub";
 import { fileStores, nodeExec } from "@t3tools/baton-shared/cloud/nodeExec";
@@ -16,6 +22,16 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import * as ServerConfig from "../config.ts";
+import { BatonRecordService } from "./BatonRecordService.ts";
+
+/** What a decision on a cloud task did, as the Record's outcome. */
+const DONE: Readonly<Record<string, string>> = {
+  dispatch: "requested",
+  cancel: "cancelled",
+  approve: "approved",
+  deny: "denied",
+  apply: "applied",
+};
 
 export class BatonCloudService extends Context.Service<
   BatonCloudService,
@@ -36,12 +52,21 @@ export const layer = Layer.effect(
       fileStores(NodePath.join(NodePath.dirname(config.dbPath), "cloud")),
       settingsFromEnv(process.env["BATON_CLOUD_CONFIG"]),
     );
+    const record = yield* Effect.serviceOption(BatonRecordService);
     return BatonCloudService.of({
-      call: Effect.fn("BatonCloudService.call")(function* (input: BatonCloudCallInput, kind: "read" | "act" | "approve") {
+      call: Effect.fn("BatonCloudService.call")(function* (
+        input: BatonCloudCallInput,
+        kind: "read" | "act" | "approve",
+      ) {
         const allowed: ReadonlyArray<string> =
-          kind === "read" ? BATON_CLOUD_READ_OPS : kind === "approve" ? BATON_CLOUD_APPROVE_OPS : BATON_CLOUD_ACT_OPS;
+          kind === "read"
+            ? BATON_CLOUD_READ_OPS
+            : kind === "approve"
+              ? BATON_CLOUD_APPROVE_OPS
+              : BATON_CLOUD_ACT_OPS;
         // A read method never changes anything, whatever op it is sent.
-        if (!allowed.includes(input.op)) return { ok: false, error: "That request is not allowed here." } as BatonCloudCallResult;
+        if (!allowed.includes(input.op))
+          return { ok: false, error: "That request is not allowed here." } as BatonCloudCallResult;
         const out = yield* Effect.promise(() =>
           serveCloudCall(providers, {
             op: input.op,
@@ -49,7 +74,23 @@ export const layer = Layer.effect(
             ...(input.args === undefined ? {} : { args: input.args }),
           }),
         );
-        return (out.ok ? { ok: true, value: out.value } : { ok: false, error: out.error }) as BatonCloudCallResult;
+        // Every decision on a cloud task is a Record row; only he holds the approve door.
+        if (kind !== "read" && record._tag === "Some") {
+          const args = input.args ?? {};
+          const said = (key: string) => (typeof args[key] === "string" ? args[key] : null);
+          yield* record.value.append({
+            kind: "cloud",
+            actor: kind === "approve" ? "him" : "assistant",
+            project: said("repo"),
+            ref: said("id"),
+            subject: `${input.op}${input.provider === undefined ? "" : ` on ${input.provider}`}${said("label") === null ? "" : `: ${said("label")}`}`,
+            outcome: out.ok ? (DONE[input.op] ?? input.op) : "failed",
+            detail: out.ok ? "" : out.error,
+          });
+        }
+        return (
+          out.ok ? { ok: true, value: out.value } : { ok: false, error: out.error }
+        ) as BatonCloudCallResult;
       }),
     });
   }),

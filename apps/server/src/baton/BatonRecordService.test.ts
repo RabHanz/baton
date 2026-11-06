@@ -63,6 +63,21 @@ layer("BatonRecordService", (it) => {
     }),
   );
 
+  it.effect("marks an approval a client wrote as reported by that client", () =>
+    Effect.gen(function* () {
+      const record = yield* BatonRecordService;
+      yield* record.appendFromClient({
+        kind: "approval",
+        actor: "Freya",
+        subject: "post the draft",
+        outcome: "approved",
+        detail: "",
+      });
+      const [row] = yield* record.query({});
+      assert.strictEqual(row?.kind, "approval_reported_by_client");
+    }),
+  );
+
   it.effect("forgets rows older than thirty days", () =>
     Effect.gen(function* () {
       const record = yield* BatonRecordService;
