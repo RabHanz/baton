@@ -83,7 +83,7 @@ describe("decide", () => {
 
   it("treats a bare stop as an instant control even with nothing running", async () => {
     const h = host("{}");
-    for (const said of ["Stop.", "Baton, stop", "never mind"]) {
+    for (const said of ["Stop.", "please stop", "never mind"]) {
       await expect(decide(said, context, h)).resolves.toMatchObject({
         route: "control",
         control: "stop",
