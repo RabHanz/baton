@@ -24,7 +24,7 @@ describe("the Presence settings", () => {
       true,
     );
     expect(rows.some((r) => r.more === true)).toBe(false);
-    // What Tessaya notices is privacy; what she offers and watches is her work for him (#525).
+    // What Tessaya notices is privacy; what she offers and watches is her work for him.
     for (const r of rows) expect(["privacy", "assistant"]).toContain(tabOf(r.id));
   });
   it("turns a control into a settings patch and refuses a value it does not offer", () => {
