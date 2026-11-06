@@ -487,12 +487,15 @@ export const make = Effect.gen(function* () {
       .embed(text)
       .pipe(Effect.timeoutOption(QUERY_EMBED_MS), Effect.map(Option.getOrNull));
     if (query === null) return [];
-    const rows = yield* sql<ItemRow & { vector: Uint8Array }>`
-      SELECT i.*, v.vector AS vector FROM fabric_memory_vectors v
+    // shortcut: every vector is read and compared per sentence; past ~5k items keep them in memory (or an ANN index) instead.
+    const rows = yield* sql<ItemRow & { vector: Uint8Array; text_hash: string }>`
+      SELECT i.*, v.vector AS vector, v.text_hash AS text_hash FROM fabric_memory_vectors v
       JOIN fabric_memory_items i ON i.id = v.item_id
       WHERE v.model = ${model}
     `.pipe(Effect.orDie);
     const candidates = rows
+      // A vector made from older wording is not this item's meaning any more: it waits for the next pass.
+      .filter((row) => row.text_hash === textHash(row.text))
       .map((row) => ({ item: fromRow(row), vector: vectorFromBytes(row.vector) }))
       .filter(({ item }) => matches(item, {}) && visible(item));
     return nearest(
@@ -524,8 +527,18 @@ export const make = Effect.gen(function* () {
           })).filter((hit) => hit.score >= RECALL_FLOOR)
         : null;
     // By meaning as well as by words, blended by rank; without a model this adds nothing.
+    // The walls and the turn's project apply before the top 20 are cut, so nothing it may not use takes a place.
     const meaning =
-      keyword === null || context.text === undefined ? [] : yield* nearestSeen(context.text, seen);
+      keyword === null || context.text === undefined
+        ? []
+        : yield* nearestSeen(
+            context.text,
+            (item) =>
+              seen(item) &&
+              (typeof context.scopeRef !== "string" ||
+                item.scope !== "project" ||
+                item.scopeRef === context.scopeRef),
+          );
     const blended =
       keyword === null || meaning.length === 0
         ? keyword
@@ -761,6 +774,7 @@ export const make = Effect.gen(function* () {
     }>`
       SELECT i.id, i.text, v.model AS model, v.text_hash AS text_hash
       FROM fabric_memory_items i LEFT JOIN fabric_memory_vectors v ON v.item_id = i.id
+      WHERE i.superseded_by IS NULL AND i.proposed = 0
     `.pipe(Effect.orDie);
     for (const row of rows) {
       const hash = textHash(row.text);
@@ -815,7 +829,12 @@ export const make = Effect.gen(function* () {
     }),
     pin,
     forget,
-    accept,
+    // An accepted proposal joins recall, so it is embedded now.
+    accept: Effect.fn("BatonMemoryService.acceptThenEmbed")(function* (id: string) {
+      const item = yield* accept(id);
+      yield* poke;
+      return item;
+    }),
     recall,
     markUsed,
     used,

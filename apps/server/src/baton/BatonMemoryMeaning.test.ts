@@ -5,11 +5,12 @@ import * as NodePath from "node:path";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as SqlClient from "effect/sql/SqlClient";
 import * as TestClock from "effect/testing/TestClock";
 
 import * as ServerConfig from "../config.ts";
 import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
-import { BatonMemoryEmbedder, layerNone } from "./BatonMemoryEmbedder.ts";
+import { BatonMemoryEmbedder, layerNone, makeEmbedder } from "./BatonMemoryEmbedder.ts";
 import { BatonMemoryService, MemoryViewer, layer as memoryLayer } from "./BatonMemoryService.ts";
 
 /** A stand-in model: each word lands on one axis, so "pricing" and "costs" are near and "train" is far. */
@@ -112,4 +113,58 @@ it.effect("without a model, recall is keyword recall as before", () =>
     assert.notInclude((yield* memory.recall({ text: ASK })).block, "subscription");
     assert.include((yield* memory.recall({ text: "subscription" })).block, "subscription costs");
   }).pipe(Effect.provide(withModel(layerNone))),
+);
+
+it.effect("never ranks by a vector made from older wording", () =>
+  Effect.gen(function* () {
+    const memory = yield* BatonMemoryService;
+    const sql = yield* SqlClient.SqlClient;
+    const item = yield* memory.add({ kind: "fact", text: PRICE, source: "user" });
+    yield* TestClock.adjust("2 minutes");
+    // The words change underneath (as a sync can before the next pass): the old vector no longer speaks for it.
+    yield* sql`UPDATE fabric_memory_items SET text = ${"He parks behind the station"} WHERE id = ${item.id}`;
+    assert.notInclude((yield* memory.recall({ text: ASK })).block, "station");
+  }).pipe(Effect.provide(withModel(fakeModel))),
+);
+
+it.effect(
+  "keeps another project's items out of the nearest 20, so they take no place from this one's",
+  () =>
+    Effect.gen(function* () {
+      const memory = yield* BatonMemoryService;
+      for (let i = 0; i < 25; i += 1) {
+        yield* memory.add({
+          kind: "fact",
+          text: `Shop plan ${i}: the subscription costs ${i} pounds`,
+          source: "user",
+          scope: "project",
+          scopeRef: "shop",
+        });
+      }
+      yield* memory.add({
+        kind: "fact",
+        text: "Site plan: the subscription costs nine pounds",
+        source: "user",
+        scope: "project",
+        scopeRef: "site",
+      });
+      yield* TestClock.adjust("2 minutes");
+      assert.include((yield* memory.recall({ text: ASK, scopeRef: "site" })).block, "Site plan");
+    }).pipe(Effect.provide(withModel(fakeModel))),
+);
+
+it.live("a child that cannot load the model answers null, and the server goes on", () =>
+  Effect.gen(function* () {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-embed-broken-"));
+    NodeFS.writeFileSync(NodePath.join(dir, "model_quantized.onnx"), "not a model");
+    NodeFS.copyFileSync(
+      new URL("../../resources/memory-model/vocab.txt", import.meta.url),
+      NodePath.join(dir, "vocab.txt"),
+    );
+    const embedder = yield* makeEmbedder({ dir, ort: NodePath.join(dir, "no-onnxruntime.js") });
+    assert.isNull(yield* embedder.embed("hello"));
+    // It backs off: the next sentence is answered at once, keyword-only, without starting another child.
+    assert.isNull(yield* embedder.embed("hello again"));
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  }).pipe(Effect.scoped),
 );

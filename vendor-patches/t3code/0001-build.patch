@@ -291,6 +291,33 @@ index 95d8b2d57e09faa9301be955e21e004cd64727e1..090ecfa67b3478d44621b1fce2f9375d
    # Ships N-API prebuilds; its install script only rebuilds from source.
    objc-js: false
    "react-native-enriched-markdown@file:apps/mobile/deps/react-native-enriched-markdown-1.2.0-t3.16-29ddd424.tgz": true
+diff --git a/scripts/build-cli-archive.ts b/scripts/build-cli-archive.ts
+index 1244b9491fb73ebd1a000ee885d9a8a99b0786d5..19380a767504ff4760dfc13370d1093a7e4294af 100644
+--- a/scripts/build-cli-archive.ts
++++ b/scripts/build-cli-archive.ts
+@@ -210,7 +210,22 @@ const stageRuntimeExternals = Effect.fn("stageRuntimeExternals")(function* (inpu
+     .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []))).filter(
+     (entry) => entry !== platformKey,
+   );
++  // onnxruntime-node (memory recall, MEM-13) bundles every OS's binaries (~290 MB); the archive keeps only its own target.
++  // Its install script, which would fetch CUDA files, never runs: the workspace's allowBuilds has it false.
++  const ortBin = "node_modules/onnxruntime-node/bin/napi-v6";
++  const ortTarget = `${input.platform === "mac" ? "darwin" : input.platform === "win" ? "win32" : input.platform}/${input.arch}`;
++  const foreignOrt: string[] = [];
++  for (const os of yield* fs
++    .readDirectory(path.join(input.stageDir, ortBin))
++    .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []))) {
++    for (const arch of yield* fs
++      .readDirectory(path.join(input.stageDir, ortBin, os))
++      .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []))) {
++      if (`${os}/${arch}` !== ortTarget) foreignOrt.push(`${ortBin}/${os}/${arch}`);
++    }
++  }
+   for (const entry of [
++    ...foreignOrt,
+     "package.json",
+     "pnpm-workspace.yaml",
+     "pnpm-lock.yaml",
 diff --git a/scripts/build-desktop-artifact.test.ts b/scripts/build-desktop-artifact.test.ts
 index 02f19b07b4531a4cd2760c99e642f694f56ab138..10ac17adf8f2a419995c13ee7e20fa85cee57353 100644
 --- a/scripts/build-desktop-artifact.test.ts

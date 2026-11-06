@@ -27,6 +27,7 @@ import { uninstallCommand } from "./cli/uninstall.ts";
 import { serviceLauncherCommand } from "./cli/serviceLauncher.ts";
 import { speechWorkerCommand } from "./cli/speechWorker.ts";
 import { claudeHistoryCommand } from "./cli/claudeHistory.ts";
+import { memoryEmbedCommand } from "./cli/memoryEmbed.ts";
 import { sshHelperCommand } from "./cli/sshHelper.ts";
 import { serviceCommand } from "./cli/service.ts";
 import { servicePreflightCommand } from "./cli/servicePreflight.ts";
@@ -92,6 +93,7 @@ export const makeCli = ({ cloudEnabled = hasCloudPublicConfig } = {}) =>
       uninstallCommand,
       serviceLauncherCommand,
       claudeHistoryCommand,
+      memoryEmbedCommand,
       speechWorkerCommand,
       sshHelperCommand,
 
