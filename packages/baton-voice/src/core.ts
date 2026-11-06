@@ -75,7 +75,12 @@ export type VoiceCoreEvent =
       readonly checkMs?: number;
     }
   /** His speech ended (silence long enough): from here the pill must not say Listening. */
-  | { readonly type: "speech_end"; readonly at: number }
+  | {
+      readonly type: "speech_end";
+      readonly at: number;
+      /** The silence after his last word that it took to say so. */
+      readonly quietMs: number;
+    }
   /** The audio of a segment that is going to recognition, for the history's kept clips. */
   | { readonly type: "audio"; readonly pcm: Int16Array; readonly at: number }
   /** A segment went to speech recognition. */
@@ -92,7 +97,14 @@ export type VoiceCoreEvent =
   | { readonly type: "dismissed"; readonly text: string; readonly at: number }
   /** He said a stop phrase over Baton's voice. No wake word needed. */
   | { readonly type: "stop_heard"; readonly text: string; readonly at: number }
-  | { readonly type: "transcript"; readonly text: string; readonly at: number }
+  | {
+      readonly type: "transcript";
+      readonly text: string;
+      readonly at: number;
+      /** For the turn log: how long recognition took, and the end-of-turn wait after it. */
+      readonly recogniseMs?: number;
+      readonly holdMs?: number;
+    }
   | { readonly type: "effect"; readonly effect: VoiceEffect }
   | { readonly type: "outcome"; readonly outcome: RouteOutcome }
   | { readonly type: "error"; readonly message: string };
@@ -431,6 +443,7 @@ export const createVoiceCore = (input: {
       speakingLater = null;
       setSpeaking(latest);
     }
+    const quietMs = Math.round((silenceSamples * 1000) / VOICE_SAMPLE_RATE);
     segment = null;
     speechSamples = 0;
     silenceSamples = 0;
@@ -443,7 +456,7 @@ export const createVoiceCore = (input: {
     const pcm = joined(parts);
     const endAt = now();
     after(() => {
-      emit({ type: "speech_end", at: endAt });
+      emit({ type: "speech_end", at: endAt, quietMs });
       emit({ type: "audio", pcm, at: endAt });
       emit({ type: "thinking" });
     });
@@ -457,10 +470,13 @@ export const createVoiceCore = (input: {
     };
     transcribing += 1;
     recognising.add(turn.startAt);
+    let recogniseMs = 0;
+    const recognise = () => {
+      const began = Date.now();
+      return input.stt.transcribe(pcm).finally(() => (recogniseMs = Date.now() - began));
+    };
     const heard = (
-      waitFor === null
-        ? input.stt.transcribe(pcm)
-        : waitFor.then((ok) => (ok ? input.stt.transcribe(pcm) : ""))
+      waitFor === null ? recognise() : waitFor.then((ok) => (ok ? recognise() : ""))
     ).finally(() => {
       transcribing -= 1;
       recognising.delete(turn.startAt);
@@ -507,12 +523,19 @@ export const createVoiceCore = (input: {
       const joinable =
         machine.pending === null &&
         (machine.mode === "command_window" || machine.mode === "conversation");
+      const holding = Date.now();
       if (joinable && waitMs() > 0) {
-        const kept = await holdForMore(said, turn.endAt);
+        const kept = await holdForMore(said, turn.endAt, turn.endAt - quietMs);
         if (!kept) return;
       }
       lastTranscript = said;
-      emit({ type: "transcript", text: said, at: now() });
+      emit({
+        type: "transcript",
+        text: said,
+        at: now(),
+        recogniseMs,
+        holdMs: Date.now() - holding,
+      });
       current = { text: said, endAt: turn.endAt };
       // Begun while the window was open: a slow recogniser (right after launch) must not let it close under these words.
       if (machine.deadline !== null && turn.startAt <= machine.deadline)
@@ -546,12 +569,13 @@ export const createVoiceCore = (input: {
   };
 
   /** Wait out the end-of-turn pause for these words; false when later speech took them over. */
-  const holdForMore = (text: string, endAt: number): Promise<boolean> =>
+  const holdForMore = (text: string, endAt: number, lastWordAt: number): Promise<boolean> =>
     new Promise((resolve) => {
       const mine: Held = {
         text,
         endAt,
-        releaseAt: endAt + commitMs(waitMs(), stripWake(text, timings.wakeWords)),
+        // commitMs is silence after his last word, and the segmenter has already waited out part of it.
+        releaseAt: lastWordAt + commitMs(waitMs(), stripWake(text, timings.wakeWords)),
         settle: (kept) => {
           if (held === mine) held = null;
           resolve(kept);

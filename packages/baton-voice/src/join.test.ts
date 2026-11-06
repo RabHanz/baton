@@ -106,6 +106,21 @@ describe("one sentence with a breath in it", () => {
     expect(r.routed).toEqual(["What time is it?"]);
   });
 
+  it("counts the pause from his last word, not from when the speech detector gave up", async () => {
+    const r = rig(["What time is it?"]);
+    r.core.activate("wake");
+    await r.core.idle();
+    r.push(1, true);
+    r.push(0.6, false);
+    await r.settle();
+    // 0.9 s after the last word: past the 0.825 s a finished question waits.
+    r.push(0.3, false);
+    await r.settle();
+    expect(r.routed).toEqual(["What time is it?"]);
+    const end = r.events.find((e) => e.type === "speech_end");
+    expect(end?.type === "speech_end" && end.quietMs).toBeGreaterThanOrEqual(500);
+  });
+
   it("cancels a reply in progress when the rest arrives", async () => {
     let finish: () => void = () => {};
     const r = rig(

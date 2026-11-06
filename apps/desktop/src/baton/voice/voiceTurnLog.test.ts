@@ -36,6 +36,40 @@ describe("the voice log", () => {
     ]);
   });
 
+  it("shows where an answered turn's time went, from his last word to her first sound", () => {
+    let now = 10_000;
+    const lines: Array<Record<string, unknown>> = [];
+    const log = makeVoiceTurnLog(
+      (line) => lines.push(JSON.parse(line)),
+      () => new Date(now),
+    );
+    log.event({ type: "speech_end", at: 1, quietMs: 560 });
+    now += 900;
+    log.event({
+      type: "transcript",
+      text: "what time is it",
+      at: 2,
+      recogniseMs: 600,
+      holdMs: 300,
+    });
+    now += 50;
+    log.note("agent_turn_start", { said: "what time is it" });
+    now += 1_000;
+    log.note("agent_turn", { said: "what time is it", firstAudioMs: 800, totalMs: 1_100 });
+    log.note("agent_turn", { said: "typed later" });
+    expect(lines.slice(1)).toMatchObject([
+      { kind: "agent_turn_start", endpointMs: 560, recogniseMs: 600, holdMs: 300, routeMs: 50 },
+      {
+        kind: "agent_turn",
+        endpointMs: 560,
+        // His last word at 9440; the turn began at 10850 and spoke 800 ms later.
+        speechToAudioMs: 2_210,
+      },
+      { kind: "agent_turn" },
+    ]);
+    expect(lines.at(-1)).not.toHaveProperty("endpointMs");
+  });
+
   it("records noise it dropped, a spoken stop, and a wake with nothing after it", () => {
     const { lines, log } = rig();
     log.event({ type: "wake", word: "Freya", score: 0.96, at: 1 });

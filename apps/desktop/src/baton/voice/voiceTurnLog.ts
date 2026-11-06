@@ -6,6 +6,9 @@
  */
 import type { VoiceCoreEvent } from "@t3tools/baton-voice";
 
+/** Stage times are for the turn that follows its words, not one typed a minute later. */
+const STAGES_KEPT_MS = 60_000;
+
 export interface VoiceTurnTimings {
   readonly route: string;
   readonly source: string;
@@ -36,8 +39,38 @@ export const makeVoiceTurnLog = (
   let wake: Wake | null = null;
   let transcript: string | null = null;
   let screenTurn: { readonly wake: Wake | null; readonly transcript: string | null } | null = null;
-  const note: VoiceTurnLog["note"] = (kind, fields) =>
-    write(`${JSON.stringify({ at: clock().toISOString(), kind, ...fields })}\n`);
+  /** The voice side of the turn being answered, so its line shows where the time went. */
+  let speechEnd: { readonly at: number; readonly quietMs: number } | null = null;
+  let stages: {
+    readonly endpointMs: number | null;
+    readonly recogniseMs: number;
+    readonly holdMs: number;
+    readonly heardAt: number;
+    readonly lastWordAt: number | null;
+  } | null = null;
+  const stageFields = (kind: string, fields: Readonly<Record<string, unknown>>, at: number) => {
+    if (stages === null || at - stages.heardAt > STAGES_KEPT_MS) return {};
+    const { endpointMs, recogniseMs, holdMs, heardAt, lastWordAt } = stages;
+    const base = { endpointMs, recogniseMs, holdMs };
+    if (kind === "agent_turn_start") return { ...base, routeMs: at - heardAt };
+    stages = null;
+    const total = fields["totalMs"];
+    const firstAudio = fields["firstAudioMs"];
+    return {
+      ...base,
+      ...(typeof total === "number" && typeof firstAudio === "number" && lastWordAt !== null
+        ? { speechToAudioMs: at - total + firstAudio - lastWordAt }
+        : {}),
+    };
+  };
+  const note: VoiceTurnLog["note"] = (kind, fields) => {
+    const now = clock();
+    const timed =
+      kind === "agent_turn_start" || kind === "agent_turn" || kind === "turn"
+        ? stageFields(kind, fields, now.getTime())
+        : {};
+    write(`${JSON.stringify({ at: now.toISOString(), kind, ...fields, ...timed })}\n`);
+  };
   const clear = () => {
     wake = null;
     transcript = null;
@@ -58,6 +91,15 @@ export const makeVoiceTurnLog = (
         case "transcript":
           transcript = event.text;
           screenTurn = null;
+          if (event.recogniseMs !== undefined) {
+            stages = {
+              endpointMs: speechEnd?.quietMs ?? null,
+              recogniseMs: event.recogniseMs,
+              holdMs: event.holdMs ?? 0,
+              heardAt: clock().getTime(),
+              lastWordAt: speechEnd === null ? null : speechEnd.at - speechEnd.quietMs,
+            };
+          }
           return;
         case "dropped":
           return note("dropped", { wake, text: event.text, reason: event.reason });
@@ -97,7 +139,8 @@ export const makeVoiceTurnLog = (
           if (wake !== null && transcript === null) note("wake_only", { wake });
           return clear();
         case "speech_end":
-          return note("speech_end", {});
+          speechEnd = { at: clock().getTime(), quietMs: event.quietMs };
+          return note("speech_end", { quietMs: event.quietMs });
         case "thinking":
           return note("processing_start", {});
       }
