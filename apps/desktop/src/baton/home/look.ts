@@ -53,14 +53,15 @@ export const windowsBuild = (release: string): number => {
 };
 
 export interface MaterialOptions {
-  readonly backgroundMaterial?: "mica" | "none";
+  readonly backgroundMaterial?: "acrylic" | "none";
   readonly vibrancy?: "under-window";
   readonly visualEffectState?: "followWindow";
 }
 
 /**
- * The window's material: Mica on Windows 11 (22H2 and later), vibrancy on macOS, nothing elsewhere (and nothing
- * when glass is reduced or off). Windows 10 and Linux keep a plain background.
+ * The window's material: Acrylic on Windows 11 (22H2 and later), a blur of what is behind the window, so the page's
+ * glass is see-through like the system's own; vibrancy on macOS; nothing elsewhere (and nothing when glass is reduced
+ * or off). Windows 10 and Linux keep the page's own field, which looks the same without the see-through.
  */
 export const materialFor = (platform: string, release: string, glass: Glass): MaterialOptions => {
   if (glass !== "on")
@@ -68,7 +69,10 @@ export const materialFor = (platform: string, release: string, glass: Glass): Ma
       ? { backgroundMaterial: "none" }
       : {};
   if (platform === "win32")
-    return windowsBuild(release) >= 22621 ? { backgroundMaterial: "mica" } : {};
+    return windowsBuild(release) >= 22621 ? { backgroundMaterial: "acrylic" } : {};
   if (platform === "darwin") return { vibrancy: "under-window", visualEffectState: "followWindow" };
   return {};
 };
+
+/** The window itself is clear, so the system material shows through the page's thinned ground. */
+export const seeThrough = (m: MaterialOptions): boolean => m.backgroundMaterial === "acrylic";

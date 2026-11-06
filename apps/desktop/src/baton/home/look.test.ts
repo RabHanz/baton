@@ -50,10 +50,10 @@ describe("motion and glass", () => {
 });
 
 describe("the window's material", () => {
-  it("is Mica on Windows 11 22H2 or later, plain on Windows 10 and older builds", () => {
+  it("is Acrylic on Windows 11 22H2 or later, plain on Windows 10 and older builds", () => {
     expect(windowsBuild("10.0.22631")).toBe(22631);
     expect(windowsBuild("6.8.0-101-generic")).toBe(0);
-    expect(materialFor("win32", "10.0.22631", "on")).toEqual({ backgroundMaterial: "mica" });
+    expect(materialFor("win32", "10.0.22631", "on")).toEqual({ backgroundMaterial: "acrylic" });
     expect(materialFor("win32", "10.0.22000", "on")).toEqual({});
     expect(materialFor("win32", "10.0.19045", "on")).toEqual({});
   });
