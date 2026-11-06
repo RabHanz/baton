@@ -10,6 +10,8 @@ describe("a follow-up after an answer", () => {
     "show me the last one",
     "Can you read it again",
     "I want the one from Tuesday",
+    // 0.1.61: said 2 s after her reply, and dropped.
+    "I wanted to test the dictation feature.",
     "yes please",
     "Tessaya, stop",
     "how long does it take",
