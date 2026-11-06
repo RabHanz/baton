@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tessaya-remote — attach to a Herdr session on another box (D70).
 #
-#   tessaya-remote <ssh-target> [session]     e.g.  tessaya-remote onnyx@onnyx fab-api
+#   tessaya-remote <ssh-target> [session]     e.g.  tessaya-remote orbit@orbit fab-api
 #
 # Herdr's --remote runs plain `ssh` with the user's SSH config. The box-to-box key is not in that
 # config, so this puts an `ssh` shim first on PATH for this one command only: it adds the identity
@@ -11,7 +11,7 @@ set -euo pipefail
 . "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/tessaya-env.sh" 2> /dev/null || true
 target="${1:?usage: tessaya-remote <ssh-target> [session]}"
 session="${2:-}"
-identity="${BATON_REMOTE_IDENTITY:-${FAB_REMOTE_IDENTITY:-$HOME/.config/venture-ssh/onnyx_ed25519}}"
+identity="${BATON_REMOTE_IDENTITY:-${FAB_REMOTE_IDENTITY:-$HOME/.config/venture-ssh/orbit_ed25519}}"
 [[ -r "$identity" ]] || { echo "tessaya-remote: no identity at $identity (set BATON_REMOTE_IDENTITY)" >&2; exit 2; }
 shim="$(mktemp -d "${TMPDIR:-/tmp}/tessaya-remote.XXXXXX")"
 trap 'rm -rf "$shim"' EXIT

@@ -7,7 +7,7 @@
 ##
 ## Why it exists: the Director's Codemagic account is the only Mac this
 ## programme has. Phase 7 built the fleet screen, the §20 status questions and
-## the deep links, and every one of them is unrun — `docs/baton/STATUS.md`
+## the deep links, and every one of them is unrun — the maintainers' status notes
 ## records that the mobile app has never been started. This workflow is the
 ## cheapest way to turn "typechecks" into "here is what it looks like".
 ##
@@ -31,7 +31,7 @@
 ##   3. Start a build manually: Start new build → branch `main` → workflow
 ##      `iOS Baton Walk (simulator, no publish)`.
 ##   4. When it finishes, the screenshots are under Artifacts. They are also
-##      what gets committed to `docs/baton/frames/` once somebody has looked
+##      what gets committed to the maintainers' frames folder once somebody has looked
 ##      at them.
 ##
 ## Two optional variables, both unset by default and neither a secret:

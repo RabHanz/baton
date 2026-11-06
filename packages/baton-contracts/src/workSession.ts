@@ -313,7 +313,7 @@ export type WorkSessionResult = typeof WorkSessionResult.Type;
  *
  * These are a live broadcast, not a durable log. The durable truth is the
  * work-session rows and their thread attachments — see
- * `docs/baton/DECISIONS.md` D11 for why Baton deliberately keeps its events
+ * the maintainers' decision log D11 for why Baton deliberately keeps its events
  * out of T3's orchestration event store.
  */
 export const WorkSessionStreamItem = Schema.Union([

@@ -2,13 +2,12 @@
 # Source this to put the Node and pnpm the tree declares first on PATH.
 #
 # package.json `engines.node` (when an exact version) and `packageManager` name the toolchain.
-# Exact versions live user-local under $BATON_TOOLCHAIN_DIR (default /mnt/HC_Volume_106652742/dev/
-# toolchain, or ~/dev/toolchain), as node-v<ver>-linux-x64/ with pnpm installed into it. A range
+# Exact versions live user-local under $BATON_TOOLCHAIN_DIR (default ~/dev/toolchain), as node-v<ver>-linux-x64/ with pnpm installed into it. A range
 # (upstream before 2026-10 said ^24.13.1) keeps whatever node is already on PATH.
 
 baton_toolchain_dir="${BATON_TOOLCHAIN_DIR:-}"
 if [ -z "$baton_toolchain_dir" ]; then
-  for d in /mnt/HC_Volume_106652742/dev/toolchain "$HOME/dev/toolchain"; do
+  for d in "$HOME/dev/toolchain"; do
     [ -d "$d" ] && baton_toolchain_dir="$d" && break
   done
 fi

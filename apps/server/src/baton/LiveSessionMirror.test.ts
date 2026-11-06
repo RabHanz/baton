@@ -48,26 +48,26 @@ describe("a question card's run", () => {
 
 describe("which T3 project a live session belongs to", () => {
   const projects = [
-    project("ventureos", "/home/onnyx/VentureOS", "github.com/rabhanz/ventureos"),
-    project("nested", "/home/onnyx/VentureOS/apps/web"),
+    project("vantageos", "/home/orbit/VantageOS", "github.com/rabhanz/vantageos"),
+    project("nested", "/home/orbit/VantageOS/apps/web"),
   ];
 
   it("is the deepest project whose root holds the session's directory", () => {
-    expect(projectForDirectory("/home/onnyx/VentureOS", projects, null)).toBe("ventureos");
-    expect(projectForDirectory("/home/onnyx/VentureOS/.worktrees/lane", projects, null)).toBe(
-      "ventureos",
+    expect(projectForDirectory("/home/orbit/VantageOS", projects, null)).toBe("vantageos");
+    expect(projectForDirectory("/home/orbit/VantageOS/.worktrees/lane", projects, null)).toBe(
+      "vantageos",
     );
-    expect(projectForDirectory("/home/onnyx/VentureOS/apps/web/src", projects, null)).toBe(
+    expect(projectForDirectory("/home/orbit/VantageOS/apps/web/src", projects, null)).toBe(
       "nested",
     );
     // A sibling folder whose name only starts the same is not inside.
-    expect(projectForDirectory("/home/onnyx/VentureOS-old", projects, null)).toBeNull();
+    expect(projectForDirectory("/home/orbit/VantageOS-old", projects, null)).toBeNull();
   });
 
   it("falls back to the same repository checked out elsewhere", () => {
     expect(
-      projectForDirectory("/mnt/vol/dev/ventureos-copy", projects, "github.com/rabhanz/ventureos"),
-    ).toBe("ventureos");
+      projectForDirectory("/mnt/vol/dev/vantageos-copy", projects, "github.com/rabhanz/vantageos"),
+    ).toBe("vantageos");
     expect(projectForDirectory("/mnt/vol/dev/other", projects, "github.com/x/other")).toBeNull();
   });
 
@@ -76,11 +76,11 @@ describe("which T3 project a live session belongs to", () => {
   });
 
   it("titles a thread with the session's own name, its account and its box", () => {
-    expect(liveThreadTitle({ name: "ventureos-6c", account: "rabeehanzla", box: "onnyx" })).toBe(
-      "ventureos-6c · rabeehanzla · onnyx",
+    expect(liveThreadTitle({ name: "vantageos-6c", account: "robinharlow", box: "orbit" })).toBe(
+      "vantageos-6c · robinharlow · orbit",
     );
-    expect(liveThreadTitle({ name: " ", account: null, box: "signzart-prod" })).toBe(
-      "Live session · signzart-prod",
+    expect(liveThreadTitle({ name: " ", account: null, box: "sablebox-prod" })).toBe(
+      "Live session · sablebox-prod",
     );
   });
 });
@@ -88,11 +88,11 @@ describe("which T3 project a live session belongs to", () => {
 describe("a title someone set", () => {
   const base = {
     regenerating: false,
-    sessionName: "ventureos-6c",
+    sessionName: "vantageos-6c",
     nameFromUser: false,
     followName: null,
-    account: "rabeehanzla",
-    box: "onnyx",
+    account: "robinharlow",
+    box: "orbit",
   };
 
   it("is never rewritten by the mirror, whatever the session is called", () => {
@@ -102,14 +102,14 @@ describe("a title someone set", () => {
   });
 
   it("is left alone while a regeneration is running", () => {
-    expect(mirrorTitle({ ...base, current: "old · onnyx", regenerating: true })).toBeNull();
+    expect(mirrorTitle({ ...base, current: "old · orbit", regenerating: true })).toBeNull();
   });
 
   it("still lets the mirror update a title it wrote, keeping the name", () => {
-    expect(mirrorTitle({ ...base, current: "ventureos-6c · onnyx" })).toBe(
-      "ventureos-6c · rabeehanzla · onnyx",
+    expect(mirrorTitle({ ...base, current: "vantageos-6c · orbit" })).toBe(
+      "vantageos-6c · robinharlow · orbit",
     );
-    expect(mirrorTitle({ ...base, current: "ventureos-6c · rabeehanzla · onnyx" })).toBeNull();
+    expect(mirrorTitle({ ...base, current: "vantageos-6c · robinharlow · orbit" })).toBeNull();
   });
 });
 
@@ -166,14 +166,14 @@ describe("the thread list stays clean", () => {
 
   it("sweeps to one thread per project and none in the test projects", () => {
     const projects = [
-      project("rabee", "/home/onnyx/rabee.dev"),
-      project("quiet", "/home/onnyx/htpc"),
-      project("test", "/home/onnyx/baton-prompt-test"),
-    ].map((p, i) => ({ ...p, title: ["rabee.dev", "htpc", "baton-prompt-test"][i]! }));
+      project("robin", "/home/orbit/robin.dev"),
+      project("quiet", "/home/orbit/htpc"),
+      project("test", "/home/orbit/baton-prompt-test"),
+    ].map((p, i) => ({ ...p, title: ["robin.dev", "htpc", "baton-prompt-test"][i]! }));
     const shells = [
-      t("import:a:1", "rabee", "2026-08-01T00:00:00Z"),
-      t("import:a:2", "rabee", "2026-09-01T00:00:00Z"),
-      t(String(liveThreadId("s1")), "rabee", "2026-10-01T00:00:00Z"),
+      t("import:a:1", "robin", "2026-08-01T00:00:00Z"),
+      t("import:a:2", "robin", "2026-09-01T00:00:00Z"),
+      t(String(liveThreadId("s1")), "robin", "2026-10-01T00:00:00Z"),
       t("old", "quiet", "2026-08-01T00:00:00Z"),
       t("newest", "quiet", "2026-09-01T00:00:00Z"),
       t("tp", "test", "2026-10-30T00:00:00Z"),
@@ -181,7 +181,7 @@ describe("the thread list stays clean", () => {
     const victims = sweepVictims({
       shells,
       projects,
-      liveSessions: [{ sessionId: "s1", cwd: "/home/onnyx/rabee.dev" }],
+      liveSessions: [{ sessionId: "s1", cwd: "/home/orbit/robin.dev" }],
     }).map(String);
     expect(victims.toSorted()).toEqual(["import:a:1", "import:a:2", "old", "tp"]);
   });

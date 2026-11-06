@@ -11,7 +11,7 @@
 set -euo pipefail
 . "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/tessaya-env.sh" 2> /dev/null || true
 
-roots=(${BATON_ROOTS:-${FAB_ROOTS:-"$PWD" "$HOME" /home/onnyx /mnt/HC_Volume_106652742/dev "$HOME/dev"}})
+roots=(${BATON_ROOTS:-${FAB_ROOTS:-"$PWD" "$HOME" /home/orbit /srv/work/projects-00001/dev "$HOME/dev"}})
 
 resolve_dir() {
   local want="$1"

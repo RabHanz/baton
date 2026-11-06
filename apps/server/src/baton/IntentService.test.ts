@@ -42,7 +42,7 @@ import { layer as ruleServiceLayer, OrchestrationRuleService } from "./Orchestra
 import { INTENT_MODEL_SLUG } from "./IntentInterpreter.ts";
 import { layer as workSessionLayer, WorkSessionService } from "./WorkSessionService.ts";
 
-const projectId = ProjectId.make("project-ventureos");
+const projectId = ProjectId.make("project-vantageos");
 const workSessionId = WorkSessionId.make("ws-scheduler");
 const implThreadId = ThreadId.make("impl-thread");
 const claude = ProviderInstanceId.make("claude-a");
@@ -50,8 +50,8 @@ const startedThreadId = ThreadId.make("rule-started-thread");
 
 const project: OrchestrationProjectShell = {
   id: projectId,
-  title: "VentureOS",
-  workspaceRoot: "/workspace/ventureos",
+  title: "VantageOS",
+  workspaceRoot: "/workspace/vantageos",
   defaultModelSelection: null,
   scripts: [],
   repositoryIdentity: null,
@@ -138,7 +138,7 @@ const accountPoolLayer = Layer.mock(AccountPoolService)({
   read: () =>
     Effect.succeed({
       accounts: [
-        { key: "4", label: "rabee", active: true },
+        { key: "4", label: "robin", active: true },
         { key: "5", label: "optima", active: false },
       ],
     } as never),

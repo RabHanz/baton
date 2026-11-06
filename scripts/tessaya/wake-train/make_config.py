@@ -4,7 +4,7 @@ import sys
 
 import yaml
 
-# CLEAN=1: only data whose licence allows an MIT release (see docs/baton/WAKE_TRAINING_CLEAN.md).
+# CLEAN=1: only data whose licence allows an MIT release.
 CLEAN = os.environ.get("CLEAN") == "1"
 
 WORDS = {
@@ -21,7 +21,7 @@ WORDS = {
                      "just say yeah", "say aye", "says yeah", "to say yes", "say a word"],
     },
     "onyx": {
-        # ON-iks. He owns the name Onnyx, so it can come up when he is not addressing Baton.
+        # ON-iks. He owns the name Orbit, so it can come up when he is not addressing Baton.
         "target": ["onyx"],
         "negative": ["on it", "on x", "honest", "on the", "unix", "phoenix", "onions", "only",
                      "tonics", "antics", "on its", "and it's"],

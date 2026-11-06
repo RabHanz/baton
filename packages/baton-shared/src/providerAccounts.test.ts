@@ -17,13 +17,13 @@ const home = "/home/dev";
 const sessions: ReadonlyArray<CswapSession> = [
   {
     index: 1,
-    email: "signzartco@gmail.com",
-    path: "/home/dev/.local/share/claude-swap/sessions/1-signzartco_gmail.com",
+    email: "sableboxco@gmail.com",
+    path: "/home/dev/.local/share/claude-swap/sessions/1-sableboxco_gmail.com",
   },
   {
     index: 2,
-    email: "rabeehanzla@gmail.com",
-    path: "/home/dev/.local/share/claude-swap/sessions/2-rabeehanzla_gmail.com",
+    email: "robinharlow@gmail.com",
+    path: "/home/dev/.local/share/claude-swap/sessions/2-robinharlow_gmail.com",
   },
 ];
 
@@ -31,29 +31,29 @@ describe("adding a Claude account", () => {
   it("reuses a claude-swap session rather than making a second home for one login", () => {
     const plan = planProviderAccount({
       driver: "claudeAgent",
-      label: "rabee",
+      label: "robin",
       home,
       cswapSessions: sessions,
     });
 
     expect(plan.reusedExistingProfile).toBe(true);
     expect(plan.accountHomePath).toBe(
-      "/home/dev/.local/share/claude-swap/sessions/2-rabeehanzla_gmail.com",
+      "/home/dev/.local/share/claude-swap/sessions/2-robinharlow_gmail.com",
     );
     // Already logged in there, so the command is a check, not a login.
     expect(plan.loginCommand).toContain("claude auth status");
-    expect(plan.instanceId).toBe("claude-rabee");
+    expect(plan.instanceId).toBe("claude-robin");
   });
 
   it("matches the account by its email as well as by a nickname", () => {
     const byEmail = planProviderAccount({
       driver: "claudeAgent",
-      label: "signzartco@gmail.com",
+      label: "sableboxco@gmail.com",
       home,
       cswapSessions: sessions,
     });
     expect(byEmail.accountHomePath).toBe(
-      "/home/dev/.local/share/claude-swap/sessions/1-signzartco_gmail.com",
+      "/home/dev/.local/share/claude-swap/sessions/1-sableboxco_gmail.com",
     );
   });
 
@@ -95,8 +95,8 @@ describe("adding a Codex account", () => {
 
 describe("the small rules", () => {
   it("turns whatever the user typed into a stable directory name", () => {
-    expect(accountSlug("Rabee Hanzla")).toBe("rabee-hanzla");
-    expect(accountSlug("signzartco@gmail.com")).toBe("signzartco");
+    expect(accountSlug("Robin Hanzla")).toBe("robin-hanzla");
+    expect(accountSlug("sableboxco@gmail.com")).toBe("sableboxco");
     expect(accountSlug("  ")).toBe("account");
   });
 

@@ -39,13 +39,13 @@ describe("previewResolution", () => {
         workSessionId,
         text: "run the migration tests",
       },
-      description: "Tell VentureOS / Scheduler reconnect race: run the migration tests",
+      description: "Tell VantageOS / Scheduler reconnect race: run the migration tests",
       risk: "low",
       workSessionId,
     };
     const preview = previewResolution(resolution);
     expect(preview.tone).toBe("will");
-    expect(preview.line).toBe("Tell VentureOS / Scheduler reconnect race: run the migration tests");
+    expect(preview.line).toBe("Tell VantageOS / Scheduler reconnect race: run the migration tests");
     expect(preview.weighty).toBe(false);
   });
 
@@ -54,12 +54,12 @@ describe("previewResolution", () => {
       outcome: "resolved",
       command: {
         kind: "start_work_session",
-        projectId: "project-ventureos" as never,
+        projectId: "project-vantageos" as never,
         title: "New work",
         providerInstanceId: "claude-a" as never,
         model: "claude-sonnet",
       },
-      description: "Start work on VentureOS with Claude A.",
+      description: "Start work on VantageOS with Claude A.",
       risk: "medium",
       workSessionId: null,
     });

@@ -4,7 +4,16 @@ Tessaya is a desktop assistant for people who work with coding agents. You talk 
 
 It is built on [T3 Code](https://github.com/pingdotgg/t3code) (a GUI and server for Codex, Claude Code, Cursor, OpenCode and others), kept as a named patch series over a pinned upstream commit. The root `README.md` is upstream's; this page is Tessaya's.
 
-> **Licence: not chosen yet.** No licence is granted for the Tessaya additions until one is chosen. Upstream T3 Code remains under its own licence (see `LICENSE`). Third-party notices are in `docs/baton/THIRD_PARTY_NOTICES.md`. See `docs/baton/PUBLIC_RELEASE_CHECKLIST.md` for what is still open before a public release.
+## Licensing
+
+Tessaya is open core, and this repository holds the product: everything a person running Tessaya needs. Our own operations (deploys, our machines, internal decisions, the hosted tier) live in a separate private repository, and nothing here depends on it.
+
+Two licences apply, by who wrote the code:
+
+- **T3 Code**, the base this is built on, stays under its MIT licence (`LICENSE` at the root). That covers every upstream file, including the ones our patch series (`vendor-patches/t3code/`) edits.
+- **Tessaya's own code** is under the [Functional Source License 1.1, Apache 2.0 future licence](https://fsl.software) (FSL-1.1-ALv2). You may use, change and share it for anything except a product that competes with Tessaya, and each version becomes Apache 2.0 two years after its release. It covers the folders that carry their own `LICENSE`: `packages/baton-contracts`, `packages/baton-shared`, `packages/baton-voice`, `apps/desktop/src/baton`, `apps/server/src/baton`, `native/baton-dictation`, `scripts/tessaya` and `assets/baton`, plus Tessaya's files elsewhere (the `Baton*` and `baton*` files under `apps/web` and `apps/mobile`).
+
+Third-party notices are in `docs/baton/THIRD_PARTY_NOTICES.md`.
 
 ## Install
 
@@ -26,13 +35,13 @@ Desktop packaging: `scripts/tessaya/release-build.sh` and `.github/workflows/bat
 
 ## Where things are
 
-|                                                   |                                                                          |
-| ------------------------------------------------- | ------------------------------------------------------------------------ |
-| `apps/desktop/src/baton`, `apps/server/src/baton` | Tessaya's desktop and server code                                        |
-| `packages/baton-*`                                | shared logic, contracts, voice core                                      |
+|                                                   |                                                                            |
+| ------------------------------------------------- | -------------------------------------------------------------------------- |
+| `apps/desktop/src/baton`, `apps/server/src/baton` | Tessaya's desktop and server code                                          |
+| `packages/baton-*`                                | shared logic, contracts, voice core                                        |
 | `vendor-patches/t3code`                           | the patches over upstream; `scripts/tessaya/patches.sh verify` checks them |
-| `docs/user`                                       | what each feature does and how to start                                  |
-| `docs/baton`                                      | design notes, platform status, vault and memory rules                    |
+| `docs/user`                                       | what each feature does and how to start                                    |
+| `docs/baton`                                      | design notes, platform status, vault and memory rules                      |
 
 ## Contributing, security, changes
 

@@ -106,7 +106,7 @@ export const createWhisperCppStt = (input: {
   readonly model: string;
   readonly language?: string;
   readonly threads?: number;
-  /** Names to bias recognition toward: projects, sessions, accounts ("VentureOS, Codex"). */
+  /** Names to bias recognition toward: projects, sessions, accounts ("VantageOS, Codex"). */
   readonly vocabulary?: () => ReadonlyArray<string>;
 }): SttProvider => ({
   name: "whisper.cpp",

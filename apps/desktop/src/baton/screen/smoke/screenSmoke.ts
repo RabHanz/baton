@@ -111,7 +111,7 @@ const main = async () => {
     const a = await screenFingerprint();
     const a2 = await screenFingerprint();
     await clickOn("n");
-    await xdotool("type", "--delay", "40", "Rabee");
+    await xdotool("type", "--delay", "40", "Robin");
     await sleep(500);
     const b = await screenFingerprint();
     results["fingerprint"] =
@@ -130,14 +130,14 @@ const main = async () => {
 
   if (only.includes("teach")) {
     await reset();
-    void companion.said("teach: how to sign up on this form with the name Rabee", {
+    void companion.said("teach: how to sign up on this form with the name Robin", {
       direct: false,
     });
     await sleep(15_000);
     await frame("02-teach-step-1");
     // The "user" does step 1: click the name field and type.
     await clickOn("n");
-    await xdotool("type", "--delay", "40", "Rabee");
+    await xdotool("type", "--delay", "40", "Robin");
     log("user typed the name; waiting for the companion to notice");
     await sleep(18_000);
     await frame("03-teach-step-2-after-noticing");

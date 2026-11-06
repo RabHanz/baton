@@ -16,7 +16,7 @@ import * as SqlClient from "effect/sql/SqlClient";
  * timeline in migration 054.
  *
  * Additive, so an older build opens the database and ignores the table —
- * `docs/fabric/DECISIONS.md` D7.
+ * the maintainers' decision log D7.
  */
 export default Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;

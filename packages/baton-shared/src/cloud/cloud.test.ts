@@ -74,15 +74,15 @@ const SSH = { host: "box", user: "dev", machineKey: "/k/machine", approverKey: "
 
 const SHELL_USAGE = JSON.stringify({
   cap_points_per_run: 2.0,
-  points_used_7d: { claude: { rabee: 1.5 } },
+  points_used_7d: { claude: { robin: 1.5 } },
   providers: {
     claude: {
       ready: true,
       needs: null,
       accounts: {
         optima: { available: true, pct: 0.0, rejected: false, resets_pkt: "Mon 18:00" },
-        rabee: { available: true, pct: 41.0, rejected: false, resets_pkt: "Mon 14:00" },
-        signzart: { available: false, pct: 100.0, rejected: true, resets_pkt: "Mon 12:00" },
+        robin: { available: true, pct: 41.0, rejected: false, resets_pkt: "Mon 14:00" },
+        sablebox: { available: false, pct: 100.0, rejected: true, resets_pkt: "Mon 12:00" },
       },
     },
     codex: {
@@ -171,11 +171,11 @@ describe("transport 3: the shared computer's dispatch shell", () => {
   it("uses the approver key only for approve and deny, and names the provider and account chosen", async () => {
     const { exec, calls } = fakeExec(() => ({
       stdout:
-        '{"id":"20261102-1308-e85d","state":"running","provider":"claude","account":"rabee","session":"https://claude.ai/code/s","ledger":null,"weekly_before":0.0,"error":null}',
+        '{"id":"20261102-1308-e85d","state":"running","provider":"claude","account":"robin","session":"https://claude.ai/code/s","ledger":null,"weekly_before":0.0,"error":null}',
     }));
     const p = claude(exec);
     await p.status("20261102-1308-e85d");
-    const done = await p.approve("20261102-1308-e85d", "rabee", "card-1");
+    const done = await p.approve("20261102-1308-e85d", "robin", "card-1");
     await p.deny("20261102-1308-e85d", "not now please");
     expect(calls.map((c) => c.args[c.args.indexOf("-i") + 1])).toEqual([
       "/k/machine",
@@ -188,7 +188,7 @@ describe("transport 3: the shared computer's dispatch shell", () => {
       "--provider",
       "claude",
       "--account",
-      "rabee",
+      "robin",
       "--answer-ref",
       "card-1",
     ]);
@@ -200,7 +200,7 @@ describe("transport 3: the shared computer's dispatch shell", () => {
     ]);
     expect(done.ok && done.value).toMatchObject({
       state: "running",
-      account: "rabee",
+      account: "robin",
       sessionLink: "https://claude.ai/code/s",
     });
   });
@@ -222,10 +222,10 @@ describe("transport 3: the shared computer's dispatch shell", () => {
         ]),
     ).toEqual([
       ["claude", "optima", 0, "Mon 18:00", false, null],
-      ["claude", "rabee", 41, "Mon 14:00", false, 1.5],
-      ["claude", "signzart", 100, "Mon 12:00", true, null],
+      ["claude", "robin", 41, "Mon 14:00", false, 1.5],
+      ["claude", "sablebox", 100, "Mon 12:00", true, null],
     ]);
-    expect(claudeP.accounts()).toEqual(["optima", "rabee", "signzart"]);
+    expect(claudeP.accounts()).toEqual(["optima", "robin", "sablebox"]);
     const codex = ps.find((p) => p.id === "codex")!;
     expect(codex.setup()).toMatchObject({
       state: "not-set-up",
@@ -366,7 +366,7 @@ describe("transport 3: the shared computer's dispatch shell", () => {
           state: "awaiting-director",
         },
         {
-          account: "rabee",
+          account: "robin",
           branch: "c",
           caller: "orchestrator",
           id: "20261102-1400-aaaa",
@@ -666,7 +666,7 @@ describe("the approval card, for any provider", () => {
   const usage: Usage[] = [
     {
       provider: "claude",
-      account: "signzart",
+      account: "sablebox",
       weeklyPercent: 9,
       resetsAt: "Monday 12:00 PKT",
       rejected: false,
@@ -674,7 +674,7 @@ describe("the approval card, for any provider", () => {
     },
     {
       provider: "claude",
-      account: "rabee",
+      account: "robin",
       weeklyPercent: 41,
       resetsAt: "Monday 14:00 PKT",
       rejected: false,
@@ -702,7 +702,7 @@ describe("the approval card, for any provider", () => {
       ...sshProviders(SSH, fakeExec(() => ({ stdout: SHELL_USAGE })).exec).find(
         (p) => p.id === "claude",
       )!,
-      accounts: () => ["signzart", "rabee", "optima"],
+      accounts: () => ["sablebox", "robin", "optima"],
     },
     localProvider(
       codexHarness(fakeExec(() => ({})).exec, { codexHomes: { work: "/h" } }),
@@ -731,8 +731,8 @@ describe("the approval card, for any provider", () => {
   it("disables an account that is rejected or at 98% or more, and shows the live figures", () => {
     const claude = choices.find((c) => c.id === "claude")!;
     expect(claude.accounts.map((a) => [a.account, a.enabled, a.percent, a.resets])).toEqual([
-      ["signzart", true, 9, "Monday 12:00 PKT"],
-      ["rabee", true, 41, "Monday 14:00 PKT"],
+      ["sablebox", true, 9, "Monday 12:00 PKT"],
+      ["robin", true, 41, "Monday 14:00 PKT"],
       ["optima", false, 100, "Monday 18:00 PKT"],
     ]);
     expect(pickable({ weeklyPercent: 98, rejected: false }).enabled).toBe(false);
@@ -744,15 +744,15 @@ describe("the approval card, for any provider", () => {
     let s: CardState = CARD_START;
     s = reduceCard(s, { type: "provider", provider: "gemini" }, choices);
     expect(s).toEqual(CARD_START);
-    s = reduceCard(s, { type: "account", account: "rabee" }, choices);
+    s = reduceCard(s, { type: "account", account: "robin" }, choices);
     expect(s).toEqual(CARD_START);
     s = reduceCard(s, { type: "provider", provider: "claude" }, choices);
     s = reduceCard(s, { type: "account", account: "optima" }, choices);
     expect(s).toEqual({ phase: "account", provider: "claude" });
     s = reduceCard(s, { type: "confirm" }, choices);
     expect(s.phase).toBe("account");
-    s = reduceCard(s, { type: "account", account: "rabee" }, choices);
-    expect(s).toEqual({ phase: "confirm", provider: "claude", account: "rabee" });
+    s = reduceCard(s, { type: "account", account: "robin" }, choices);
+    expect(s).toEqual({ phase: "confirm", provider: "claude", account: "robin" });
     expect(reduceCard(s, { type: "back" }, choices)).toEqual({
       phase: "account",
       provider: "claude",
@@ -773,7 +773,7 @@ describe("the approval card, for any provider", () => {
     expect(reduceCard(s, { type: "approved" }, choices)).toEqual({
       phase: "done",
       provider: "claude",
-      account: "rabee",
+      account: "robin",
     });
     expect(reduceCard(CARD_START, { type: "deny" }, choices)).toEqual({ phase: "denied" });
   });
@@ -785,31 +785,31 @@ describe("the approval card, for any provider", () => {
       later: "Decide later",
     });
     expect(q.buttons).toEqual([
-      "Claude - signzart (9% used)",
-      "Claude - rabee (41% used)",
+      "Claude - sablebox (9% used)",
+      "Claude - robin (41% used)",
       "Codex - work (usage unknown)",
       "Deny",
       "Decide later",
     ]);
-    expect(q.picks[0]).toEqual({ kind: "pick", provider: "claude", account: "signzart" });
+    expect(q.picks[0]).toEqual({ kind: "pick", provider: "claude", account: "sablebox" });
     expect(q.picks.slice(-2)).toEqual([{ kind: "deny" }, { kind: "later" }]);
     expect(q.cancel).toBe(4);
     expect(q.buttons.join()).not.toContain("optima");
   });
 
   it("a spoken approval repeats the account, stops at the confirm step and reads the card back", () => {
-    const ok = fromSpoken(choices, { account: "Rabee" });
+    const ok = fromSpoken(choices, { account: "Robin" });
     expect("state" in ok && ok.state).toEqual({
       phase: "confirm",
       provider: "claude",
-      account: "rabee",
+      account: "robin",
     });
-    expect("readBack" in ok && ok.readBack).toContain("account rabee, 41% used this week");
+    expect("readBack" in ok && ok.readBack).toContain("account robin, 41% used this week");
     expect(fromSpoken(choices, { account: "optima" })).toEqual({
       refused: "optima cannot be used now: rejected.",
     });
     expect("refused" in fromSpoken(choices, { account: "nobody" })).toBe(true);
-    expect("refused" in fromSpoken(choices, { provider: "gemini", account: "rabee" })).toBe(true);
+    expect("refused" in fromSpoken(choices, { provider: "gemini", account: "robin" })).toBe(true);
   });
 });
 

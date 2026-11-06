@@ -20,7 +20,7 @@ const synopsis = (overrides: Partial<WorkSessionSynopsis>): WorkSessionSynopsis 
 
 const workSession = (overrides: Partial<SpokenWorkSession>): SpokenWorkSession => ({
   title: "Scheduler reconnect race",
-  projectLabel: "VentureOS",
+  projectLabel: "VantageOS",
   state: "working",
   providerLabel: "Claude B",
   hostLabel: "home-linux",
@@ -88,7 +88,7 @@ describe("speakWorkSessionStatus", () => {
         workSession({ providerLabel: null, state: "idle", hostLabel: null }),
         NOW,
       ),
-    ).toBe("VentureOS is idle. It does not currently need you.");
+    ).toBe("VantageOS is idle. It does not currently need you.");
   });
 });
 
@@ -102,7 +102,7 @@ describe("speakFleetNeedsUser", () => {
         state: "needs_approval",
       }),
       workSession({
-        title: "VentureOS review",
+        title: "VantageOS review",
         providerLabel: "Codex",
         state: "needs_input",
       }),
@@ -110,7 +110,7 @@ describe("speakFleetNeedsUser", () => {
       workSession({ state: "working" }),
     ]);
     expect(spoken).toBe(
-      "Production is waiting for approval on Restart the worker. Codex has a question about VentureOS review. 2 other sessions are still working.",
+      "Production is waiting for approval on Restart the worker. Codex has a question about VantageOS review. 2 other sessions are still working.",
     );
   });
 

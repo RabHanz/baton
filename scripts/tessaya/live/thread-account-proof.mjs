@@ -77,7 +77,7 @@ await shot("30-account-before-1440");
 
 await account.click();
 await page.waitForTimeout(800);
-await page.locator('[role="menuitem"]', { hasText: /rabee/i }).first().click();
+await page.locator('[role="menuitem"]', { hasText: /robin/i }).first().click();
 await page.waitForTimeout(2500);
 console.log("toast:", JSON.stringify(await toasts()));
 await shot("31-account-moved-1440");

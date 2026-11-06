@@ -74,8 +74,8 @@ export const DEFAULT_CASES: ReadonlyArray<CleanupCase> = [
     keep: ["110M", "1.2", "v3", "4.2", "i7-8550U"],
   },
   {
-    raw: "Tell Rabee the Scarlett Solo is input 1 and the AT2020 is on it.",
-    keep: ["Rabee", "Scarlett Solo", "input 1", "AT2020"],
+    raw: "Tell Robin the Scarlett Solo is input 1 and the AT2020 is on it.",
+    keep: ["Robin", "Scarlett Solo", "input 1", "AT2020"],
   },
   {
     raw: "The invoice is from Meliura Ltd, company number 17456307, dated the 14th of September.",
@@ -170,8 +170,8 @@ export const MODE_CASES: ReadonlyArray<
   { mode: "chat", raw: "Yeah that works for me, see you at 7.", keep: ["works for me", "7"] },
   {
     mode: "email",
-    raw: "Hi Sarah, thanks for sending the contract over. I'll read it tonight and come back to you on Friday. Kind regards, Rabee.",
-    keep: ["Hi Sarah,\n", "Friday", "\n\nKind regards,\nRabee"],
+    raw: "Hi Sarah, thanks for sending the contract over. I'll read it tonight and come back to you on Friday. Kind regards, Robin.",
+    keep: ["Hi Sarah,\n", "Friday", "\n\nKind regards,\nRobin"],
   },
   {
     mode: "document",

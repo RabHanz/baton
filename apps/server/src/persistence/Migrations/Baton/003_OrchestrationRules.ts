@@ -12,7 +12,7 @@ import * as SqlClient from "effect/sql/SqlClient";
  * is exactly when a runaway rule would do the most damage.
  *
  * Additive, so an older build opens the database and ignores both tables —
- * `docs/fabric/DECISIONS.md` D7.
+ * the maintainers' decision log D7.
  */
 export default Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;

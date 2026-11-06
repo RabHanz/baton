@@ -5,16 +5,16 @@
       "foreground_process_group_id": 1419932,
       "foreground_processes": [
         {
-          "argv": ["bash", "/mnt/HC_Volume_106652742/tmp/lanes/ticker.sh"],
-          "cmdline": "bash /mnt/HC_Volume_106652742/tmp/lanes/ticker.sh",
-          "cwd": "/mnt/HC_Volume_106652742/tmp/lanes",
+          "argv": ["bash", "/srv/work/projects-00001/tmp/lanes/ticker.sh"],
+          "cmdline": "bash /srv/work/projects-00001/tmp/lanes/ticker.sh",
+          "cwd": "/srv/work/projects-00001/tmp/lanes",
           "name": "bash",
           "pid": 1419932
         },
         {
           "argv": ["sleep", "2"],
           "cmdline": "sleep 2",
-          "cwd": "/mnt/HC_Volume_106652742/tmp/lanes",
+          "cwd": "/srv/work/projects-00001/tmp/lanes",
           "name": "sleep",
           "pid": 1420669
         }

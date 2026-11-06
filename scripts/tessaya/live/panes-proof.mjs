@@ -210,15 +210,15 @@ if (await accountMenu.count()) {
     items.some((text) => /out until/.test(text)),
   );
   await shot("11-account-menu-1440");
-  const rabee = page.locator('[role="menuitem"]', { hasText: /rabee/i }).first();
+  const robin = page.locator('[role="menuitem"]', { hasText: /robin/i }).first();
   if (
-    (await rabee.getAttribute("aria-disabled")) === "true" ||
-    (await rabee.getAttribute("data-disabled")) !== null
+    (await robin.getAttribute("aria-disabled")) === "true" ||
+    (await robin.getAttribute("data-disabled")) !== null
   ) {
-    console.log("rabee row is the thread's account already; nothing to move");
+    console.log("robin row is the thread's account already; nothing to move");
     await page.keyboard.press("Escape");
   } else {
-    await rabee.click();
+    await robin.click();
     await page.waitForTimeout(2000);
   }
   await shot("12-account-after-1440");

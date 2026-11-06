@@ -1,6 +1,6 @@
 // @effect-diagnostics globalDate:off globalRandom:off globalTimers:off nodeBuiltinImport:off globalConsole:off
 /**
- * The CI proof of teach (design: docs/baton/research/teach-mode-2026-11-02.md): the real companion and the
+ * The CI proof of teach (design: the maintainers' research notes): the real companion and the
  * real overlay on a Windows desktop, a scripted `claude` (scripts/tessaya/teach-proof/fake-claude.mjs), and Notepad's
  * font size as the task. The harness is the "user": it clicks and types through the real input driver when the card
  * says it is waiting, and presses Go ahead on the real approval card. The desktop is recorded with ffmpeg.

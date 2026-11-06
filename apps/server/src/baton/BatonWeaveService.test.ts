@@ -35,7 +35,7 @@ const fakeBox = (name: string, label: string, paneId: string) => ({
 });
 const fakeBoxes = Layer.succeed(BatonWeaveBoxes, [
   fakeBox("here", "build", "p1"),
-  fakeBox("onnyx", "research", "p9"),
+  fakeBox("orbit", "research", "p9"),
 ] as never);
 
 const layer = it.layer(
@@ -81,12 +81,12 @@ layer("BatonWeaveService", (it) => {
       const weave = yield* BatonWeaveService;
       pane.typed.length = 0;
       pane.screen = "│ > │";
-      const sent = yield* weave.send({ to: "onnyx:research", text: "what did you find" });
+      const sent = yield* weave.send({ to: "orbit:research", text: "what did you find" });
       assert.strictEqual(sent.status, "delivered");
-      assert.strictEqual(sent.toLabel, "onnyx:research");
-      assert.deepStrictEqual(pane.typed, ["onnyx/p9: what did you find"]);
+      assert.strictEqual(sent.toLabel, "orbit:research");
+      assert.deepStrictEqual(pane.typed, ["orbit/p9: what did you find"]);
       const bare = yield* weave.send({ to: "research", text: "and the second part" });
-      assert.strictEqual(bare.toLabel, "onnyx:research");
+      assert.strictEqual(bare.toLabel, "orbit:research");
     }),
   );
 

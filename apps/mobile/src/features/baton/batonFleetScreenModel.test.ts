@@ -15,7 +15,7 @@ const entry = (overrides: Partial<BatonFleetEntry>): BatonFleetEntry =>
   ({
     workSessionId: "ws-scheduler",
     title: "Scheduler reconnect race",
-    projectId: "project-ventureos" as ProjectId,
+    projectId: "project-vantageos" as ProjectId,
     lifecycle: "active",
     state: "working",
     needsUser: false,
@@ -43,8 +43,8 @@ const model = (
 ): ReturnType<typeof buildBatonScreenModel> =>
   buildBatonScreenModel({
     entries: entries.map((candidate) => ({ environmentId, entry: candidate })),
-    resolveProjectLabel: () => "VentureOS",
-    resolveEnvironmentLabel: () => "hetzner",
+    resolveProjectLabel: () => "VantageOS",
+    resolveEnvironmentLabel: () => "harbour",
     resolveProviderAccount: () => ({ label: "Claude A", email: null }),
     now: Date.parse("2026-09-18T07:01:00.000Z"),
     needsUserOnly,
@@ -56,8 +56,8 @@ describe("the phone's fleet screen", () => {
     // drift, and the phone is where that drift is discovered too late.
     const built = model([entry({})]);
     expect(built.rows).toHaveLength(1);
-    expect(built.rows[0]?.heading).toBe("VentureOS / Scheduler reconnect race");
-    expect(built.rows[0]?.attribution).toBe("Claude A · hetzner");
+    expect(built.rows[0]?.heading).toBe("VantageOS / Scheduler reconnect race");
+    expect(built.rows[0]?.attribution).toBe("Claude A · harbour");
   });
 
   it("counts what needs the user before the filter hides it", () => {

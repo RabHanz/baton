@@ -12,8 +12,8 @@
 # registry key (from appId+productName) overwrites it, and the app would share
 # its userData folder. Patching those constants here, at release-build time
 # only, keeps the three files byte-identical to upstream in every other build
-# (dev, CI, auto-sync) and avoids a permanent merge-conflict magnet. See
-# docs/baton/UPSTREAM.md "Release build overrides (not a source edit)".
+# (dev, CI, auto-sync) and avoids a permanent merge-conflict magnet. It is
+# a release build override, not a source edit.
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."

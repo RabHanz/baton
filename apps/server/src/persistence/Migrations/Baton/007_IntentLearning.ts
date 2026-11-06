@@ -26,7 +26,7 @@ import * as SqlClient from "effect/sql/SqlClient";
  * because the user's own words are what a reader needs to recognise it.
  *
  * Additive, so an older build opens the database, ignores the table and reads
- * `fabric_intents` unchanged — `docs/fabric/DECISIONS.md` D7.
+ * `fabric_intents` unchanged — the maintainers' decision log D7.
  */
 export default Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;

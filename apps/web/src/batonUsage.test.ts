@@ -6,11 +6,11 @@ describe("the limits Tessaya's window shows", () => {
   it("names each window the way the tile does, with when it resets", () => {
     const out = batonUsageSummaries([
       {
-        box: "onnyx",
+        box: "orbit",
         providers: [
           {
             instanceId: "claudeAgent_a",
-            displayName: "rabee",
+            displayName: "robin",
             enabled: true,
             usageLimits: {
               windows: [
@@ -35,9 +35,9 @@ describe("the limits Tessaya's window shows", () => {
     ]);
     expect(out).toEqual([
       {
-        account: "rabee",
-        box: "onnyx",
-        boxes: ["onnyx"],
+        account: "robin",
+        box: "orbit",
+        boxes: ["orbit"],
         windows: [
           { label: "Session", usedPercent: 35, resetsAt: "2026-11-01T12:00:00Z" },
           { label: "Week", usedPercent: 61, resetsAt: null },
@@ -49,9 +49,9 @@ describe("the limits Tessaya's window shows", () => {
   const login = (over: Record<string, unknown> = {}) => ({
     instanceId: "claudeAgent",
     driver: "claudeAgent" as never,
-    displayName: "rabee",
+    displayName: "robin",
     enabled: true,
-    auth: { email: "rabee@example.com" },
+    auth: { email: "robin@example.com" },
     usageLimits: {
       checkedAt: "2026-11-01T10:00:00Z",
       windows: [{ kind: "weekly" as const, label: "7d", usedPercent: 40 }],
@@ -63,10 +63,10 @@ describe("the limits Tessaya's window shows", () => {
     const out = batonUsageSummaries([
       { box: "onyx", providers: [login()] },
       {
-        box: "signzart-prod",
+        box: "sablebox-prod",
         providers: [
           login({
-            displayName: "Rabee",
+            displayName: "Robin",
             usageLimits: {
               checkedAt: "2026-11-01T11:00:00Z",
               windows: [
@@ -80,9 +80,9 @@ describe("the limits Tessaya's window shows", () => {
     ]);
     expect(out).toEqual([
       {
-        account: "rabee",
-        box: "onyx + signzart-prod",
-        boxes: ["onyx", "signzart-prod"],
+        account: "robin",
+        box: "onyx + sablebox-prod",
+        boxes: ["onyx", "sablebox-prod"],
         windows: [
           { label: "Week", usedPercent: 44, resetsAt: null },
           { label: "Session", usedPercent: 12, resetsAt: null },
@@ -106,7 +106,7 @@ describe("the limits Tessaya's window shows", () => {
       { box: "b", providers: [login({ usageLimits: noTime(55) })] },
     ]);
     expect(out.map((r) => [r.account, r.boxes, r.windows[0]!.usedPercent])).toEqual([
-      ["rabee", ["a", "b"], 55],
+      ["robin", ["a", "b"], 55],
       ["other", ["a"], 5],
     ]);
   });

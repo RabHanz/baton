@@ -11,7 +11,7 @@ const entry = (workSessionId: string, threadIds: readonly string[]): BatonFleetE
   ({
     workSessionId,
     title: "Scheduler reconnect race",
-    projectId: "project-ventureos",
+    projectId: "project-vantageos",
     lifecycle: "active",
     state: "working",
     needsUser: false,

@@ -39,10 +39,10 @@ import type { VoiceState } from "./voiceTypes.ts";
 const fleet: IntentVocabulary = {
   workSessions: [
     {
-      id: "ws-ventureos",
+      id: "ws-vantageos",
       title: "Niche radar tests",
-      projectId: "project-ventureos",
-      projectLabel: "VentureOS",
+      projectId: "project-vantageos",
+      projectLabel: "VantageOS",
       needsApproval: false,
       updatedAt: "2026-10-26T05:00:00.000Z",
     },
@@ -56,7 +56,7 @@ const fleet: IntentVocabulary = {
     },
   ],
   projects: [
-    { id: "project-ventureos", title: "VentureOS" },
+    { id: "project-vantageos", title: "VantageOS" },
     { id: "project-margin", title: "The Margin" },
   ],
   providers: [],
@@ -96,18 +96,18 @@ describe("the intent bridge", () => {
       field,
       injection: { method: "clipboard", canInject: () => true, insertText: async () => {} },
     });
-    await client.sendToSession({ workSessionId: "ws-ventureos", text: "run the migration tests" });
+    await client.sendToSession({ workSessionId: "ws-vantageos", text: "run the migration tests" });
     expect(requests[0]).toEqual({
       kind: "run",
       text: sessionMessageSentence("run the migration tests"),
-      focusedWorkSessionId: "ws-ventureos",
+      focusedWorkSessionId: "ws-vantageos",
     });
     const resolved = resolveBatonIntent(requests[0]!.text, {
       ...fleet,
-      focusedWorkSessionId: "ws-ventureos",
+      focusedWorkSessionId: "ws-vantageos",
     });
     // The focused one, not the one that moved last (ws-margin).
-    expect(resolved.outcome === "resolved" && resolved.workSessionId).toBe("ws-ventureos");
+    expect(resolved.outcome === "resolved" && resolved.workSessionId).toBe("ws-vantageos");
     expect(
       resolved.outcome === "resolved" &&
         resolved.command.kind === "message_work_session" &&
@@ -262,16 +262,16 @@ describe.skipIf(!ready)("WAV as the mic, through the real core", () => {
       await core.idle();
     };
 
-    // "Hey Jarvis, what is VentureOS doing?" — woken, transcribed, run.
+    // "Hey Jarvis, what is VantageOS doing?" — woken, transcribed, run.
     expect(states).toContain("command_window");
-    expect(captions[0]).toMatch(/^“What is VentureOS doing\?” to Baton$/i);
-    expect(requests.some((r) => r.kind === "run" && /VentureOS doing/i.test(r.text))).toBe(true);
+    expect(captions[0]).toMatch(/^“What is VantageOS doing\?” to Baton$/i);
+    expect(requests.some((r) => r.kind === "run" && /VantageOS doing/i.test(r.text))).toBe(true);
 
     // Follow-up without a wake: conversation mode, target inherited.
     await play(1);
     expect(states).toContain("conversation");
     expect(captions.at(-1)).toMatch(/run the other test too/i);
-    expect(requests.findLast((r) => r.kind === "run")?.focusedWorkSessionId).toBe("ws-ventureos");
+    expect(requests.findLast((r) => r.kind === "run")?.focusedWorkSessionId).toBe("ws-vantageos");
 
     // Dictation is typed into the field and never reaches the intent path.
     await play(2);

@@ -4,8 +4,8 @@ import { homeOf, resolveRunOn } from "./runOn.ts";
 
 const targets = [
   { id: "e1", label: "Desk" },
-  { id: "e2", label: "signzart" },
-  { id: "e3", label: "onnyx" },
+  { id: "e2", label: "sablebox" },
+  { id: "e3", label: "orbit" },
 ];
 
 describe("run on", () => {
@@ -14,18 +14,18 @@ describe("run on", () => {
     expect(resolveRunOn("This computer", targets, "e1")).toMatchObject({ ok: true, id: "e1" });
   });
   it("finds a connected server by name, loosely", () => {
-    expect(resolveRunOn("signzart", targets, "e1")).toEqual({
+    expect(resolveRunOn("sablebox", targets, "e1")).toEqual({
       ok: true,
       id: "e2",
-      label: "signzart",
+      label: "sablebox",
     });
-    expect(resolveRunOn("  ONNYX ", targets, "e1")).toMatchObject({ ok: true, id: "e3" });
+    expect(resolveRunOn("  ORBIT ", targets, "e1")).toMatchObject({ ok: true, id: "e3" });
     expect(resolveRunOn("sign", targets, "e1")).toMatchObject({ ok: true, id: "e2" });
   });
   it("says which are connected when the name matches none", () => {
     const r = resolveRunOn("mars", targets, "e1");
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.why).toContain("Connected: Desk, signzart, onnyx");
+    if (!r.ok) expect(r.why).toContain("Connected: Desk, sablebox, orbit");
   });
   it("asks the server a job was started on", () => {
     const homes = new Map([["job-1", "e2"]]);

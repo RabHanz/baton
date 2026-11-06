@@ -24,9 +24,9 @@ const spent = {
 } as const;
 
 setClaudeAccountInstances({
-  claudeAgent_rabee: "4",
+  claudeAgent_robin: "4",
   claudeAgent_optima: "5",
-  claudeAgent_signzart: "6",
+  claudeAgent_sablebox: "6",
 });
 
 describe("accountRefusal", () => {
@@ -54,7 +54,7 @@ describe("instance and account mapping", () => {
       { key: "4", active: true },
       { key: "6", active: false },
     ];
-    expect(accountForInstance("claudeAgent_signzart", accounts)?.key).toBe("6");
+    expect(accountForInstance("claudeAgent_sablebox", accounts)?.key).toBe("6");
     expect(accountForInstance("claudeAgent", accounts)?.key).toBe("4");
   });
 });

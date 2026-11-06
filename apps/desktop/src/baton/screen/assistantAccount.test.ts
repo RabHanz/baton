@@ -10,7 +10,7 @@ import {
 } from "./assistantAccount.ts";
 
 const base = { PATH: "x", CLAUDE_CODE_OAUTH_TOKEN: "tok", ANTHROPIC_API_KEY: "k" };
-const a: AssistantAccount = { key: "/h/.claude-a", email: "rabee@x.com", loggedIn: true };
+const a: AssistantAccount = { key: "/h/.claude-a", email: "robin@x.com", loggedIn: true };
 
 describe("assistant account", () => {
   it("leaves his environment alone when nothing is chosen", () => {
@@ -25,7 +25,7 @@ describe("assistant account", () => {
   it("falls back with a plain message when the login expired or the account is gone", () => {
     const out = pickEnv(a.key, [{ ...a, loggedIn: false }], base);
     expect(out.env).toBe(base);
-    expect(out.notice).toContain("rabee has signed out");
+    expect(out.notice).toContain("robin has signed out");
     expect(pickEnv("/h/.claude-z", [a], base).notice).toContain("gone");
   });
   it("trusts the choice before the first look", () => {
@@ -52,6 +52,6 @@ describe("assistant account", () => {
     ]);
   });
   it("hides the address until asked", () => {
-    expect(maskEmail("rabee@x.com")).toBe("r•••@x.com");
+    expect(maskEmail("robin@x.com")).toBe("r•••@x.com");
   });
 });

@@ -10,10 +10,10 @@ import type { VoiceIntentClient } from "../src/router.ts";
 export const fleet: IntentVocabulary = {
   workSessions: [
     {
-      id: "ws-ventureos",
+      id: "ws-vantageos",
       title: "Niche radar tests",
-      projectId: "project-ventureos",
-      projectLabel: "VentureOS",
+      projectId: "project-vantageos",
+      projectLabel: "VantageOS",
       needsApproval: false,
       updatedAt: "2026-10-26T05:00:00.000Z",
     },
@@ -27,7 +27,7 @@ export const fleet: IntentVocabulary = {
     },
   ],
   projects: [
-    { id: "project-ventureos", title: "VentureOS" },
+    { id: "project-vantageos", title: "VantageOS" },
     { id: "project-margin", title: "The Margin" },
   ],
   providers: [

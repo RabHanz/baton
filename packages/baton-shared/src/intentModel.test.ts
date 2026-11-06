@@ -23,8 +23,8 @@ const vocabulary: IntentVocabulary = {
     {
       id: "ws-scheduler",
       title: "Scheduler reconnect race",
-      projectId: "p-ventureos",
-      projectLabel: "VentureOS",
+      projectId: "p-vantageos",
+      projectLabel: "VantageOS",
       needsApproval: true,
       updatedAt: "2026-09-18T09:00:00Z",
     },
@@ -38,24 +38,24 @@ const vocabulary: IntentVocabulary = {
     },
   ],
   projects: [
-    { id: "p-ventureos", title: "VentureOS" },
+    { id: "p-vantageos", title: "VantageOS" },
     { id: "p-baton", title: "Baton proof scratch" },
   ],
   providers: [
     {
-      instanceId: "claude-signzart",
+      instanceId: "claude-sablebox",
       driver: "claudeAgent",
-      aliases: ["Claude · signzart", "signzart"],
-      label: "Claude · signzart",
+      aliases: ["Claude · sablebox", "sablebox"],
+      label: "Claude · sablebox",
       model: "claude-fable-5-1",
       available: true,
       signedIn: true,
     },
     {
-      instanceId: "claude-rabee",
+      instanceId: "claude-robin",
       driver: "claudeAgent",
-      aliases: ["Claude · rabee", "rabee"],
-      label: "Claude · rabee",
+      aliases: ["Claude · robin", "robin"],
+      label: "Claude · robin",
       model: "claude-fable-5-1",
       available: false,
       signedIn: false,
@@ -64,7 +64,7 @@ const vocabulary: IntentVocabulary = {
   openGates: [
     { firingId: "firing-1", workSessionId: "ws-scheduler", question: "Deploy the scheduler fix?" },
   ],
-  hostAliases: ["signzart-prod", "this box"],
+  hostAliases: ["sablebox-prod", "this box"],
   focusedWorkSessionId: "ws-scheduler",
 };
 
@@ -138,11 +138,11 @@ describe("the model's reply is checked, never trusted", () => {
   });
 
   it("refuses an account that is configured but not available", () => {
-    const resolution = interpret("put rabee on the deploy check", {
+    const resolution = interpret("put robin on the deploy check", {
       kind: "resume_work_session",
       workSessionId: "ws-deploy",
-      providerInstanceId: "claude-rabee",
-      description: "Open another Claude · rabee session on the deploy check.",
+      providerInstanceId: "claude-robin",
+      description: "Open another Claude · robin session on the deploy check.",
     });
 
     expect(resolution.outcome).toBe("refused");
@@ -244,20 +244,20 @@ describe("the model's reply is checked, never trusted", () => {
   });
 
   it("falls back to an available account, never to an unavailable one", () => {
-    const resolution = interpret("start something on ventureos", {
+    const resolution = interpret("start something on vantageos", {
       kind: "start_work_session",
-      projectId: "p-ventureos",
+      projectId: "p-vantageos",
       title: "Look at the scheduler",
-      description: "Start work on VentureOS.",
+      description: "Start work on VantageOS.",
     });
 
     expect(resolution.outcome).toBe("resolved");
     if (resolution.outcome !== "resolved") return;
     expect(resolution.command).toEqual({
       kind: "start_work_session",
-      projectId: "p-ventureos",
+      projectId: "p-vantageos",
       title: "Look at the scheduler",
-      providerInstanceId: "claude-signzart",
+      providerInstanceId: "claude-sablebox",
       model: "claude-fable-5-1",
     });
     expect(resolution.risk).toBe("medium");
@@ -302,8 +302,8 @@ describe("the prompt says only what the model is allowed to know", () => {
 
   it("lists every id the model may use, and marks what the user is looking at", () => {
     expect(prompt).toContain("ws-scheduler");
-    expect(prompt).toContain("claude-signzart");
-    expect(prompt).toContain("p-ventureos");
+    expect(prompt).toContain("claude-sablebox");
+    expect(prompt).toContain("p-vantageos");
     expect(prompt).toContain("firing-1");
     expect(prompt).toContain("[the user is looking at this one]");
     expect(prompt).toContain("[waiting for approval]");

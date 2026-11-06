@@ -59,7 +59,7 @@ const register = (overrides?: Partial<AdoptedRegisterInput>) =>
       id: sessionId,
       runtime: "herdr",
       label: "hermes",
-      location: { workspace: "ops", pane: "1", host: "hetzner" },
+      location: { workspace: "ops", pane: "1", host: "harbour" },
       runtimeState: "working",
       workSessionId,
       capabilities: HERDR_CAPABILITIES,
@@ -73,7 +73,7 @@ describe("adopting a session", () => {
       const session = yield* register();
       assert.strictEqual(session.state, "working");
       assert.strictEqual(session.location.workspace, "ops");
-      assert.strictEqual(session.location.host, "hetzner");
+      assert.strictEqual(session.location.host, "harbour");
       assert.strictEqual(session.workSessionId, workSessionId);
     }).pipe(Effect.provide(harness())),
   );

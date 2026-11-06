@@ -35,7 +35,7 @@ a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002  ggml-base.en.b
 - Silero v6 ONNX: 512-sample windows at 16 kHz with 64 samples of context
   prepended (`input [1,576]`), recurrent `state [2,1,128]`, `sr` int64 scalar.
 - whisper.cpp `--prompt` biases recognition toward names. Without it the e2e
-  fixture "what is VentureOS doing" came back as "with what his mentor are
+  fixture "what is VantageOS doing" came back as "with what his mentor are
   doing"; with project names in the prompt it came back exact.
 
 ## Windows (the Director's laptop)

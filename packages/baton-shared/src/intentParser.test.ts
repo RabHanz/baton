@@ -11,8 +11,8 @@ const base: IntentVocabulary = {
     {
       id: "ws-scheduler",
       title: "Scheduler reconnect race",
-      projectId: "project-ventureos",
-      projectLabel: "VentureOS",
+      projectId: "project-vantageos",
+      projectLabel: "VantageOS",
       needsApproval: false,
       updatedAt: "2026-09-18T05:00:00.000Z",
     },
@@ -26,7 +26,7 @@ const base: IntentVocabulary = {
     },
   ],
   projects: [
-    { id: "project-ventureos", title: "VentureOS" },
+    { id: "project-vantageos", title: "VantageOS" },
     { id: "project-margin", title: "The Margin" },
   ],
   providers: [
@@ -50,7 +50,7 @@ const base: IntentVocabulary = {
     },
   ],
   openGates: [],
-  hostAliases: ["hetzner box", "home linux"],
+  hostAliases: ["harbour box", "home linux"],
   focusedWorkSessionId: null,
 };
 
@@ -103,16 +103,16 @@ describe("resolveBatonIntent — §20's status questions", () => {
   });
 
   it("answers §20's per-session question and names the work it resolved", () => {
-    const result = resolve("What's VentureOS doing?");
+    const result = resolve("What's VantageOS doing?");
     expect(result.outcome).toBe("resolved");
     if (result.outcome !== "resolved") return;
-    // "VentureOS" is a project with one piece of work in it, so this is not
+    // "VantageOS" is a project with one piece of work in it, so this is not
     // ambiguous — and the command carries an id, never the words.
     expect(result.command).toEqual({
       kind: "status_work_session",
       workSessionId: "ws-scheduler",
     });
-    expect(result.description).toBe("Say what VentureOS / Scheduler reconnect race is doing.");
+    expect(result.description).toBe("Say what VantageOS / Scheduler reconnect race is doing.");
   });
 
   it("takes 'where are we on X' as the same question", () => {
@@ -158,7 +158,7 @@ describe("resolveBatonIntent — messaging a session", () => {
   });
 
   it("keeps the colon form's message verbatim", () => {
-    const result = resolve("Tell VentureOS: Also run the migration tests.");
+    const result = resolve("Tell VantageOS: Also run the migration tests.");
     expect(result.outcome).toBe("resolved");
     if (result.outcome !== "resolved") return;
     if (result.command.kind !== "message_work_session") return;
@@ -197,14 +197,14 @@ describe("resolveBatonIntent — messaging a session", () => {
   });
 
   it("asks which one when a project has two pieces of work", () => {
-    const result = resolve("Tell VentureOS to run the tests", {
+    const result = resolve("Tell VantageOS to run the tests", {
       workSessions: [
         ...base.workSessions,
         {
           id: "ws-migrations",
           title: "Migration rehearsal",
-          projectId: "project-ventureos",
-          projectLabel: "VentureOS",
+          projectId: "project-vantageos",
+          projectLabel: "VantageOS",
           needsApproval: false,
           updatedAt: "2026-09-18T04:00:00.000Z",
         },
@@ -225,16 +225,16 @@ describe("resolveBatonIntent — messaging a session", () => {
         {
           id: "intent-proof-1",
           title: "Intent proof",
-          projectId: "project-ventureos",
-          projectLabel: "VentureOS",
+          projectId: "project-vantageos",
+          projectLabel: "VantageOS",
           needsApproval: false,
           updatedAt: "2026-09-18T05:00:00.000Z",
         },
         {
           id: "intent-proof-2",
           title: "Intent proof",
-          projectId: "project-ventureos",
-          projectLabel: "VentureOS",
+          projectId: "project-vantageos",
+          projectLabel: "VantageOS",
           needsApproval: false,
           updatedAt: "2026-09-18T06:00:00.000Z",
         },
@@ -256,12 +256,12 @@ describe("resolveBatonIntent — messaging a session", () => {
 
 describe("resolveBatonIntent — starting and resuming work", () => {
   it("starts work on a named project with a named account", () => {
-    const result = resolve("Start work on VentureOS with Claude A");
+    const result = resolve("Start work on VantageOS with Claude A");
     expect(result.outcome).toBe("resolved");
     if (result.outcome !== "resolved") return;
     expect(result.command).toEqual({
       kind: "start_work_session",
-      projectId: "project-ventureos",
+      projectId: "project-vantageos",
       title: "New work",
       providerInstanceId: "claude-a",
       model: "claude-sonnet",
@@ -271,7 +271,7 @@ describe("resolveBatonIntent — starting and resuming work", () => {
   });
 
   it("keeps a title the sentence gave it", () => {
-    const result = resolve("Start work on VentureOS called scheduler retry backoff with claude");
+    const result = resolve("Start work on VantageOS called scheduler retry backoff with claude");
     expect(result.outcome).toBe("resolved");
     if (result.outcome !== "resolved") return;
     if (result.command.kind !== "start_work_session") return;
@@ -279,7 +279,7 @@ describe("resolveBatonIntent — starting and resuming work", () => {
   });
 
   it("picks the only usable account without being told, and never between two", () => {
-    const one = resolve("Start work on VentureOS");
+    const one = resolve("Start work on VantageOS");
     expect(one.outcome).toBe("resolved");
     if (one.outcome === "resolved" && one.command.kind === "start_work_session") {
       // Codex is configured here and not installed, so there is exactly one
@@ -287,7 +287,7 @@ describe("resolveBatonIntent — starting and resuming work", () => {
       expect(one.command.providerInstanceId).toBe("claude-a");
     }
 
-    const two = resolve("Start work on VentureOS", {
+    const two = resolve("Start work on VantageOS", {
       providers: base.providers.map((provider) => ({ ...provider, available: true })),
     });
     expect(two.outcome).toBe("refused");
@@ -298,7 +298,7 @@ describe("resolveBatonIntent — starting and resuming work", () => {
   });
 
   it("refuses an account this environment cannot run", () => {
-    const result = resolve("Start work on VentureOS with Codex");
+    const result = resolve("Start work on VantageOS with Codex");
     expect(result.outcome).toBe("refused");
     if (result.outcome !== "refused") return;
     expect(result.refusal.reason).toBe("unknown_target");
@@ -320,7 +320,7 @@ describe("resolveBatonIntent — starting and resuming work", () => {
   it("sends the sentence back when it names another machine", () => {
     // Cross-environment routing is the client's job: it decides which
     // environment to ask. Doing the work here would be the wrong answer.
-    const result = resolve("Start work on VentureOS on the laptop with claude");
+    const result = resolve("Start work on VantageOS on the laptop with claude");
     expect(result.outcome).toBe("refused");
     if (result.outcome !== "refused") return;
     expect(result.refusal.reason).toBe("unknown_target");
@@ -328,7 +328,7 @@ describe("resolveBatonIntent — starting and resuming work", () => {
   });
 
   it("accepts this environment's own name", () => {
-    const result = resolve("Start work on VentureOS on the hetzner box with claude");
+    const result = resolve("Start work on VantageOS on the harbour box with claude");
     expect(result.outcome).toBe("resolved");
   });
 });
@@ -346,7 +346,7 @@ describe("resolveBatonIntent — rules", () => {
     if (result.command.kind !== "create_rules") return;
     expect(result.command.workSessionId).toBe("ws-scheduler");
     expect(result.command.rules).toHaveLength(2);
-    expect(result.description).toBe("Create 2 rules on VentureOS / Scheduler reconnect race.");
+    expect(result.description).toBe("Create 2 rules on VantageOS / Scheduler reconnect race.");
     // One of them will start a provider session, and the read-back has to
     // carry that weight before the user presses enter.
     expect(result.risk).toBe("medium");
@@ -472,10 +472,10 @@ describe("resolveBatonIntent — what it will not do", () => {
   });
 
   it("classifies risk before it classifies intent", () => {
-    // "Tell VentureOS to deploy to production" parses as a message, and a
+    // "Tell VantageOS to deploy to production" parses as a message, and a
     // message is low risk. The high-risk check runs first precisely so that
     // routing it through an agent is not a way around it.
-    const result = resolve("Tell VentureOS to deploy to production");
+    const result = resolve("Tell VantageOS to deploy to production");
     expect(result.outcome).toBe("refused");
     if (result.outcome !== "refused") return;
     expect(result.refusal.reason).toBe("high_risk");

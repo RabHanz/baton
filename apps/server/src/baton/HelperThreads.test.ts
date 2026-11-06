@@ -9,7 +9,7 @@ describe("helper thread cleanup", () => {
     expect(
       classifyHelperThread({
         ...base,
-        title: "userdata-28 · onnyx",
+        title: "userdata-28 · orbit",
         projectRoot: "C:\\Users\\a\\.t3\\userdata",
         messages: 4,
       })?.kind,
@@ -17,7 +17,7 @@ describe("helper thread cleanup", () => {
     expect(
       classifyHelperThread({
         ...base,
-        title: "userdata-28 · onnyx",
+        title: "userdata-28 · orbit",
         projectRoot: "C:\\Users\\a\\.t3\\userdata",
         running: true,
       })?.kind,

@@ -9,7 +9,7 @@ import * as SqlClient from "effect/sql/SqlClient";
  * Additive only, and deliberately so. T3's migrator has no down step, so the
  * rollback path for Fabric is "run an older build against the same database" —
  * which works because nothing here alters a table an older build reads. See
- * `docs/fabric/DECISIONS.md` D7.
+ * the maintainers' decision log D7.
  */
 export default Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;

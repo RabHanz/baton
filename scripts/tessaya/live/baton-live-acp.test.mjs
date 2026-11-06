@@ -720,8 +720,8 @@ NodeTest.test(
       "",
       "Which account should CI run under?",
       "",
-      "❯ 1. signzart",
-      "     Run the CI with the signzart account",
+      "❯ 1. sablebox",
+      "     Run the CI with the sablebox account",
       "  2. Don't run it",
       "     Skip CI for now",
       "  3. Type something.",
@@ -738,7 +738,7 @@ NodeTest.test(
     );
     NodeAssert.deepEqual(
       prompt?.options.map((o) => o.label),
-      ["signzart", "Don't run it"],
+      ["sablebox", "Don't run it"],
     );
     NodeAssert.equal(prompt?.customIndex, 2);
   },
@@ -752,9 +752,9 @@ NodeTest.test(
       "←  ☐ CI account  ☐ Merge 4416  ✔ Submit  →",
       "",
       "│ #4416 (clip posting path) needs another cloud CI run after my one-line test fix. Which Claude",
-      "│ cloud account should run it? Only signzart is logged in for cloud right now.",
+      "│ cloud account should run it? Only sablebox is logged in for cloud right now.",
       "",
-      "❯ 1. signzart",
+      "❯ 1. sablebox",
       "     The only cloud login that works today. Its weekly limit",
       "     resets Monday 12:00 PKT.",
       "  2. Don't run it",
@@ -768,7 +768,7 @@ NodeTest.test(
     const prompt = parsePanePrompt(screen);
     NodeAssert.equal(
       prompt?.question,
-      "#4416 (clip posting path) needs another cloud CI run after my one-line test fix. Which Claude cloud account should run it? Only signzart is logged in for cloud right now.",
+      "#4416 (clip posting path) needs another cloud CI run after my one-line test fix. Which Claude cloud account should run it? Only sablebox is logged in for cloud right now.",
     );
     NodeAssert.equal(
       prompt?.options[0].description,

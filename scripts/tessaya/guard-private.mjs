@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Fails when something private ships by default (D148, D135, the public-release checklist):
-// a maintainer host or account, a key or token, a tailnet address, or a hashed phrase of a private pack.
+// Fails when something private is in the public repository (D148, D135, the open-core rule): a maintainer
+// host, account or path, a key or token, a tailnet address, or a hashed phrase of a private pack.
 // Plain Node, no install, so CI runs it before anything else:  node scripts/tessaya/guard-private.mjs
 import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
@@ -9,19 +9,29 @@ import * as NodePath from "node:path";
 
 const ROOT = NodePath.resolve(import.meta.dirname, "../..");
 
-// Shipped code Tessaya owns. Tests, fixtures and maintainers' operator scripts are not shipped.
+// Everything tracked that Tessaya wrote: files upstream T3 Code does not have at the pin, plus the
+// lines our patches add to upstream files. Upstream's own text (its Hetzner examples, tailnet test
+// addresses) is not ours to change. Vendored references, the lockfile and third-party material are skipped.
+const PIN_FILE = "vendor-patches/t3code/PIN";
+const SKIPPED = [
+  /^\.repos\//,
+  /^pnpm-lock\.yaml$/,
+  /^patches\//,
+  /^docs\/baton\/licences\//,
+  /THIRD_PARTY|third-party-licenses/i,
+  /^scripts\/tessaya\/guard-private\.mjs$/,
+  /^scripts\/tessaya\/private-markers\.txt$/,
+];
+// Without the pin's tree (a shallow clone) only the code Tessaya ships is checked.
 const SHIPPED = [
   "apps/desktop/src/baton/",
   "apps/server/src/baton/",
-  "packages/baton-contracts/src/",
-  "packages/baton-shared/src/",
+  "packages/baton-",
   "apps/web/src/components/sidebar/Baton",
   "apps/web/src/components/chat/Baton",
   "apps/web/src/components/panes/baton",
-  "scripts/build-desktop-artifact.ts",
+  "scripts/tessaya/",
 ];
-// The voice lane owns packages/baton-voice and adds itself here when its branch lands.
-const SKIPPED = [/\.test\.tsx?$/, /\/smoke\//, /Lab\.ts$/];
 
 const PRIVATE = [
   ["a host or account of the maintainer", /signzart|onnyx|ventureos|venture-os|xiaomi|rabee/i],
@@ -31,6 +41,7 @@ const PRIVATE = [
     /sk-ant-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,}|xox[bp]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----/,
   ],
   ["a tailnet address", /\b100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d+\.\d+\b/],
+  ["a path on the maintainer's machines", /\/mnt\/HC_Volume_\d+/],
 ];
 
 // Where a private name stays for now, and why. Each is an operator step for the maintainer's own
@@ -38,6 +49,17 @@ const PRIVATE = [
 const ALLOWED = {
   "apps/server/src/baton/ClaudeAccountInstances.ts":
     "compat table for the maintainer's two boxes until BATON_CLAUDE_ACCOUNT_INSTANCES is set on them (D135)",
+  "apps/server/src/baton/ClaudeAccountInstances.test.ts": "tests that compat table",
+  "scripts/tessaya/apply-release-branding.sh":
+    "the installed app's id; it stays until the public release (D8), or existing installs stop upgrading",
+  "scripts/tessaya/upgrade-proof.ps1": "finds the installed app by that same id (D8)",
+  "scripts/tessaya/stranger-proof.ps1":
+    "carries this guard's own pattern, to check a built installer",
+  "apps/desktop/src/baton/backup/backup.test.ts":
+    "a made-up key, to prove a backup leaves secrets out",
+  "apps/desktop/src/baton/cloud/vaultKey.test.ts":
+    "a made-up key header, to prove the vault hands it over",
+  "packages/baton-shared/src/memory.test.ts": "a made-up token, to prove memory refuses secrets",
 };
 
 const WINDOW = 4;
@@ -72,16 +94,45 @@ const read = (file) => {
   }
 };
 
+const upstreamPaths = () => {
+  try {
+    const pin = NodeFS.readFileSync(NodePath.join(ROOT, PIN_FILE), "utf8").trim();
+    const listed = NodeChildProcess.execFileSync("git", ["ls-tree", "-r", "--name-only", pin], {
+      cwd: ROOT,
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return new Set(listed.split("\n").filter(Boolean));
+  } catch {
+    return null;
+  }
+};
+
+/** The text of ours in a file: a patch contributes only the lines it adds. */
+const ours = (file, text) =>
+  file.endsWith(".patch")
+    ? text
+        .split("\n")
+        .filter((l) => l.startsWith("+") && !l.startsWith("+++"))
+        .join("\n")
+    : text;
+
 export const run = () => {
   const problems = [];
   const files = tracked();
-  for (const file of files.filter(
-    (f) => SHIPPED.some((p) => f.startsWith(p)) && !SKIPPED.some((r) => r.test(f)),
-  )) {
+  const upstream = upstreamPaths();
+  const scanned = files.filter(
+    (f) =>
+      !SKIPPED.some((r) => r.test(f)) &&
+      (upstream === null ? SHIPPED.some((p) => f.startsWith(p)) : !upstream.has(f)),
+  );
+  for (const file of scanned) {
     const text = read(file);
-    if (text === null || ALLOWED[file] !== undefined) continue;
+    if (text === null || text.includes("\u0000") || ALLOWED[file] !== undefined) continue;
+    const body = ours(file, text);
     for (const [what, pattern] of PRIVATE)
-      if (pattern.test(text)) problems.push(`${file}: ${what}`);
+      if (pattern.test(body)) problems.push(`${file}: ${what}`);
   }
   // A merge left unfinished must never reach main: this is what broke a release once.
   for (const file of files.filter(

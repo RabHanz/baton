@@ -12,7 +12,7 @@ know either.
 | -------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | ------- |
 | 1. Local | Tessaya runs the harness's own program on this computer with this computer's own login (`claude --cloud`, `codex cloud exec`).          | The harness installed and signed in. Nothing else.       | yes     |
 | 2. Hub   | One computer holds the logins and runs the program; the others call it over the T3 connection they already have, as `baton.cloud.call`. | A paired connection (scopes read, operate).              | no      |
-| 3. SSH   | The VentureOS `cloud-dispatch-shell` over SSH with one key per caller and a separate approver key.                                      | Host, user, key files. Advanced, named by what it holds. | no      |
+| 3. SSH   | The VantageOS `cloud-dispatch-shell` over SSH with one key per caller and a separate approver key.                                      | Host, user, key files. Advanced, named by what it holds. | no      |
 
 A request waits for a yes in the place that owns the login: the central shell on transport 3 (its own
 `awaiting-director` state), Tessaya's list on transports 1 and 2. Nothing starts before the Director picks

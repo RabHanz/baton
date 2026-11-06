@@ -9,7 +9,7 @@ import { layer as workSessionServiceLayer, WorkSessionService } from "./WorkSess
 
 const layer = it.layer(workSessionServiceLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)));
 
-const projectId = ProjectId.make("project-ventureos");
+const projectId = ProjectId.make("project-vantageos");
 const claudeA = ProviderInstanceId.make("claude-a");
 const claudeB = ProviderInstanceId.make("claude-b");
 
@@ -187,7 +187,7 @@ layer("WorkSessionService", (it) => {
         title: "Scheduler reconnect race",
         objective: "Stop a reconnect between commit and ack duplicating dispatch",
         acceptanceCriteria: ["reconnect integration test passes"],
-        primaryWorktreePath: "/w/ventureos-scheduler-reconnect",
+        primaryWorktreePath: "/w/vantageos-scheduler-reconnect",
         baseBranch: "main",
       });
       const threadId = ThreadId.make(`${id}-thread-a`);
@@ -201,7 +201,7 @@ layer("WorkSessionService", (it) => {
         "Stop a reconnect between commit and ack duplicating dispatch",
       );
       assert.deepStrictEqual(survivor.acceptanceCriteria, ["reconnect integration test passes"]);
-      assert.strictEqual(survivor.primaryWorktreePath, "/w/ventureos-scheduler-reconnect");
+      assert.strictEqual(survivor.primaryWorktreePath, "/w/vantageos-scheduler-reconnect");
       assert.strictEqual(survivor.baseBranch, "main");
       assert.isNull(survivor.activeThreadId);
       assert.lengthOf(survivor.providerSessions, 1);

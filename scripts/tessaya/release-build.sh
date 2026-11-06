@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Build the Linux CLI archive a box runs, the way upstream builds its release (docs/baton/DEPLOY.md §1).
+# Build the Linux CLI archive a box runs, the way upstream builds its release.
 #
 #   scripts/tessaya/release-build.sh <version>      e.g. 0.0.45-baton.21
 #
@@ -11,7 +11,6 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 version="${1:?usage: release-build.sh <version>}"
 out="${BATON_RELEASE_DIR:-release-cli}"
-[ -d /mnt/HC_Volume_106652742/tmp ] && export TMPDIR="${TMPDIR:-/mnt/HC_Volume_106652742/tmp/lanes}"
 [ -z "${TMPDIR:-}" ] || mkdir -p "$TMPDIR"
 # shellcheck source=toolchain.sh
 source scripts/tessaya/toolchain.sh

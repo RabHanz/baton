@@ -41,29 +41,29 @@ describe("voice mode machine (§12.3)", () => {
 
   it("sleeping ignores speech without a wake", () => {
     const { state, effects } = play([
-      { type: "utterance", text: "what is VentureOS doing", at: 0 },
+      { type: "utterance", text: "what is VantageOS doing", at: 0 },
     ]);
     expect(state.mode).toBe("sleeping");
     expect(effects).toEqual([
-      { kind: "ignored", text: "what is VentureOS doing", reason: "asleep" },
+      { kind: "ignored", text: "what is VantageOS doing", reason: "asleep" },
     ]);
   });
 
   it("wake opens the command window; a command moves to conversation", () => {
     const { state, effects } = play([
       { type: "wake", at: 0 },
-      { type: "utterance", text: "Hey Jarvis, what's VentureOS doing?", at: 1000 },
+      { type: "utterance", text: "Hey Jarvis, what's VantageOS doing?", at: 1000 },
     ]);
     expect(state.mode).toBe("conversation");
     expect(effects).toEqual([
-      { kind: "command", text: "what's VentureOS doing?", inheritedTarget: null },
+      { kind: "command", text: "what's VantageOS doing?", inheritedTarget: null },
     ]);
   });
 
   it("follow-ups inherit the target without a repeated wake, until the timeout", () => {
     const { state, effects } = play([
       { type: "wake", at: 0 },
-      { type: "utterance", text: "what's VentureOS doing", at: 1000 },
+      { type: "utterance", text: "what's VantageOS doing", at: 1000 },
       { type: "set_target", workSessionId: "ws-1", at: 1100 },
       { type: "utterance", text: "tell it to run the other test too", at: 5000 },
       { type: "tick", at: 5000 + DEFAULT_TIMINGS.conversationMs + 1 },

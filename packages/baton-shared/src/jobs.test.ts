@@ -91,9 +91,9 @@ describe("caps and public messages", () => {
 describe("the worker's account", () => {
   it("is the one with the most headroom, treating an unreported window as available", () => {
     const pick = pickWorkerAccount([
-      { key: "rabee", usable: true, windows: [{ usedPercent: 35 }, { usedPercent: 61 }] },
+      { key: "robin", usable: true, windows: [{ usedPercent: 35 }, { usedPercent: 61 }] },
       { key: "optima", usable: true, windows: [{ usedPercent: 40 }] },
-      { key: "signzart", usable: true, windows: [{ usedPercent: 99 }] },
+      { key: "sablebox", usable: true, windows: [{ usedPercent: 99 }] },
       { key: "old", usable: false, windows: [] },
     ]);
     expect(pick).toBe("optima");
