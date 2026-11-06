@@ -731,7 +731,7 @@ async function prompt(params) {
   const sessionId = params.sessionId;
   if (typeof sessionId === "string" && sessionId.startsWith(UNBOUND)) {
     // Unbound: never guessed, even with one session running in the folder. Kept beside the queues and shown here,
-    // so Reattach (which asks first) binds the thread and Retry sends it. Attachments go to the folder's inbox.
+    // so Reattach (which asks first) binds the thread and the mirror then sends it. Attachments go to the folder's inbox.
     const folder = newSessionCwd.get(sessionId);
     const words =
       folder === undefined
@@ -746,7 +746,7 @@ async function prompt(params) {
     } catch {}
     say(
       sessionId,
-      `This thread is not bound to a running Claude Code session, so nothing was delivered. Your message was kept: "${words}". Reattach the thread to its session, then Retry the kept message.`,
+      `This thread is not bound to a running Claude Code session, so nothing was delivered. Your message was kept: "${words}". Reattach the thread and it will be sent.`,
     );
     return { stopReason: "end_turn" };
   }
