@@ -4,7 +4,7 @@ One call in DesktopApp after the IPC handlers, one call at the end of preload.ts
 apps/desktop/src/baton/. Baton's bridge is window.batonDesktopBridge, beside upstream's.
 
 diff --git a/apps/desktop/src/app/DesktopApp.ts b/apps/desktop/src/app/DesktopApp.ts
-index 151c227e47ff430171212f52044c5f1842f7ae20..ec1ea47e8a28116e6c8d3ff18c85e12e5ebd23cb 100644
+index 151c227e47ff430171212f52044c5f1842f7ae20..9a240112f9e044285881c3c886e879e46d5ec1dc 100644
 --- a/apps/desktop/src/app/DesktopApp.ts
 +++ b/apps/desktop/src/app/DesktopApp.ts
 @@ -38,6 +38,7 @@ import * as DesktopSnapShot from "../snapShot/DesktopSnapShot.ts";
@@ -15,11 +15,14 @@ index 151c227e47ff430171212f52044c5f1842f7ae20..ec1ea47e8a28116e6c8d3ff18c85e12e
  
  const DEFAULT_DESKTOP_BACKEND_PORT = 3773;
  const MAX_TCP_PORT = 65_535;
-@@ -185,6 +186,7 @@ const bootstrap = Effect.gen(function* () {
+@@ -185,6 +186,10 @@ const bootstrap = Effect.gen(function* () {
      clerkFrontendApiHostname: DesktopClerk.desktopClerkFrontendApiHostname,
    });
    yield* installDesktopIpcHandlers();
-+  yield* startBatonDesktop; // Baton (vendor-patches/t3code/0007-desktop.patch)
++  // Baton (vendor-patches/t3code/0007-desktop.patch): a Baton failure never stops T3 starting.
++  yield* startBatonDesktop.pipe(
++    Effect.catchCause((cause) => Effect.logError("Baton desktop did not start", cause)),
++  );
    yield* logBootstrapInfo("bootstrap ipc handlers registered");
    // Before any window: the preload merges these items before the app reads storage.
    yield* (yield* DesktopLegacyLocalStorage.DesktopLegacyLocalStorage).load(
