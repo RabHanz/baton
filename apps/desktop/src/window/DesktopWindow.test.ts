@@ -478,6 +478,12 @@ describe("DesktopWindow", () => {
       DesktopWindow.resolveInitialMainWindowBounds(persistedBounds, [displays[0]!]),
       DesktopAppSettings.DEFAULT_MAIN_WINDOW_SIZE,
     );
+    // Windows reports a snapped window with its invisible resize border past the display edge.
+    const snappedLeft = { x: -7, y: 0, width: 974, height: 1087 };
+    assert.deepEqual(
+      DesktopWindow.resolveInitialMainWindowBounds(snappedLeft, displays),
+      snappedLeft,
+    );
   });
 
   it("rejects renderer navigations whose origin only serializes as null", () => {

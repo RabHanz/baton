@@ -8133,18 +8133,28 @@ index c75bddca941bf3413778c29e3fd0b30ac9056fe7..cc4db530abb3c01767328c1c09cf0781
        ) : null}
      </span>
 diff --git a/apps/web/src/routes/__root.tsx b/apps/web/src/routes/__root.tsx
-index 1207b5017100d7300d7a161e676531d145f45a75..6948dbb89c00d446274b4beaf50de58b6c02ec03 100644
+index 1207b5017100d7300d7a161e676531d145f45a75..8af922b99d46d5555b41b74d820ce536a26b441b 100644
 --- a/apps/web/src/routes/__root.tsx
 +++ b/apps/web/src/routes/__root.tsx
-@@ -26,6 +26,7 @@ import { ConnectOnboardingDialog } from "../components/cloud/ConnectOnboardingDi
+@@ -26,6 +26,8 @@ import { ConnectOnboardingDialog } from "../components/cloud/ConnectOnboardingDi
  import { RelayClientInstallDialog } from "../components/cloud/RelayClientInstallDialog";
  import { SshPasswordPromptDialog } from "../components/desktop/SshPasswordPromptDialog";
  import { SnapShotCoordinator } from "../components/desktop/SnapShotCoordinator";
 +import { isMainWindow } from "../components/panes/batonWindows";
++import { useBatonPanesStore } from "../components/panes/batonPanesStore";
  import { DesktopAppActivationCoordinator } from "../components/desktop/DesktopAppActivationCoordinator";
  import { DesktopWebLinkCoordinator } from "../components/desktop/DesktopWebLinkCoordinator";
  import { RunningThreadKeepAlive } from "../components/desktop/RunningThreadKeepAlive";
-@@ -205,7 +206,7 @@ function RootRouteBranch() {
+@@ -149,6 +151,8 @@ function RootRouteBranch() {
+   // Once true, stays true: a visit to /welcome means the bootstrap already chose a route.
+   const [returningFromWelcome, setReturningFromWelcome] = useState(pathname === "/welcome");
+   if (pathname === "/welcome" && !returningFromWelcome) setReturningFromWelcome(true);
++  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- tells the pane store this window has left home, so it will not resume panes later
++  useEffect(() => useBatonPanesStore.getState().noteLocation(pathname), [pathname]);
+   const hostedPromptLinkLanding = useHostedPromptLinkLanding(
+     authGateState.status === "hosted-static",
+   );
+@@ -205,7 +209,7 @@ function RootRouteBranch() {
          <RelayClientInstallDialog />
          <ConnectOnboardingDialog />
          <SshPasswordPromptDialog />

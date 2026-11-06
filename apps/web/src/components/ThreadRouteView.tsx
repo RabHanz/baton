@@ -208,7 +208,12 @@ export function ThreadRouteView({
       className="h-svh min-h-0 overflow-hidden overscroll-y-none md:h-dvh"
       inert={background}
     >
-      <BatonPanes route={target} background={background} view={view} />
+      <BatonPanes
+        route={target}
+        background={background}
+        pending={renderState === "loading"}
+        view={view}
+      />
       {background ? null : redirect}
     </SidebarInset>
   );

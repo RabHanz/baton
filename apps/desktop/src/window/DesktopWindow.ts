@@ -149,15 +149,19 @@ function getInitialWindowBackgroundColor(shouldUseDarkColors: boolean): string {
 
 type DisplayBounds = Pick<Electron.Rectangle, "x" | "y" | "width" | "height">;
 
+// Windows counts a window's invisible resize border, so a snapped window overhangs the display.
+const WINDOW_FRAME_OVERHANG = 16;
+
 function windowFitsWithinDisplay(
   windowBounds: DesktopAppSettings.DesktopWindowBounds,
   displayBounds: DisplayBounds,
 ): boolean {
+  const slack = WINDOW_FRAME_OVERHANG;
   return (
-    windowBounds.x >= displayBounds.x &&
-    windowBounds.y >= displayBounds.y &&
-    windowBounds.x + windowBounds.width <= displayBounds.x + displayBounds.width &&
-    windowBounds.y + windowBounds.height <= displayBounds.y + displayBounds.height
+    windowBounds.x >= displayBounds.x - slack &&
+    windowBounds.y >= displayBounds.y - slack &&
+    windowBounds.x + windowBounds.width <= displayBounds.x + displayBounds.width + slack &&
+    windowBounds.y + windowBounds.height <= displayBounds.y + displayBounds.height + slack
   );
 }
 

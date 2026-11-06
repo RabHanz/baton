@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
+import { isElectron } from "../../env";
 import { COMPOSER_DRAFT_STORAGE_KEY, useComposerDraftStore } from "../../composerDraftStore";
 import { resolveStorage } from "../../lib/storage";
 import type { ThreadRouteTarget } from "../../threadRoutes";
@@ -27,6 +28,14 @@ interface BatonPanesState extends PaneLayout {
   readonly arranged: boolean;
   /** Threads another window claimed; this window keeps the pane and shows no ChatView for them. */
   readonly ceded: ReadonlyArray<string>;
+  /**
+   * Decided once from the URL this page started on: only a desktop window opened at home resumes
+   * its panes. Web tabs share one layout, so there every tab would jump to the same thread.
+   */
+  readonly restorePending: boolean;
+  readonly settleRestore: () => void;
+  /** Any page but home has shown, so a later visit home is a choice, not a reopen. */
+  readonly noteLocation: (pathname: string) => void;
   readonly commitRoute: (route: ThreadRouteTarget) => void;
   readonly open: (route: ThreadRouteTarget, target: ThreadRouteTarget) => void;
   readonly close: (id: PaneSlotId) => void;
@@ -55,6 +64,12 @@ export const useBatonPanesStore = create<BatonPanesState>()(
         tree: null,
         arranged: false,
         ceded: [],
+        restorePending:
+          isElectron && typeof window !== "undefined" && startedAtHome(window.location.hash),
+        settleRestore: () => set({ restorePending: false }),
+        noteLocation: (pathname) => {
+          if (pathname !== "/" && get().restorePending) set({ restorePending: false });
+        },
         commitRoute: (route) => {
           const state = get();
           const next = resolvePaneLayout(state, route);
@@ -153,6 +168,10 @@ if (typeof window !== "undefined") {
       })),
     );
   });
+}
+
+export function startedAtHome(hash: string): boolean {
+  return hash === "" || hash === "#" || hash === "#/";
 }
 
 /** Opens a thread beside the current one. Outside a thread route it has nothing to sit beside. */

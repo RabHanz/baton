@@ -191,7 +191,7 @@ index 800f1e744c9d1247541fb308ba8fede7c9a27f19..f21d66c62ce9b5b242d6c53052d1a1cb
 +
 +exposeBatonDesktopBridge(); // Baton (vendor-patches/t3code/0007-desktop.patch)
 diff --git a/apps/desktop/src/window/DesktopWindow.test.ts b/apps/desktop/src/window/DesktopWindow.test.ts
-index 4f8949823e354618ba1eaf12694de9561cac99f7..36551babb71f446e6a7a07d03d999c7db00ee992 100644
+index 4f8949823e354618ba1eaf12694de9561cac99f7..e74d257e36fc4ab5e8f16885b58d1cb77544c830 100644
 --- a/apps/desktop/src/window/DesktopWindow.test.ts
 +++ b/apps/desktop/src/window/DesktopWindow.test.ts
 @@ -17,6 +17,7 @@ import { vi } from "vite-plus/test";
@@ -202,8 +202,21 @@ index 4f8949823e354618ba1eaf12694de9561cac99f7..36551babb71f446e6a7a07d03d999c7d
    session: {
      fromPartition: vi.fn(() => ({
        getUserAgent: vi.fn(() => "Mozilla/5.0 Electron/41.5.0 t3code/1.2.3"),
+@@ -477,6 +478,12 @@ describe("DesktopWindow", () => {
+       DesktopWindow.resolveInitialMainWindowBounds(persistedBounds, [displays[0]!]),
+       DesktopAppSettings.DEFAULT_MAIN_WINDOW_SIZE,
+     );
++    // Windows reports a snapped window with its invisible resize border past the display edge.
++    const snappedLeft = { x: -7, y: 0, width: 974, height: 1087 };
++    assert.deepEqual(
++      DesktopWindow.resolveInitialMainWindowBounds(snappedLeft, displays),
++      snappedLeft,
++    );
+   });
+ 
+   it("rejects renderer navigations whose origin only serializes as null", () => {
 diff --git a/apps/desktop/src/window/DesktopWindow.ts b/apps/desktop/src/window/DesktopWindow.ts
-index 292a3540d18bff63b6e37bf48d46d7478244d52f..031a286a3177edf32ad9aeb7e8e5fc5bd62570ba 100644
+index 292a3540d18bff63b6e37bf48d46d7478244d52f..2c8822e6b4b5b707f1198aab7dbe4352cc70dcbb 100644
 --- a/apps/desktop/src/window/DesktopWindow.ts
 +++ b/apps/desktop/src/window/DesktopWindow.ts
 @@ -13,6 +13,7 @@ import * as Electron from "electron";
@@ -214,7 +227,31 @@ index 292a3540d18bff63b6e37bf48d46d7478244d52f..031a286a3177edf32ad9aeb7e8e5fc5b
  import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
  import { makeComponentLogger } from "../app/DesktopObservability.ts";
  import * as DesktopState from "../app/DesktopState.ts";
-@@ -397,6 +398,17 @@ export const make = Effect.gen(function* () {
+@@ -148,15 +149,19 @@ function getInitialWindowBackgroundColor(shouldUseDarkColors: boolean): string {
+ 
+ type DisplayBounds = Pick<Electron.Rectangle, "x" | "y" | "width" | "height">;
+ 
++// Windows counts a window's invisible resize border, so a snapped window overhangs the display.
++const WINDOW_FRAME_OVERHANG = 16;
++
+ function windowFitsWithinDisplay(
+   windowBounds: DesktopAppSettings.DesktopWindowBounds,
+   displayBounds: DisplayBounds,
+ ): boolean {
++  const slack = WINDOW_FRAME_OVERHANG;
+   return (
+-    windowBounds.x >= displayBounds.x &&
+-    windowBounds.y >= displayBounds.y &&
+-    windowBounds.x + windowBounds.width <= displayBounds.x + displayBounds.width &&
+-    windowBounds.y + windowBounds.height <= displayBounds.y + displayBounds.height
++    windowBounds.x >= displayBounds.x - slack &&
++    windowBounds.y >= displayBounds.y - slack &&
++    windowBounds.x + windowBounds.width <= displayBounds.x + displayBounds.width + slack &&
++    windowBounds.y + windowBounds.height <= displayBounds.y + displayBounds.height + slack
+   );
+ }
+ 
+@@ -397,6 +402,17 @@ export const make = Effect.gen(function* () {
        yield* logWindowWarning("saved main window bounds could not be restored; using defaults");
      }
      if (yield* Ref.get(desktopState.quitting)) return Option.none();
@@ -232,7 +269,7 @@ index 292a3540d18bff63b6e37bf48d46d7478244d52f..031a286a3177edf32ad9aeb7e8e5fc5b
      const window = yield* electronWindow.create({
        ...initialBounds,
        minWidth: DesktopAppSettings.MIN_MAIN_WINDOW_SIZE.width,
-@@ -408,17 +420,7 @@ export const make = Effect.gen(function* () {
+@@ -408,17 +424,7 @@ export const make = Effect.gen(function* () {
        ...iconOption,
        title: environment.displayName,
        ...getWindowTitleBarOptions(shouldUseDarkColors, environment.platform),
@@ -251,7 +288,7 @@ index 292a3540d18bff63b6e37bf48d46d7478244d52f..031a286a3177edf32ad9aeb7e8e5fc5b
      });
      if (yield* Ref.get(desktopState.quitting)) {
        yield* electronWindow.destroyAll;
-@@ -522,26 +524,6 @@ export const make = Effect.gen(function* () {
+@@ -522,26 +528,6 @@ export const make = Effect.gen(function* () {
        yield* electronWindow.destroyAll;
        return Option.none();
      }
@@ -278,7 +315,7 @@ index 292a3540d18bff63b6e37bf48d46d7478244d52f..031a286a3177edf32ad9aeb7e8e5fc5b
  
      const contextMenuContents = new WeakSet<Electron.WebContents>();
      const installContextMenu = (
-@@ -619,33 +601,65 @@ export const make = Effect.gen(function* () {
+@@ -619,33 +605,65 @@ export const make = Effect.gen(function* () {
          installContextMenu(popup, popup.webContents);
        });
      };

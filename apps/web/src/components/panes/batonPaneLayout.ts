@@ -1,3 +1,4 @@
+import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 
 import type { ThreadRouteTarget } from "../../threadRoutes";
@@ -75,6 +76,56 @@ export function closePane(
     layout: { slots, focusedSlotId: neighbour.id },
     next: neighbour.target,
   };
+}
+
+/** What a pane's environment can do for it now: still coming up, usable, or not there at all. */
+export type PaneEnvironmentState = "connecting" | "ready" | "unreachable";
+
+export function paneEnvironmentState(input: {
+  readonly environmentsReady: boolean;
+  /** Null when the environment is not in the catalog. */
+  readonly phase: EnvironmentConnectionPhase | null;
+  readonly shellLive: boolean;
+}): PaneEnvironmentState {
+  if (!input.environmentsReady) return "connecting";
+  if (input.phase === "connecting" || input.phase === "reconnecting") return "connecting";
+  if (input.phase !== "connected") return "unreachable";
+  return input.shellLive ? "ready" : "connecting";
+}
+
+/** A pane with nothing to show waits only while something is actually on its way. */
+export function paneFallback(input: {
+  readonly environment: PaneEnvironmentState | null;
+  /** The route still looking its thread up on a usable environment. */
+  readonly threadPending: boolean;
+}): "loading" | "unavailable" {
+  if (input.environment === "connecting") return "loading";
+  return input.environment === "ready" && input.threadPending ? "loading" : "unavailable";
+}
+
+export type PaneRestore =
+  | { readonly kind: "wait" }
+  | { readonly kind: "stay" }
+  | { readonly kind: "go"; readonly target: ThreadRouteTarget };
+
+/**
+ * Where a window opened at home resumes: its focused pane, else the next pane in order, skipping
+ * threads that are gone or on environments it cannot reach. Waits while a better pane may load.
+ */
+export function resolvePaneRestore(
+  layout: PaneLayout,
+  inspect: (target: ThreadRouteTarget) => "ready" | "waiting" | "gone",
+): PaneRestore {
+  const focused = layout.slots.find((slot) => slot.id === layout.focusedSlotId);
+  const ordered = focused
+    ? [focused, ...layout.slots.filter((slot) => slot !== focused)]
+    : layout.slots;
+  for (const slot of ordered) {
+    const state = inspect(slot.target);
+    if (state === "waiting") return { kind: "wait" };
+    if (state === "ready") return { kind: "go", target: slot.target };
+  }
+  return { kind: "stay" };
 }
 
 /**
