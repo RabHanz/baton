@@ -30,6 +30,18 @@ describe("the assistant eval's grader", () => {
     expect(passes(named, { calls: [], reply: "It's ten." })).toBe(false);
   });
 
+  it("passes a recorded turn only when it reaches its goal tool within its calls", () => {
+    const recorded = { ...c, first: ["window_focus", "type_text"], goal: "type_text", maxCalls: 2 };
+    expect(passes(recorded, s("mcp__baton__window_focus", "mcp__baton__type_text"))).toBe(true);
+    expect(
+      passes(
+        recorded,
+        s("mcp__baton__window_focus", "mcp__baton__screenshot", "mcp__baton__type_text"),
+      ),
+    ).toBe(false);
+    expect(passes(recorded, s("mcp__baton__window_focus"))).toBe(false);
+  });
+
   it("fails a case when half or more of its samples fail", () => {
     expect(casePasses(c, [s("mcp__baton__session_send"), s()])).toBe(false);
     expect(casePasses(c, [s("mcp__baton__session_send"), s("mcp__baton__session_send"), s()])).toBe(

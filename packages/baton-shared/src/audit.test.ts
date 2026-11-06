@@ -63,6 +63,22 @@ describe("the audit trail", () => {
     expect(trail[2]?.summary).toContain("Created 2 rules.");
   });
 
+  it("leaves a turn's trace out: it is for learning, and the turn itself is already there", () => {
+    const row = (id: number, kind: string) => ({
+      id,
+      at: "2026-11-06T10:00:00.000Z",
+      kind,
+      actor: "Tessaya",
+      project: null,
+      ref: null,
+      subject: "type hello world into notepad",
+      outcome: "answered",
+      detail: "",
+    });
+    const trail = buildAuditTrail({ record: [row(1, "assistant_turn"), row(2, "turn_trace")] });
+    expect(trail.map((e) => e.kind)).toEqual(["assistant_turn"]);
+  });
+
   it("reads a refusal as a refusal", () => {
     const trail = buildAuditTrail({
       intents: [

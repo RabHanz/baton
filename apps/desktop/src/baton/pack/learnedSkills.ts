@@ -1,0 +1,293 @@
+// @effect-diagnostics nodeBuiltinImport:off
+/**
+ * Learning v0 on this machine: skills in his pack folder (`operating-system/skills/<slug>.md`), his
+ * decision on each in `skills.json`, and the turns kept to test them in `skills/.cases/`. A skill is
+ * written only from his words and fields code wrote, tested by replaying the turn with and without it,
+ * and used only after it passed and he tapped Accept.
+ */
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
+
+import {
+  matchSkills,
+  parseLearnedSkill,
+  parseSkillStates,
+  skillFileText,
+  skillFromWriter,
+  skillsBlock,
+  SKILLS_FOLDER,
+  verdict,
+  WRITER_SYSTEM,
+  writerInput,
+  type LearnedSkill,
+  type RecordedCase,
+  type Replay,
+  type SkillStates,
+  type TurnTrace,
+} from "@t3tools/baton-shared/skillLearning";
+
+import type { HomeControl } from "../home/batonHome.ts";
+
+const MAX_FILE_BYTES = 64 * 1024;
+export const REPLAY_SAMPLES = 3;
+
+const statesFile = (dir: string) => NodePath.join(dir, "skills.json");
+const casesDir = (dir: string) => NodePath.join(dir, ".cases");
+
+/** `dir` is the skills folder. Unreadable or malformed files are left out. */
+export const readSkills = (dir: string): ReadonlyArray<LearnedSkill> => {
+  let names: string[] = [];
+  try {
+    names = NodeFS.readdirSync(dir).filter((n) => n.endsWith(".md"));
+  } catch {
+    return [];
+  }
+  return names.flatMap((name) => {
+    try {
+      const file = NodePath.join(dir, name);
+      if (NodeFS.statSync(file).size > MAX_FILE_BYTES) return [];
+      const skill = parseLearnedSkill(NodeFS.readFileSync(file, "utf8"), name.slice(0, -3));
+      return skill === null ? [] : [skill];
+    } catch {
+      return [];
+    }
+  });
+};
+
+export const readStates = (dir: string): SkillStates => {
+  try {
+    return parseSkillStates(NodeFS.readFileSync(statesFile(dir), "utf8"));
+  } catch {
+    return {};
+  }
+};
+
+const writeStates = (dir: string, states: SkillStates) => {
+  NodeFS.mkdirSync(dir, { recursive: true });
+  NodeFS.writeFileSync(statesFile(dir), `${JSON.stringify(states, null, 2)}\n`);
+};
+
+export const skillsDirOf = (packDir: string) => NodePath.join(packDir, SKILLS_FOLDER);
+
+/** The skills for one sentence, and their block for the turn. */
+export const skillsForTurn = (
+  dir: string,
+  turn: Parameters<typeof matchSkills>[2],
+): { readonly slugs: ReadonlyArray<string>; readonly block: string } => {
+  const skills = matchSkills(readSkills(dir), readStates(dir), turn);
+  return { slugs: skills.map((s) => s.slug), block: skillsBlock(skills) };
+};
+
+/** Accept puts a tested skill to use; Reject keeps the no for 30 days so it is not offered again; Forget deletes it. */
+export const decideSkill = (
+  dir: string,
+  slug: string,
+  decision: "accept" | "reject" | "forget",
+  now: Date,
+): boolean => {
+  const states = readStates(dir);
+  const skill = readSkills(dir).find((s) => s.slug === slug);
+  if (skill === undefined) return false;
+  if (decision === "accept" && !skill.verified) return false;
+  const rest = Object.fromEntries(Object.entries(states).filter(([k]) => k !== slug));
+  if (decision === "forget") {
+    NodeFS.rmSync(NodePath.join(dir, `${slug}.md`), { force: true });
+    writeStates(dir, rest);
+    return true;
+  }
+  writeStates(dir, {
+    ...rest,
+    [slug]: {
+      state: decision === "accept" ? "accepted" : "rejected",
+      at: now.toISOString(),
+      uses: states[slug]?.uses ?? 0,
+    },
+  });
+  return true;
+};
+
+const REJECT_KEEP_MS = 30 * 24 * 60 * 60_000;
+
+/** The bare "What I've learned" list, with the button that learns from the last turn. */
+export const learnedControls = (
+  dir: string,
+  input: { readonly lastTurn: string | null; readonly busy: string | null; readonly now: Date },
+): ReadonlyArray<HomeControl> => {
+  const states = readStates(dir);
+  const section = "What I've learned";
+  const rows: HomeControl[] = [
+    {
+      id: "s.learn",
+      section,
+      label: "Learn from the last turn",
+      hint:
+        input.busy ??
+        (input.lastTurn === null
+          ? "Nothing to learn from yet."
+          : `Writes a skill from "${input.lastTurn.slice(0, 80)}", tests it on that turn, and shows it here for your yes.`),
+      kind: "action",
+      button: "Learn from that",
+      disabled: input.busy !== null || input.lastTurn === null,
+    },
+  ];
+  for (const skill of readSkills(dir)) {
+    const state = states[skill.slug];
+    if (
+      state?.state === "rejected" &&
+      input.now.getTime() - Date.parse(state.at) < REJECT_KEEP_MS
+    ) {
+      continue;
+    }
+    const accepted = state?.state === "accepted";
+    rows.push({
+      id: `s.learned:${skill.slug}`,
+      section,
+      label: `When ${skill.when}`,
+      hint: `${skill.body} ${skill.verified ? `Tested: ${skill.evidence}.` : "Not tested, so it is not used."}${accepted ? " In use." : " Waiting for your yes."}`,
+      kind: "action",
+      ...(accepted
+        ? { button: "Forget" }
+        : { button: "Accept", secondary: "Reject", disabled: !skill.verified }),
+    });
+  }
+  return rows;
+};
+
+/** `s.learned:<slug>` is the main button (Accept, or Forget once in use), `:later` is Reject. */
+export const learnedAction = (id: string) => {
+  const m = /^s\.learned:([a-z0-9-]+?)(:later)?$/.exec(id);
+  return m === null ? null : { slug: m[1]!, secondary: m[2] !== undefined };
+};
+
+export interface LastTurn {
+  readonly trace: TurnTrace;
+  readonly window: string | null;
+  readonly answers: Readonly<Record<string, string>>;
+  /** The tools this persona may use. */
+  readonly allowed: ReadonlyArray<string>;
+}
+
+const readCases = (dir: string): ReadonlyArray<RecordedCase> => {
+  try {
+    return NodeFS.readdirSync(casesDir(dir))
+      .filter((n) => n.endsWith(".json"))
+      .map(
+        (n) =>
+          JSON.parse(NodeFS.readFileSync(NodePath.join(casesDir(dir), n), "utf8")) as RecordedCase,
+      );
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * Learn from a turn: write a skill, replay the turn without and with it, replay every kept case it
+ * would be given to, and keep it (waiting for his yes) only if the turn got shorter and nothing broke.
+ * Returns a sentence for him.
+ */
+export const learnFromTurn = async (input: {
+  readonly dir: string;
+  readonly turn: LastTurn;
+  /** The writer: his words and code-written fields in, a skill out. */
+  readonly ask: (system: string, user: string) => Promise<string>;
+  /** One replay of a sentence with recorded answers; `extra` is added the way a matched skill is. */
+  readonly replay: (c: RecordedCase, extra?: string) => Promise<ReadonlyArray<string>>;
+  readonly now: Date;
+  readonly progress?: (line: string) => void;
+}): Promise<string> => {
+  const { trace } = input.turn;
+  if (trace.calls.length < 3 && trace.stoppedBy === null) {
+    return "That turn was already short, so there is nothing to learn from it.";
+  }
+  input.progress?.("Writing a skill from that turn…");
+  const written = skillFromWriter(
+    await input.ask(WRITER_SYSTEM, writerInput(trace, input.turn.allowed)),
+    trace,
+    input.turn.allowed,
+  );
+  if (!written.ok) return `I could not learn from that. ${written.why}`;
+  const skill = written.skill;
+  const states = readStates(input.dir);
+  const before = states[skill.slug];
+  if (
+    before?.state === "rejected" &&
+    input.now.getTime() - Date.parse(before.at) < REJECT_KEEP_MS
+  ) {
+    return `You said no to a skill for "${skill.when}" in the last 30 days, so I left it.`;
+  }
+  const done = [...trace.calls].toReversed().find((c) => c.ok) ?? trace.calls.at(-1);
+  const target: RecordedCase = {
+    id: `${skill.slug}-${input.now.getTime()}`,
+    said: trace.said,
+    window: input.turn.window,
+    persona: trace.persona,
+    answers: input.turn.answers,
+    goal: done?.tool ?? "none",
+    maxCalls: trace.calls.length,
+  };
+  const block = skillsBlock([skill]);
+  const run = async (c: RecordedCase, extra?: string): Promise<ReadonlyArray<Replay>> => {
+    const out: Replay[] = [];
+    for (let i = 0; i < REPLAY_SAMPLES; i += 1) {
+      const calls = await input.replay(c, extra).catch(() => ["error"]);
+      out.push({
+        reached: calls.some((t) => t.replace(/^mcp__baton__/, "") === c.goal),
+        calls: calls.length,
+      });
+    }
+    return out;
+  };
+  input.progress?.("Testing it on that turn…");
+  const without = await run(target);
+  const withSkill = await run(target, block);
+  // Only the kept cases this skill would be given to can change.
+  const others = readCases(input.dir).filter(
+    (c) =>
+      matchSkills(
+        [{ ...skill, verified: true }],
+        { [skill.slug]: { state: "accepted", at: "", uses: 0 } },
+        {
+          text: c.said,
+          app: skill.apps[0] ?? null,
+          persona: c.persona,
+          project: skill.project,
+        },
+      ).length > 0,
+  );
+  const otherResults = [];
+  for (const c of others) {
+    const passes = (r: ReadonlyArray<Replay>) =>
+      r.filter((x) => x.reached && x.calls <= c.maxCalls).length * 2 > r.length;
+    otherResults.push({ before: passes(await run(c)), after: passes(await run(c, block)) });
+  }
+  const result = verdict({ without, with: withSkill, others: otherResults });
+  if (!result.pass)
+    return `I tried a skill for "${skill.when}", but it did not help (${result.evidence}), so I did not keep it.`;
+  NodeFS.mkdirSync(casesDir(input.dir), { recursive: true });
+  const after = withSkill
+    .filter((r) => r.reached)
+    .map((r) => r.calls)
+    .toSorted((a, b) => a - b);
+  // The fixed turn stays as a case, held to what the skill achieved.
+  NodeFS.writeFileSync(
+    NodePath.join(casesDir(input.dir), `${target.id}.json`),
+    JSON.stringify({ ...target, maxCalls: after.at(-1) ?? target.maxCalls }),
+  );
+  const file = NodePath.join(input.dir, `${skill.slug}.md`);
+  if (NodeFS.existsSync(file)) {
+    NodeFS.mkdirSync(NodePath.join(input.dir, ".history"), { recursive: true });
+    NodeFS.copyFileSync(
+      file,
+      NodePath.join(input.dir, ".history", `${skill.slug}-${input.now.getTime()}.md`),
+    );
+  }
+  NodeFS.writeFileSync(
+    file,
+    skillFileText({ ...skill, verified: true, evidence: result.evidence }),
+  );
+  writeStates(input.dir, {
+    ...states,
+    [skill.slug]: { state: "waiting", at: input.now.toISOString(), uses: 0 },
+  });
+  return `I learned a skill for "${skill.when}" and tested it: ${result.evidence}. It waits for your yes under What I've learned.`;
+};

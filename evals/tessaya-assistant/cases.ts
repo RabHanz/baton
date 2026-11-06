@@ -20,6 +20,9 @@ export interface AssistantCase {
   readonly answers?: Readonly<Record<string, string>>;
   /** The window he is using; Notepad when left out. */
   readonly window?: string;
+  /** A recorded turn: it passes only when it reaches this tool within `maxCalls` calls. */
+  readonly goal?: string;
+  readonly maxCalls?: number;
 }
 
 const row = (
@@ -160,6 +163,18 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     window: "chrome.exe: New Tab - Google Chrome",
     first: ["type_text"],
     not: ["screen_capture", "click", "Bash", "PowerShell"],
+  },
+  {
+    id: "notepad-behind-chrome-path",
+    source:
+      "Learning v0: the same turn replayed with type_text's recorded answer; it must reach type_text in at most two calls",
+    said: "type hello world into notepad",
+    window: "chrome.exe: New Tab - Google Chrome",
+    first: ["type_text", "ui_tree", "window_focus"],
+    not: ["screen_capture", "click", "Bash", "PowerShell"],
+    answers: { type_text: "Typed 11 characters into Notepad (notepad.exe: Untitled - Notepad)." },
+    goal: "type_text",
+    maxCalls: 2,
   },
   {
     id: "other-monitor",
