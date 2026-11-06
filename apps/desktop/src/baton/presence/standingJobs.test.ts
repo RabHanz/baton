@@ -1,17 +1,19 @@
-// @effect-diagnostics nodeBuiltinImport:off
+// @effect-diagnostics nodeBuiltinImport:off globalDate:off
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import type { BatonJob, WatchFinding } from "@t3tools/baton-contracts";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
   createStandingStore,
   EMPTY_STANDING,
+  latestRuns,
   migrateStanding,
   missedRunOf,
   runStandingJobs,
+  statusOf,
   type StandingInput,
   type StandingOps,
   type StandingState,
@@ -252,5 +254,74 @@ describe("standing jobs", () => {
     await runStandingJobs(input({ hour: 5 }), ops);
     await runStandingJobs(input({ quiet: true }), ops);
     expect(log.briefs).toBe(0);
+  });
+
+  it("records each run's status: ok, error, timed out, or cancelled when One Trust held it", async () => {
+    const { ops } = fakes();
+    const failing: StandingOps = {
+      ...ops,
+      learn: async () => Promise.reject(new Error("no model")),
+    };
+    const errored = await runStandingJobs(input({ hour: 3 }), failing);
+    expect(errored.did.find((d) => d.id === "nightly_learning")?.status).toBe("error");
+    const held = await runStandingJobs(input({ hour: 3, refusal: () => "asks first" }), ops);
+    expect(held.did.every((d) => d.status === "cancelled")).toBe(true);
+    // Runs saved before statuses existed read from their outcome.
+    expect(statusOf({ id: "ci_look", key: "k", at: 0, outcome: "failed", text: "" })).toBe("error");
+  });
+
+  it("ends a run that runs out of time, and tells its op so it does nothing late", async () => {
+    const { ops } = fakes();
+    let seen: AbortSignal | null = null;
+    const stuck: StandingOps = {
+      ...ops,
+      learn: (signal) => {
+        seen = signal;
+        return new Promise(() => undefined);
+      },
+    };
+    vi.useFakeTimers();
+    try {
+      const pass = runStandingJobs(input({ hour: 3, runTimeoutMs: 60_000 }), stuck);
+      await vi.advanceTimersByTimeAsync(60_000);
+      const timed = await pass;
+      const run = timed.did.find((d) => d.id === "nightly_learning")!;
+      expect(statusOf(run)).toBe("timeout");
+      expect(run.text).toContain("Timed out");
+      expect(seen!.aborted).toBe(true);
+      expect(latestRuns(timed.state)[0]?.id).toBe(timed.state.runs.at(-1)?.id);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps an event job quiet when the same failure repeats, but not after a fix, nor after six hours", async () => {
+    const { log, ops } = fakes();
+    const quiet: StandingState = { ...allOn, quiet: { ci_look: true } };
+    const first = await runStandingJobs(input({ state: quiet, ci: [ci(1)] }), ops);
+    expect(log.looked).toHaveLength(1);
+    const later = (runId: number, minutes: number, conclusion = "failure") => ({
+      ...ci(runId),
+      conclusion,
+      createdAt: new Date(Date.parse("2026-11-03T08:00:00Z") + minutes * 60_000).toISOString(),
+    });
+    // The same workflow on the same branch fails again: kept, said nothing, started nothing.
+    const again = await runStandingJobs(input({ state: first.state, ci: [later(2, 30)] }), ops);
+    expect(log.looked).toHaveLength(1);
+    expect(again.did.at(-1)?.text).toMatch(/^Unchanged: /);
+    // It went green, then failed anew: that is news.
+    await runStandingJobs(
+      input({ state: again.state, ci: [later(3, 40, "success"), later(4, 50)] }),
+      ops,
+    );
+    expect(log.looked).toHaveLength(2);
+    // The same failure seven hours on is reported again.
+    const fresh = fakes();
+    const one = await runStandingJobs(input({ state: quiet, ci: [ci(1)] }), fresh.ops);
+    await runStandingJobs(
+      input({ state: one.state, now: NOW + 7 * 3_600_000, ci: [later(5, 60)] }),
+      fresh.ops,
+    );
+    expect(fresh.log.looked).toHaveLength(2);
   });
 });

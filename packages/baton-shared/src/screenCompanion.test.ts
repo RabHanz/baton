@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  rememberOutside,
   teachShouldLook,
   TEACH_LOOK_ANYWAY,
   captureSize,
@@ -263,5 +264,13 @@ describe("keys are judged when they are sent, not only when they were allowed", 
   it("reads a long command line in linear time", () => {
     // Quadratic, this took half a minute and the test would time out.
     expect(dangerousCommand("del ".repeat(10_000))).toBe(false);
+  });
+});
+
+describe("words that are not his", () => {
+  it("are remembered, the oldest dropped past the cap", () => {
+    const said = new Set<string>();
+    for (const t of ["a", "b", "c"]) rememberOutside(said, t, 2);
+    expect([...said]).toEqual(["b", "c"]);
   });
 });

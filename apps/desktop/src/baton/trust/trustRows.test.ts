@@ -178,6 +178,28 @@ describe("trust page", () => {
     expect(trustAction("trust.missed:morning_brief", "later")).toBeNull();
   });
 
+  it("offers quiet unless changed for an event job, and reads the switch", () => {
+    const ciLook = {
+      kind: "built_in" as const,
+      id: "ci_look",
+      title: "When a build fails",
+      what: "Looks.",
+      owner: "Tessaya",
+      on: true,
+      count: 1,
+      quiet: true,
+    };
+    const row = trustControls(data({ standing: [ciLook] }), NOW).find(
+      (c) => c.id === "trust.quiet:ci_look",
+    );
+    expect(row?.kind === "toggle" && row.on).toBe(true);
+    expect(trustAction("trust.quiet:ci_look", false)).toEqual({
+      kind: "quiet",
+      id: "ci_look",
+      on: false,
+    });
+  });
+
   it("filters the log", () => {
     const logRows = (filter: TrustData["filter"]) =>
       trustControls(data({ filter }), NOW).filter((c) => c.id.startsWith("trust.log:"));
