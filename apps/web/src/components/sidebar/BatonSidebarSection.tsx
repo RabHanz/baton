@@ -42,6 +42,7 @@ import {
 } from "../../providerInstances";
 import { useProjects } from "../../state/entities";
 import { usePrimaryEnvironmentId } from "../../state/environments";
+import { weaveAcross } from "./batonWeaveAcross";
 import { environmentServerConfigsAtom } from "../../state/server";
 import { useBatonFleets } from "../../state/batonWorkSessions";
 import { batonWorkSessions } from "../../state/batonWorkSessions";
@@ -304,19 +305,35 @@ export function BatonSidebarSection(props: {
   };
   const onWeave = async (request: BatonWeaveBridgeRequest): Promise<unknown> => {
     const commands = { send: weaveSend, list: weaveList, tick: weaveTick };
-    const run = commands[request.op] as unknown as (call: {
-      readonly environmentId: typeof primary;
-      readonly input: never;
-    }) => Promise<
-      | { readonly _tag: "Success"; readonly value: unknown }
-      | ({ readonly _tag: "Failure" } & Parameters<typeof squashAtomCommandFailure>[0])
-    >;
-    const result = await run({ environmentId: primary, input: request.args as never });
-    if (result._tag === "Success") return result.value;
-    const reason = (squashAtomCommandFailure(result) as { reason?: unknown } | null)?.reason;
-    throw new Error(
-      typeof reason === "string" ? reason : "Weaving did not answer. Nothing was sent.",
-    );
+    const environments = [memoryHome, ...fleet.environmentIds.filter((id) => id !== memoryHome)]
+      .filter((id) => id !== undefined)
+      .map((id) => ({ id: id as string, label: fleet.resolveEnvironmentLabel(id) ?? id }));
+    return weaveAcross(request, environments, async (environmentId, op, args) => {
+      const run = commands[op] as unknown as (call: {
+        readonly environmentId: EnvironmentId;
+        readonly input: never;
+      }) => Promise<
+        | { readonly _tag: "Success"; readonly value: unknown }
+        | ({ readonly _tag: "Failure" } & Parameters<typeof squashAtomCommandFailure>[0])
+      >;
+      const result = await run({
+        environmentId: environmentId as EnvironmentId,
+        input: args as never,
+      });
+      if (result._tag === "Success") return { ok: true, value: result.value };
+      const error = squashAtomCommandFailure(result) as {
+        reason?: unknown;
+        missing?: unknown;
+      } | null;
+      return {
+        ok: false,
+        reason:
+          typeof error?.reason === "string"
+            ? error.reason
+            : "Weaving did not answer. Nothing was sent.",
+        missing: error?.missing === true,
+      };
+    });
   };
   const onCloud = async (request: BatonCloudBridgeRequest): Promise<unknown> => {
     if (request.op === "environments") {

@@ -40,8 +40,9 @@ describe("weave rules", () => {
     const list = [c("build"), c("build-docs"), c("research")];
     expect(resolveTarget("build", list)).toMatchObject({ ok: true, target: { label: "build" } });
     expect(resolveTarget("res", list)).toMatchObject({ ok: true, target: { label: "research" } });
-    expect(resolveTarget("bui", list)).toMatchObject({ ok: false });
-    expect(resolveTarget("nope", list)).toMatchObject({ ok: false });
+    // Two fit: said, and not "missing", so a client does not try its other computers.
+    expect(resolveTarget("bui", list)).toEqual({ ok: false, why: expect.any(String) });
+    expect(resolveTarget("nope", list)).toMatchObject({ ok: false, missing: true });
   });
 
   it("types only into an empty input; a draft or no prompt at all waits", () => {

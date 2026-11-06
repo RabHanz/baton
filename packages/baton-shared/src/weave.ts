@@ -52,7 +52,7 @@ export const resolveTarget = (
   candidates: ReadonlyArray<Candidate>,
 ):
   | { readonly ok: true; readonly target: Candidate }
-  | { readonly ok: false; readonly why: string } => {
+  | { readonly ok: false; readonly why: string; readonly missing?: true } => {
   const want = name.trim().toLowerCase();
   if (want === "") return { ok: false, why: "which session?" };
   const exact = candidates.filter((c) => c.label.toLowerCase() === want || c.pane === name.trim());
@@ -61,7 +61,7 @@ export const resolveTarget = (
     exact.length > 1 ? exact : candidates.filter((c) => c.label.toLowerCase().includes(want));
   if (part.length === 1) return { ok: true, target: part[0]! };
   if (part.length === 0) {
-    return { ok: false, why: `no session is called "${name}" here now` };
+    return { ok: false, why: `no session is called "${name}" here now`, missing: true };
   }
   return {
     ok: false,

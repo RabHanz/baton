@@ -33,7 +33,6 @@ const EMPTY_TRUST: TrustData = {
   remote: false,
   vault: "none",
   grants: [],
-  weaveHosts: [],
   standing: [],
   entries: [],
   filter: "all",

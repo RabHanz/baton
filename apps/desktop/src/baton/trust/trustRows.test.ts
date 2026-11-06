@@ -66,7 +66,6 @@ const data = (over: Partial<TrustData> = {}): TrustData => ({
   remote: true,
   vault: "unlocked",
   grants: [{ jobId: "j1", title: "Site", channel: "retry", since: "2026-11-01T00:00:00Z" }],
-  weaveHosts: ["office"],
   standing: [
     {
       kind: "built_in",

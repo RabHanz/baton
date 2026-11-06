@@ -43,6 +43,8 @@ export const BatonWeaveTickResult = Schema.Struct({
 /** Said in plain words: no such session, a secret, a name that fits two. */
 export class BatonWeaveError extends Schema.TaggedError<BatonWeaveError>()("BatonWeaveError", {
   reason: Schema.String,
+  /** No session by that name here, so a client may try its other environments. */
+  missing: Schema.optionalKey(Schema.Boolean),
 }) {
   override get message(): string {
     return this.reason;

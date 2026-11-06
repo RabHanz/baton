@@ -75,7 +75,6 @@ import { buildApprovals, describeApprovals } from "@t3tools/baton-shared/approva
 import { releasesUrl, repoSlug } from "@t3tools/baton-shared/repo";
 import { answerNeeds } from "../presence/needsAnswer.ts";
 import { describeWeaves, type WeaveRecord } from "@t3tools/baton-shared/weave";
-import { parseWeaveHosts } from "@t3tools/baton-shared/weaveBoxes";
 import {
   HOLD_KEY_CHOICES,
   resumeStep,
@@ -4724,7 +4723,6 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             count: j.usage?.turns ?? 0,
           })),
       ],
-      weaveHosts: parseWeaveHosts(input.env["BATON_WEAVE_HOSTS"]).hosts.map((h) => h.name),
       entries: parseTrustLogs({
         turns: tailOf(NodePath.join(input.logDir, "voice-turns.ndjson")),
         social: tailOf(NodePath.join(input.stateDir, "social-actions.ndjson")),
