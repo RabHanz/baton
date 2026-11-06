@@ -67,6 +67,7 @@ export interface RemoteHandsDeps {
     readonly update: (version: string) => Promise<string>;
     readonly pages: ReadonlyArray<string>;
     readonly openPage: (page: string) => Promise<string>;
+    readonly assistantModel: (model: string | null, effort: string | null) => Promise<string>;
   };
   readonly newId?: () => string;
 }
@@ -188,6 +189,7 @@ export const buildRemoteHandsTools = (deps: RemoteHandsDeps): ReadonlyArray<Bato
     send: async () => "none",
     fleet: async () => "none",
     dictation: async () => "none",
+    assistantModel: (model, effort) => deps.ops.assistantModel(model, effort),
     memory: async () => "none",
     remember: async () => "none",
     forget: async () => "none",

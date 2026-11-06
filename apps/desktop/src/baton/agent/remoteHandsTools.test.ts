@@ -37,6 +37,7 @@ const make = (
       update: async (v) => `updating to ${v}`,
       pages: ["settings", "home"],
       openPage: async (p) => `opened ${p}`,
+      assistantModel: async (m, e) => `model ${m} ${e}`,
     },
     newId: (() => {
       let n = 0;

@@ -47,6 +47,7 @@ const rig = async (opts: { yes: boolean; his?: (t: string) => boolean; window?: 
     send: async () => "",
     fleet: async () => "",
     dictation: async () => "",
+    assistantModel: async () => "",
     memory: async () => "",
     target: async () => "",
   };

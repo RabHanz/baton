@@ -38,7 +38,7 @@ const QUESTION_START =
   /^(?:what|what's|whats|who|who's|when|where|which|how many|how much|how old|how far|how long|is|are|was|does|do|did|can you tell me)\b/;
 /** Doing something, or looking at the screen: never the fast model. */
 const ACTION =
-  /\b(?:type|click|press|open|close|save|send|tell|ask|start|stop|make|create|write|draft|edit|change|move|delete|remove|fix|run|book|buy|pay|install|remind|schedule|set|turn|switch|fill|copy|paste|reply|email|message|post|split|screen|monitor|window|see|look|showing|teach)\b/;
+  /\b(?:approve|reject|merge|deploy|kill|transfer|roll back|rollback|cancel|type|click|press|open|close|save|send|tell|ask|start|stop|make|create|write|draft|edit|change|move|delete|remove|fix|run|book|buy|pay|install|remind|schedule|set|turn|switch|fill|copy|paste|reply|email|message|post|split|screen|monitor|window|see|look|showing|teach)\b/;
 /** Planning, research or a judgement call. */
 const DEEP =
   /\b(?:plan|planning|figure out|work out|think through|break (?:it|this|that) down|strategy|strategi[sz]e|organi[sz]e|prioriti[sz]e|take on a job|job|split (?:it|the|this)|for me|step by step|research|investigate|compare|review|refactor|migrate|debug|should i|what do you think|your (?:advice|opinion|view)|pros and cons|trade.?offs?|decide|weigh up)\b/;
@@ -58,10 +58,13 @@ const plain = (text: string): string =>
 
 /** The tier this sentence needs on its own, and why. */
 export const tierOfSentence = (said: string): { readonly tier: TurnTier; readonly why: string } => {
-  const t = plain(said);
+  // "look, what needs me" opens with a word that is not an action, set off by its comma.
+  const t = plain(said.replace(/^\s*(?:look|listen|so|well|right|okay|ok),\s*/i, ""));
   if (words(t) > 30) return { tier: "deep", why: "long request" };
   if (DEEP.test(t)) return { tier: "deep", why: "planning or judgement" };
   if (ACTION.test(t) && CHAIN.test(t)) return { tier: "deep", why: "several steps" };
+  // Before the fast checks: "what needs me? approve the first one" is an action, not a status question.
+  if (ACTION.test(t)) return { tier: "default", why: "an action" };
   if (CLOCK.test(t)) return { tier: "fast", why: "time or date" };
   if (STATUS.test(t)) return { tier: "fast", why: "status" };
   if (GREETING.test(t)) return { tier: "fast", why: "greeting" };
@@ -70,6 +73,52 @@ export const tierOfSentence = (said: string): { readonly tier: TurnTier; readonl
     return { tier: "fast", why: "short question" };
   return { tier: "default", why: "default" };
 };
+
+/** A model or effort he picked himself (voice, tray, settings, a tool): it holds until he says "back to normal". */
+export type ManualModel = "haiku" | "sonnet" | "opus";
+export type ManualEffort = "low" | "medium" | "high";
+export interface ManualBrain {
+  readonly model: ManualModel | null;
+  readonly effort: ManualEffort | null;
+}
+export const AUTOMATIC: ManualBrain = { model: null, effort: null };
+export const isAutomatic = (manual: ManualBrain): boolean =>
+  manual.model === null && manual.effort === null;
+
+const USE_MODEL =
+  /^(?:please )?(?:use|switch to|change to|go to|move to|try) (?:the )?(haiku|sonnet|opus)(?: model)?(?: please| from now on| for now| instead)?$/;
+const HARDER =
+  /^(?:think (?:harder|more|deeper|longer|it through)|take (?:more|your) time|try harder)(?: please)?$/;
+const FASTER = /^(?:go faster|be (?:quicker|faster)|speed up|faster|quicker)(?: please)?$/;
+const NORMAL =
+  /^(?:go )?(?:back to normal|back to automatic|automatic model|reset the model|pick the model yourself|choose the model yourself)(?: please)?$/;
+
+/** The choice a sentence makes when all it does is change how he is answered, or null for any other sentence. */
+export const modelCommand = (said: string, current: ManualBrain): ManualBrain | null => {
+  const t = plain(said);
+  const named = USE_MODEL.exec(t)?.[1] as ManualModel | undefined;
+  if (named !== undefined) return { model: named, effort: current.effort };
+  if (HARDER.test(t)) return { model: current.model ?? "opus", effort: "high" };
+  if (FASTER.test(t)) return { model: "haiku", effort: "low" };
+  if (NORMAL.test(t)) return AUTOMATIC;
+  return null;
+};
+
+const title = (word: string) => word.charAt(0).toUpperCase() + word.slice(1);
+/** For the tray, settings and his ears: "Automatic", "Opus", "Opus, high effort", "High effort". */
+export const manualLabel = (manual: ManualBrain): string =>
+  isAutomatic(manual)
+    ? "Automatic"
+    : [
+        manual.model === null ? null : title(manual.model),
+        manual.effort === null
+          ? null
+          : manual.model === null
+            ? `${title(manual.effort)} effort`
+            : `${manual.effort} effort`,
+      ]
+        .filter((part) => part !== null)
+        .join(", ");
 
 /** The persona's own model as a tier, or null for a model these rules do not know (kept as it is). */
 const ceilingOf = (brain: Brain): TurnTier | null => {
@@ -90,7 +139,19 @@ export const chooseTurnBrain = (
   said: string,
   ceiling: Brain,
   previous: TurnTier | null = null,
+  manual: ManualBrain = AUTOMATIC,
 ): TurnChoice => {
+  const auto = autoTurnBrain(said, ceiling, previous);
+  // His own choice wins over the rules and the persona's ceiling: he asked for it.
+  if (isAutomatic(manual)) return auto;
+  return {
+    tier: auto.tier,
+    brain: { model: manual.model ?? auto.brain.model, effort: manual.effort ?? auto.brain.effort },
+    why: `his choice (${manualLabel(manual)})`,
+  };
+};
+
+const autoTurnBrain = (said: string, ceiling: Brain, previous: TurnTier | null): TurnChoice => {
   const top = ceilingOf(ceiling);
   if (top === null) return { tier: "deep", brain: ceiling, why: "persona's own model" };
   const own = tierOfSentence(said);
@@ -106,11 +167,41 @@ export const chooseTurnBrain = (
   };
 };
 
-/** Every model a persona's turns can land on, so each can be kept warm. */
-export const tierBrains = (ceiling: Brain): ReadonlyArray<Brain> => {
+/**
+ * Every model a persona's turns can land on, so each can be kept warm, `first` first: that one is warmed at
+ * once and the rest after its first answer, so a wake never starts three sessions together.
+ */
+export const tierBrains = (
+  ceiling: Brain,
+  manual: ManualBrain = AUTOMATIC,
+  first: TurnTier = "default",
+): ReadonlyArray<Brain> => {
+  if (manual.model !== null) return [{ model: manual.model, effort: manual.effort ?? "medium" }];
   const top = ceilingOf(ceiling);
-  if (top === null) return [ceiling];
-  return TIERS.slice(0, TIERS.indexOf(top) + 1).map((tier) =>
-    tier === top ? ceiling : brainFor(tier, ceiling),
-  );
+  const all =
+    top === null
+      ? [{ tier: "deep" as TurnTier, brain: ceiling }]
+      : TIERS.slice(0, TIERS.indexOf(top) + 1).map((tier) => ({
+          tier,
+          brain: tier === top ? ceiling : brainFor(tier, ceiling),
+        }));
+  const own = (brain: Brain) =>
+    manual.effort === null ? brain : { model: brain.model, effort: manual.effort };
+  const lead = all.find((b) => b.tier === first) ?? all.at(-1)!;
+  return [lead, ...all.filter((b) => b !== lead)].map((b) => own(b.brain));
+};
+
+/** A bare yes or thanks this soon after a turn has finished answers it, on the same model. */
+export const TIER_CARRY_MS = 2 * 60_000;
+
+/** The last turn's tier, timed from when its answer settled: a long plan's "go ahead" comes after it ends, not after it began. */
+export const createTierMemory = (now: () => number = Date.now) => {
+  let last: { readonly tier: TurnTier; readonly at: number } | null = null;
+  return {
+    previous: (): TurnTier | null =>
+      last !== null && now() - last.at < TIER_CARRY_MS ? last.tier : null,
+    settled: (tier: TurnTier) => {
+      last = { tier, at: now() };
+    },
+  };
 };

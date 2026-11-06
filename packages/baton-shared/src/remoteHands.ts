@@ -20,6 +20,7 @@ export const REMOTE_HANDS_TOOLS: ReadonlySet<string> = new Set([
   "process_stop",
   "app_update",
   "open_page",
+  "assistant_model",
 ]);
 
 export const ARGS_MAX_BYTES = 20_000;

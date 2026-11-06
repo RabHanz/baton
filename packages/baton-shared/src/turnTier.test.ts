@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { chooseTurnBrain, tierBrains, tierOfSentence } from "./turnTier.ts";
+import {
+  AUTOMATIC,
+  TIER_CARRY_MS,
+  chooseTurnBrain,
+  createTierMemory,
+  manualLabel,
+  modelCommand,
+  tierBrains,
+  tierOfSentence,
+} from "./turnTier.ts";
 
 const opus = { model: "opus", effort: "medium" };
 const sonnet = { model: "sonnet", effort: "medium" };
@@ -23,6 +32,12 @@ describe("which model answers a chat turn", () => {
     ["what did your standing jobs do today?", "fast"],
     ["type hello world into notepad and save it", "deep"],
     ["should I move the launch to Friday?", "deep"],
+    // An action said with a fast question is still an action, with tools: never the fast model.
+    ["what needs me? approve the first one", "default"],
+    ["what's the time, remind me at five to call mum", "default"],
+    ["how much is in the account, transfer it", "default"],
+    ["is the build green? merge it", "default"],
+    ["roll back the deploy", "default"],
   ])("%s -> %s", (said, tier) => {
     expect(tierOfSentence(said).tier).toBe(tier);
   });
@@ -48,8 +63,71 @@ describe("which model answers a chat turn", () => {
     expect(chooseTurnBrain("what time is it", opus, "deep").tier).toBe("fast");
   });
 
-  it("warms every model a persona's turns can land on", () => {
-    expect(tierBrains(opus).map((b) => b.model)).toEqual(["haiku", "sonnet", "opus"]);
-    expect(tierBrains(sonnet)).toEqual([{ model: "haiku", effort: "low" }, sonnet]);
+  it("warms every model a persona's turns can land on, the likeliest first", () => {
+    expect(tierBrains(opus).map((b) => b.model)).toEqual(["sonnet", "haiku", "opus"]);
+    expect(tierBrains(opus, AUTOMATIC, "deep").map((b) => b.model)).toEqual([
+      "opus",
+      "haiku",
+      "sonnet",
+    ]);
+    expect(tierBrains(sonnet)).toEqual([sonnet, { model: "haiku", effort: "low" }]);
+    expect(tierBrains(opus, { model: "opus", effort: "high" })).toEqual([
+      { model: "opus", effort: "high" },
+    ]);
+  });
+
+  it("carries a yes from when the last answer settled, not from when it began", () => {
+    let now = 0;
+    const memory = createTierMemory(() => now);
+    // A plan that took five minutes to write: "go ahead" a minute after it ends still answers it.
+    now = 5 * 60_000;
+    memory.settled("deep");
+    now += 60_000;
+    expect(chooseTurnBrain("go ahead", opus, memory.previous()).brain).toEqual(opus);
+    now += TIER_CARRY_MS;
+    expect(memory.previous()).toBeNull();
+  });
+});
+
+describe("his own choice of model and effort", () => {
+  it.each([
+    ["use Opus", { model: "opus", effort: null }],
+    ["switch to sonnet please", { model: "sonnet", effort: null }],
+    ["think harder", { model: "opus", effort: "high" }],
+    ["go faster", { model: "haiku", effort: "low" }],
+    ["back to normal", AUTOMATIC],
+    ["use opus to plan my week", null],
+    ["what is opus", null],
+  ])("%s", (said, choice) => {
+    expect(modelCommand(said, AUTOMATIC)).toEqual(choice);
+  });
+
+  it("keeps the other half of the choice: a named model keeps his effort, harder keeps his model", () => {
+    expect(modelCommand("use sonnet", { model: "opus", effort: "high" })).toEqual({
+      model: "sonnet",
+      effort: "high",
+    });
+    expect(modelCommand("think harder", { model: "sonnet", effort: null })).toEqual({
+      model: "sonnet",
+      effort: "high",
+    });
+  });
+
+  it("overrides the rules and the persona's model until he resets it", () => {
+    expect(
+      chooseTurnBrain("what time is it", sonnet, null, { model: "opus", effort: null }),
+    ).toMatchObject({
+      brain: { model: "opus", effort: "low" },
+      why: "his choice (Opus)",
+    });
+    expect(
+      chooseTurnBrain("plan my week", opus, null, { model: null, effort: "high" }).brain,
+    ).toEqual({
+      model: "opus",
+      effort: "high",
+    });
+    expect(chooseTurnBrain("what time is it", opus, null, AUTOMATIC).brain.model).toBe("haiku");
+    expect(manualLabel({ model: "opus", effort: "high" })).toBe("Opus, high effort");
+    expect(manualLabel({ model: null, effort: "low" })).toBe("Low effort");
   });
 });

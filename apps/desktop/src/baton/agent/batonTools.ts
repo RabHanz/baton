@@ -75,6 +75,8 @@ export interface ToolHost {
   readonly send: (id: string, text: string) => Promise<string>;
   readonly fleet: () => Promise<string>;
   readonly dictation: (on: boolean) => Promise<string>;
+  /** His choice of model and effort for chat turns ("auto" hands it back to the rules); null leaves that half as it is. */
+  readonly assistantModel: (model: string | null, effort: string | null) => Promise<string>;
   readonly memory: (query: string) => Promise<string>;
   readonly remember: (text: string) => Promise<string>;
   readonly forget: (id: string) => Promise<string>;
@@ -631,6 +633,21 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
       description: "Start dictation into the focused field. He says stop dictating to end it.",
       inputSchema: object({}),
       run: async () => ({ text: await host.dictation(true) }),
+    },
+    {
+      name: "assistant_model",
+      description:
+        "Set which model and effort answer his chat turns from now on, until he says back to normal (auto). Only when he asks for it. With no arguments, says what is set.",
+      inputSchema: object({
+        model: { enum: ["auto", "haiku", "sonnet", "opus"] },
+        effort: { enum: ["auto", "low", "medium", "high"] },
+      }),
+      run: async (a) => ({
+        text: await host.assistantModel(
+          a["model"] === undefined ? null : str(a, "model", 20),
+          a["effort"] === undefined ? null : str(a, "effort", 20),
+        ),
+      }),
     },
     {
       name: "dictation_stop",

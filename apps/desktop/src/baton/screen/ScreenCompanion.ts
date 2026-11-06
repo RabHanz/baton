@@ -26,7 +26,14 @@ import { createTransformStore } from "../writing/transformStore.ts";
 import { changedFrom, writeJsonFile } from "../writing/jsonStore.ts";
 import { PACK_FOLDER, readPack } from "../pack/packRows.ts";
 import { DEFAULT_ROUTING, parseRouting } from "@t3tools/baton-shared/costRouting";
-import { chooseTurnBrain, tierBrains, type TurnTier } from "@t3tools/baton-shared/turnTier";
+import {
+  chooseTurnBrain,
+  createTierMemory,
+  manualLabel,
+  modelCommand,
+  tierBrains,
+  type ManualBrain,
+} from "@t3tools/baton-shared/turnTier";
 import { HOTKEY_PREFIX, hotkeyFor } from "../writing/transformRows.ts";
 import { redactFocusLabel } from "@t3tools/baton-shared/awareness";
 import { detectSecret } from "@t3tools/baton-shared/memory";
@@ -189,6 +196,9 @@ interface ScreenSettings {
   readonly brainChosen: boolean;
   /** The config directory of the Claude login the assistant uses; null follows his `claude`. */
   readonly assistantAccount: string | null;
+  /** His own choice of model and effort for chat turns; "auto" leaves it to the turn rules. Holds until he resets it. */
+  readonly assistantModel: "auto" | "haiku" | "sonnet" | "opus";
+  readonly assistantEffort: "auto" | "low" | "medium" | "high";
 }
 
 const UNKNOWN_BRAINS: BrainStatus = { claude: { state: "missing" }, codex: { state: "missing" } };
@@ -211,6 +221,8 @@ const DEFAULTS: ScreenSettings = {
   socialOn: true,
   brainChosen: false,
   assistantAccount: null,
+  assistantModel: "auto",
+  assistantEffort: "auto",
 };
 
 /** Defaults that older releases wrote into every settings file; he never chose them, so they give way. */
@@ -225,8 +237,6 @@ const settingsFrom = (saved: Partial<ScreenSettings> & { speak?: boolean }): Scr
 });
 
 const LOOK_MEMORY_MS = 15 * 60_000;
-/** A yes or thanks this soon after a turn answers it, on the same model. */
-const TIER_CARRY_MS = 2 * 60_000;
 /** Real work takes a while, and a question to him sits inside the turn. */
 const OPERATOR_TURN_MS = 30 * 60_000;
 /** He said stop or the box must open: neither waits for a sidecar that is restarting. */
@@ -521,7 +531,7 @@ const lateCatalog = (get: () => ToolHost["catalog"]): NonNullable<ToolHost["cata
 export const startScreenCompanion = (input: {
   readonly stateDir: string;
   /** What the app can do for a remote session besides drive windows: version, logs, processes, update, pages. */
-  readonly remoteOps?: RemoteHandsDeps["ops"];
+  readonly remoteOps?: Omit<RemoteHandsDeps["ops"], "assistantModel">;
   /** The sessions catalog, which starts after this does: asked for at each use. */
   readonly catalog?: () => ToolHost["catalog"];
   /** Bring Tessaya's window forward, on a tab when it can (the vault asks to be unlocked there). */
@@ -904,7 +914,37 @@ export const startScreenCompanion = (input: {
   const leadBrain = () =>
     modelOf(readPack(NodePath.join(input.stateDir, PACK_FOLDER)), "executive");
   /** The last chat turn's tier, so a bare "go ahead" right after it is carried out on the same model. */
-  let lastTier: { readonly tier: TurnTier; readonly at: number } | null = null;
+  const tierMemory = createTierMemory();
+  const manual = (): ManualBrain => ({
+    model: settings.assistantModel === "auto" ? null : settings.assistantModel,
+    effort: settings.assistantEffort === "auto" ? null : settings.assistantEffort,
+  });
+  const warmTiers = () =>
+    agentOf().warm(tierBrains(leadBrain(), manual(), tierMemory.previous() ?? "default"));
+  /** Voice, tray, settings and the assistant_model tool all land here; the next turn uses it, and its session is warmed now. */
+  const chooseModel = (choice: ManualBrain): string => {
+    save({ assistantModel: choice.model ?? "auto", assistantEffort: choice.effort ?? "auto" });
+    input.onNote?.("model_choice", { model: choice.model, effort: choice.effort });
+    warmTiers();
+    return manualLabel(choice);
+  };
+  const MODELS = ["haiku", "sonnet", "opus"] as const;
+  const EFFORTS = ["low", "medium", "high"] as const;
+  /** The tool's way in (assistant MCP and remote hands): names checked here, since they come from outside. */
+  const setModelByName = (model: string | null, effort: string | null): string => {
+    const now = manual();
+    if (model === null && effort === null) return `Model: ${manualLabel(now)}.`;
+    const m = MODELS.find((x) => x === model);
+    const e = EFFORTS.find((x) => x === effort);
+    if (model !== null && model !== "auto" && m === undefined)
+      throw new Error(`No model is named ${model}.`);
+    if (effort !== null && effort !== "auto" && e === undefined)
+      throw new Error(`No effort is named ${effort}.`);
+    return `Model: ${chooseModel({
+      model: model === null ? now.model : (m ?? null),
+      effort: effort === null ? now.effort : (e ?? null),
+    })}.`;
+  };
   /** Whose name the last answer carried, so a change of persona says its name. */
   let lastFace = face.name;
   let leadName = face.name;
@@ -1770,7 +1810,7 @@ export const startScreenCompanion = (input: {
         buildRemoteHandsTools({
           sidecar: side,
           scratchDir: NodePath.join(input.stateDir, "screen"),
-          ops: input.remoteOps,
+          ops: { ...input.remoteOps, assistantModel: async (m, e) => setModelByName(m, e) },
           foreground: {
             clickAt: async (to, double) => {
               await remoteMouse.need();
@@ -2287,6 +2327,7 @@ export const startScreenCompanion = (input: {
       actions?.sessionSend?.(id, text) ?? "There is no session by that id. Use sessions_list.",
     fleet: async () => actions?.fleetStatus?.() ?? "Sessions are not reachable from here yet.",
     dictation: async (on) => actions?.dictation?.(on) ?? "Dictation is not available here.",
+    assistantModel: async (model, effort) => setModelByName(model, effort),
     memory: async (query) => {
       const hits = conversation.search(query);
       const kept = await memory.search(query);
@@ -2454,12 +2495,7 @@ export const startScreenCompanion = (input: {
     outside = false,
   ) => {
     answering += 1;
-    const brain = chooseTurnBrain(
-      text,
-      faceModel,
-      lastTier !== null && started - lastTier.at < TIER_CARRY_MS ? lastTier.tier : null,
-    );
-    lastTier = { tier: brain.tier, at: started };
+    const brain = chooseTurnBrain(text, faceModel, tierMemory.previous(), manual());
     const mine = turns.ask();
     const record = mine.record;
     let firstTokenAt: number | null = null;
@@ -2580,6 +2616,7 @@ export const startScreenCompanion = (input: {
       });
       fail(error);
     } finally {
+      tierMemory.settled(brain.tier);
       answering -= 1;
       mine.done();
       input.onTurnEnd?.();
@@ -2605,6 +2642,18 @@ export const startScreenCompanion = (input: {
       say(offer);
       linger("Tessaya", offer);
       input.onNote?.("secret_held", { kind: secret });
+      return { kind: "handled" };
+    }
+    // "Use Opus", "think harder", "go faster", "back to normal": a choice, not a question for the model.
+    const choice = modelCommand(text, manual());
+    if (choice !== null) {
+      const label = chooseModel(choice);
+      const reply =
+        label === "Automatic"
+          ? "Back to normal: I'll pick the model for each question."
+          : `${label} from now on, until you say back to normal.`;
+      say(reply);
+      linger("Tessaya", reply);
       return { kind: "handled" };
     }
     // A stop never waits on the sidecar, and needs no window.
@@ -2818,7 +2867,7 @@ export const startScreenCompanion = (input: {
           );
         });
       }
-      agentOf().warm(tierBrains(leadBrain()));
+      warmTiers();
       if (run?.mode !== "look" && spareLook?.alive() !== true) {
         spareLook?.dispose();
         spareLook = visionFor("look");
@@ -2887,6 +2936,28 @@ export const startScreenCompanion = (input: {
     menuItems: () => [
       { label: "Ask Tessaya…", accelerator: ASK_HOTKEY, click: openAskBox },
       { label: "Clear the screen", click: dismiss },
+      {
+        label: `Model: ${manualLabel(manual())}`,
+        submenu: [
+          ...(["auto", "haiku", "sonnet", "opus"] as const).map((model) => ({
+            label: model === "auto" ? "Automatic" : model.charAt(0).toUpperCase() + model.slice(1),
+            type: "radio" as const,
+            checked: settings.assistantModel === model,
+            click: () => void chooseModel({ ...manual(), model: model === "auto" ? null : model }),
+          })),
+          { type: "separator" as const },
+          ...(["auto", "low", "medium", "high"] as const).map((effort) => ({
+            label:
+              effort === "auto"
+                ? "Automatic effort"
+                : `${effort.charAt(0).toUpperCase()}${effort.slice(1)} effort`,
+            type: "radio" as const,
+            checked: settings.assistantEffort === effort,
+            click: () =>
+              void chooseModel({ ...manual(), effort: effort === "auto" ? null : effort }),
+          })),
+        ],
+      },
       ...(run !== null && run.mode !== "look"
         ? [
             {
@@ -2902,6 +2973,33 @@ export const startScreenCompanion = (input: {
         busy: learning,
         now: new Date(),
       }),
+      {
+        id: "s.assistantModel",
+        section: "Answers and voice",
+        label: "Model for conversation",
+        hint: `Now: ${manualLabel(manual())}. Automatic picks per question: Haiku for quick ones, Sonnet by default, the persona's model for planning. Or say "use Opus", "think harder", "go faster", "back to normal".`,
+        kind: "choice",
+        value: settings.assistantModel,
+        options: [
+          { value: "auto", label: "Automatic" },
+          { value: "haiku", label: "Haiku" },
+          { value: "sonnet", label: "Sonnet" },
+          { value: "opus", label: "Opus" },
+        ],
+      },
+      {
+        id: "s.assistantEffort",
+        section: "Answers and voice",
+        label: "Thinking effort",
+        kind: "choice",
+        value: settings.assistantEffort,
+        options: [
+          { value: "auto", label: "Automatic" },
+          { value: "low", label: "Low" },
+          { value: "medium", label: "Medium" },
+          { value: "high", label: "High" },
+        ],
+      },
       {
         id: "s.output",
         section: "Answers and voice",
@@ -3078,6 +3176,20 @@ export const startScreenCompanion = (input: {
       return brains ?? UNKNOWN_BRAINS;
     },
     applySetting: (id, value) => {
+      if (
+        id === "s.assistantModel" &&
+        (value === "auto" || value === "haiku" || value === "sonnet" || value === "opus")
+      ) {
+        chooseModel({ ...manual(), model: value === "auto" ? null : value });
+        return;
+      }
+      if (
+        id === "s.assistantEffort" &&
+        (value === "auto" || value === "low" || value === "medium" || value === "high")
+      ) {
+        chooseModel({ ...manual(), effort: value === "auto" ? null : value });
+        return;
+      }
       if (id === "s.output" && (value === "spoken" || value === "written")) {
         if (value === "written") hush();
         save({ output: value });

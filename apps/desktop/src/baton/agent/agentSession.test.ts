@@ -291,9 +291,40 @@ describe("the one assistant's session", () => {
     // Each model hears what the others answered since it last spoke.
     expect(asked["haiku"]![1]).toContain("plan my week");
     expect(asked["haiku"]![1]).toContain("opus answer");
-    // A fourth model makes room by giving back the least recently used.
+    // A persona on another model sits beside the warmed tiers instead of evicting one; a second such model replaces it.
     await agent.say("hello", { window: null, session: null, brain: { model: "x", effort: "low" } });
-    await vi.waitFor(() => expect(disposed).toEqual(["sonnet"]));
+    await agent.say("hello", { window: null, session: null, brain: { model: "y", effort: "low" } });
+    await vi.waitFor(() => expect(disposed).toEqual(["x"]));
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("on a wake warms the likeliest model at once and the others after its first token", async () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-agent-"));
+    const conversation = createConversationLog({ file: NodePath.join(dir, "c.ndjson") });
+    const started: string[] = [];
+    let atFirstToken: string[] = [];
+    const agent = createAssistantAgent({
+      start: async (_prompt, brain) => {
+        started.push(brain?.model ?? "none");
+        return {
+          ask: async (_content, onDelta) => {
+            atFirstToken = [...started];
+            onDelta?.("Hi.");
+            return "Hi.";
+          },
+          alive: () => true,
+          dispose: () => undefined,
+        };
+      },
+      conversation,
+      clockLine: () => "now",
+      beginTurn: () => undefined,
+    });
+    const sonnet = { model: "sonnet", effort: "medium" };
+    agent.warm([sonnet, { model: "haiku", effort: "low" }, { model: "opus", effort: "medium" }]);
+    await agent.say("hello", { window: null, session: null, brain: sonnet });
+    expect(atFirstToken).toEqual(["sonnet"]);
+    await vi.waitFor(() => expect(started).toEqual(["sonnet", "haiku", "opus"]));
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 
