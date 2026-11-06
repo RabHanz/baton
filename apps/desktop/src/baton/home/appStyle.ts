@@ -89,7 +89,8 @@ html.glass-off #app::before{display:none}
 .mk .dye{fill:var(--accent)}
 [data-theme=dark] .mk .on-light{display:none}
 [data-theme=dark] .mk .on-dark{display:inline}
-.aboutmark{width:96px;height:96px;margin:0 0 14px;color:var(--ink)}
+.aboutmark{width:96px;height:96px;margin:0 0 14px;color:var(--ink);cursor:pointer;border-radius:20px}
+.brand #mark{cursor:pointer;border-radius:14px}
 nav{display:flex;flex-direction:column;gap:2px}
 #navlist{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;padding-bottom:18px;-webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 22px),transparent);mask-image:linear-gradient(to bottom,#000 calc(100% - 22px),transparent)}
 .glabel{display:flex;align-items:center;gap:8px;border:0;background:transparent;width:100%;padding:14px 10px 4px;font:600 11px var(--sans);letter-spacing:.11em;text-transform:uppercase;color:var(--faint)}
@@ -380,6 +381,8 @@ button.sname:hover{color:var(--hue-text)}
 
 /* Motion: transform and opacity only, once, while the window is live; Motion Reduced keeps a fade, Off keeps nothing. */
 @keyframes breathe{0%,100%{transform:scale(1);opacity:.9}50%{transform:scale(1.03);opacity:1}}
+@keyframes breathe-near{0%,100%{transform:scale(1);opacity:.92}50%{transform:scale(1.07);opacity:1}}
+@keyframes breathe-deep{0%,100%{transform:scale(1)}45%{transform:scale(1.12)}}
 @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 @keyframes rise-s{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 @keyframes sheet{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}
@@ -389,6 +392,9 @@ button.sname:hover{color:var(--hue-text)}
 @keyframes ripple{from{opacity:.55;transform:scale(1)}to{opacity:0;transform:scale(3)}}
 @keyframes focusPop{from{transform:scale(.985)}to{transform:none}}
 html.live .brand #mark{animation:breathe 7s ease-in-out infinite;will-change:transform,opacity}
+/* Hover brings the breath closer and quicker, only while the pointer is on it; a click plays it (playMark). */
+html.live .brand #mark:hover,html.live .aboutmark:hover,html.live .brand #mark:focus-visible,html.live .aboutmark:focus-visible{animation:breathe-near 2.6s ease-in-out infinite}
+html.live #mark.deep,html.live .aboutmark.deep{animation:breathe-deep 1.6s cubic-bezier(.37,0,.2,1)}
 html.live #page.enter>*:nth-child(-n+${STAGGER_BLOCKS}){animation:rise var(--dur-base) var(--ease-out) backwards}
 html.live #page.enter>.group:nth-of-type(1)>*:nth-child(-n+${STAGGER_ROWS}){animation:rise-s var(--dur-base) var(--ease-out) backwards}
 ${delays("#page.enter>*", STAGGER_BLOCKS)}

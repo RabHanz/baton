@@ -94,6 +94,10 @@ body{display:flex;align-items:center;justify-content:center}
 #p.rest>*{display:none}
 #mk{display:none;width:20px;height:20px;flex:none}
 #p[data-mark=on] #mk[src]{display:block}
+@keyframes br{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}
+#p:hover #mk[src]{animation:br 2.6s ease-in-out infinite}
+@media (prefers-reduced-motion:reduce){#mk{animation:none!important}}
+html.motion-reduced #mk,html.motion-off #mk{animation:none!important}
 #w{display:none;align-items:center;gap:2px;height:14px;flex:none}
 #w i{display:block;width:2px;height:12px;border-radius:1px;background:var(--bar,#fff);transform:scaleY(.17);transition:transform .09s linear;will-change:transform}
 #p[data-wave=on] #w{display:flex}
