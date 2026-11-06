@@ -12,8 +12,6 @@ import {
   type SplashEvent,
   type SplashState,
 } from "./splash.ts";
-import type { Theme } from "./theme.ts";
-import { WINDOW_STING_DARK, WINDOW_STING_LIGHT } from "./windowMotionArt.ts";
 
 const TICK_MS = 50;
 
@@ -39,7 +37,11 @@ const fade = (
  * Shows the splash centred on `centre`. `windowReady(show)` says the app window can be shown: `show` runs when the
  * splash has played enough (or at the cap), and the app window should fade in with `fadeIn`.
  */
-export const startSplash = (centre: { readonly x: number; readonly y: number }, theme: Theme) => {
+/** `sting` is the animation for the palette and theme in use; without it there is no splash, only the window. */
+export const startSplash = (
+  centre: { readonly x: number; readonly y: number },
+  sting: Buffer | null,
+) => {
   let state: SplashState = { phase: "idle" };
   let win: Electron.BrowserWindow | null = null;
   let timer: ReturnType<typeof setInterval> | null = null;
@@ -66,13 +68,14 @@ export const startSplash = (centre: { readonly x: number; readonly y: number }, 
   };
 
   try {
+    if (sting === null) throw new Error("no animation for this palette");
     win = new Electron.BrowserWindow(splashWindowOptions(centre));
     markCompanionWindow(win);
     protectFromCapture(win);
     win.setIgnoreMouseEvents(true);
     win.once("ready-to-show", () => win?.showInactive());
     void win.loadURL(
-      `data:text/html;charset=utf-8,${encodeURIComponent(splashHtml(theme === "dark" ? WINDOW_STING_DARK : WINDOW_STING_LIGHT))}`,
+      `data:text/html;charset=utf-8,${encodeURIComponent(splashHtml(sting.toString("base64")))}`,
     );
     feed({ type: "start", at: Date.now() });
     timer = setInterval(() => feed({ type: "tick", at: Date.now() }), TICK_MS);

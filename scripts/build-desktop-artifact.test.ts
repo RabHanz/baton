@@ -57,6 +57,7 @@ import {
   WindowsPackagedPayloadValidationError,
   stageCursorSdkPlatformPackages,
   BATON_VOICE_PAYLOAD_FILES,
+  TESSAYA_ART_PAYLOAD_FILES,
   batonSidecarBuild,
   WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT,
   WINDOWS_SERVER_ASAR_IGNORE_GLOBS,
@@ -163,6 +164,10 @@ const makeWindowsPayloadFixture = Effect.fn("test.makeWindowsPayloadFixture")(fu
   yield* fs.makeDirectory(path.join(resourcesDir, "baton-voice/models"), { recursive: true });
   for (const file of BATON_VOICE_PAYLOAD_FILES) {
     yield* fs.writeFileString(path.join(resourcesDir, "baton-voice", file), "voice");
+  }
+  yield* fs.makeDirectory(path.join(resourcesDir, "tessaya"), { recursive: true });
+  for (const file of TESSAYA_ART_PAYLOAD_FILES) {
+    yield* fs.writeFileString(path.join(resourcesDir, "tessaya", file), "art");
   }
   yield* fs.makeDirectory(path.join(resourcesDir, "resource-monitor"), { recursive: true });
   yield* fs.copyFile(generatedAsarPath, path.join(resourcesDir, WINDOWS_SERVER_ASAR_RESOURCE));
@@ -1313,6 +1318,23 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         assert.instanceOf(voiceError, WindowsPackagedPayloadValidationError);
         assert.equal(voiceError.reason, "baton-voice-missing");
         assert.deepStrictEqual(voiceError.missingFiles, ["baton-voice/tessaya-voice.exe"]);
+
+        yield* fs.writeFileString(
+          path.join(fixture.packagedAppDir, "resources/baton-voice/tessaya-voice.exe"),
+          "voice",
+        );
+        yield* fs.remove(
+          path.join(fixture.packagedAppDir, "resources/tessaya/sting-madder-dark.webp"),
+        );
+        const artError = yield* validateWindowsPackagedPayload({
+          stageDistDir: fixture.stageDistDir,
+          appExecutableName: fixture.appExecutableName,
+          targetArch: "x64",
+          appVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
+        }).pipe(Effect.flip);
+        assert.instanceOf(artError, WindowsPackagedPayloadValidationError);
+        assert.equal(artError.reason, "tessaya-art-missing");
+        assert.deepStrictEqual(artError.missingFiles, ["tessaya/sting-madder-dark.webp"]);
       }),
     ),
   );

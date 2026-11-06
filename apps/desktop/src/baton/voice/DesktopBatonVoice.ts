@@ -183,6 +183,8 @@ import { snippetAction, snippetControls } from "../writing/snippetRows.ts";
 import { createExternalNeeds } from "../presence/needsSources.ts";
 import { briefCommitments, needsFromCommitments } from "@t3tools/baton-shared/commitments";
 import { markPhase } from "../lifecycle/mainStall.ts";
+import { taskbarIconFile } from "../home/artFiles.ts";
+import { showTaskbarIcon } from "../taskbarIcon.ts";
 import { createCommitmentSync } from "../presence/commitmentSync.ts";
 import { createCommitmentStore } from "../presence/commitmentStore.ts";
 import { runCommitOp } from "../presence/commitTools.ts";
@@ -295,7 +297,7 @@ import {
   type Palette,
 } from "../home/palette.ts";
 import { parseAppearance, type Appearance } from "../home/theme.ts";
-import { createBatonHome, type HomeControl, type HomeState } from "../home/batonHome.ts";
+import { ART_DIR, createBatonHome, type HomeControl, type HomeState } from "../home/batonHome.ts";
 import { isCompanionWindow, keepRunningForTray } from "../lastAppWindow.ts";
 import { createDictationHold } from "./dictationHold.ts";
 import * as Electron from "electron";
@@ -1671,6 +1673,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     pill.setReason(loop === null ? "off" : state === "muted" ? "muted" : "sleeping");
     const image = trayIcon(markOptions());
     if (image !== trayImage) tray.setImage((trayImage = image));
+    const taskbarDark = Electron.nativeTheme.shouldUseDarkColorsForSystemIntegratedUI;
+    showTaskbarIcon(
+      NodePath.join(ART_DIR, taskbarIconFile(settings.palette, taskbarDark ? "dark" : "light")),
+      input.platform,
+    );
     const tip = `Tessaya: ${hudView(state).label} · ${deviceName()}${note ? ` · ${note}` : ""}`;
     if (tip !== trayTip) tray.setToolTip((trayTip = tip));
     rebuildMenu();
