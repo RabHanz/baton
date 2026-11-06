@@ -30,9 +30,12 @@ export const createDesktopMemory = (input: {
   /** A secret was about to be remembered: keep it out of memory and return the offer to put it in the vault. */
   readonly onSecret?: ((text: string, what: string) => string | null) | undefined;
   /** The persona answering (its pack id), so a walled project's memories reach only its team. */
-  readonly agent?: (() => string) | undefined;
+  readonly agent?: (() => string | undefined) | undefined;
 }) => {
-  const agent = () => (input.agent === undefined ? {} : { agent: input.agent() });
+  const agent = () => {
+    const who = input.agent?.();
+    return who === undefined ? {} : { agent: who };
+  };
   let turn = 0;
   let lastTurnRef: string | null = null;
   let notesMoved = false;

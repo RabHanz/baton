@@ -3737,7 +3737,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const day = new Date(at).toDateString();
     const learned = (
       (serverReachable()
-        ? await requestKept({ kind: "memory", op: "list", args: { limit: 200 } }).catch(() => null)
+        ? await requestKept({
+            kind: "memory",
+            op: "list",
+            args: { limit: 200, admin: true },
+          }).catch(() => null)
         : null) as {
         items?: ReadonlyArray<{ text: string; createdAt: string; proposed: boolean }>;
       } | null

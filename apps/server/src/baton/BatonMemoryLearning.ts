@@ -114,10 +114,11 @@ export const make = Effect.gen(function* () {
   });
 
   const consolidate = Effect.gen(function* () {
-    // Upkeep sees every item, walled or not.
-    const all = yield* memory
-      .list({ includeSuperseded: true, includeProposed: true, limit: 100_000 })
-      .pipe(Effect.provideService(MemoryViewer, "server"));
+    const all = yield* memory.list({
+      includeSuperseded: true,
+      includeProposed: true,
+      limit: 100_000,
+    });
     const plans = planMerges(all);
     for (const { keep, drop } of plans) {
       // Saying it twice is repetition: re-adding the survivor reinforces it (MEMORY.md section 2).
@@ -134,12 +135,11 @@ export const make = Effect.gen(function* () {
       yield* memory.forget(drop.id);
     }
     return { merged: plans.length, swept: yield* memory.sweep };
-  });
+    // Upkeep sees, merges and forgets every item, walled or not.
+  }).pipe(Effect.provideService(MemoryViewer, "server"));
 
   const rewriteNearDuplicates = Effect.gen(function* () {
-    const all = yield* memory
-      .list({ includeSuperseded: true, limit: 100_000 })
-      .pipe(Effect.provideService(MemoryViewer, "server"));
+    const all = yield* memory.list({ includeSuperseded: true, limit: 100_000 });
     let done = 0;
     for (const { keep, drop, text } of planRewrites(all)) {
       if (text !== keep.text) yield* memory.rewrite(keep.id, text).pipe(Effect.ignore);
@@ -147,7 +147,7 @@ export const make = Effect.gen(function* () {
       done++;
     }
     return done;
-  });
+  }).pipe(Effect.provideService(MemoryViewer, "server"));
 
   return BatonMemoryLearning.of({ learn, consolidate, rewriteNearDuplicates });
 });

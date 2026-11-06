@@ -203,6 +203,13 @@ export const make = Effect.gen(function* () {
     Effect.flatMap(read(id), (item) =>
       item === null ? Effect.fail(refuse("there is no such memory")) : Effect.succeed(item),
     );
+  /** An item this reader may change: one behind a wall it cannot see is "no such memory" to it. */
+  const requireSeen = (id: string) =>
+    Effect.flatMap(requireItem(id), (item) =>
+      Effect.flatMap(viewFor(undefined, true), (visible) =>
+        visible(item) ? Effect.succeed(item) : Effect.fail(refuse("there is no such memory")),
+      ),
+    );
 
   const matches = (item: MemoryItem, query: MemoryQuery): boolean =>
     (query.includeSuperseded === true || item.supersededBy === null) &&
@@ -299,7 +306,11 @@ export const make = Effect.gen(function* () {
       WHERE superseded_by IS NULL AND scope = ${scope} AND scope_ref IS ${scopeRef}
       ORDER BY updated_at DESC LIMIT 500
     `.pipe(Effect.orDie);
-    const same = peers.map(fromRow).find((p) => similarity(p.text, text) >= SAME_ITEM_OVERLAP);
+    // A reader that cannot see a walled item neither merges into it nor replaces it: it gets its own.
+    const visible = yield* viewFor(undefined, true);
+    const same = peers
+      .map(fromRow)
+      .find((p) => visible(p) && similarity(p.text, text) >= SAME_ITEM_OVERLAP);
     if (same !== undefined) {
       const hers = draft.source === "user";
       yield* sql`
@@ -334,7 +345,7 @@ export const make = Effect.gen(function* () {
 
     if (draft.supersedes !== undefined && draft.supersedes !== id) {
       const old = yield* read(draft.supersedes);
-      if (old !== null) {
+      if (old !== null && visible(old)) {
         // His words beat a model's; otherwise the newer one, then the more certain (MEMORY.md).
         // The new one first: on a tie in time it is still the later statement.
         const loser = winner(created, old).id === old.id ? created : old;
@@ -357,7 +368,7 @@ export const make = Effect.gen(function* () {
     id: string,
     patch: { readonly text?: string | undefined; readonly kind?: MemoryKind | undefined },
   ) {
-    const current = yield* requireItem(id);
+    const current = yield* requireSeen(id);
     const at = yield* nowIso;
     const text = patch.text === undefined ? current.text : patch.text.trim().replace(/\s+/g, " ");
     const reason = refuseToStore(text, privateTexts());
@@ -385,7 +396,7 @@ export const make = Effect.gen(function* () {
   });
 
   const pin = Effect.fn("BatonMemoryService.pin")(function* (id: string, pinned: boolean) {
-    yield* requireItem(id);
+    yield* requireSeen(id);
     yield* sql`UPDATE fabric_memory_items SET pinned = ${pinned ? 1 : 0} WHERE id = ${id}`.pipe(
       Effect.orDie,
     );
@@ -403,13 +414,14 @@ export const make = Effect.gen(function* () {
     );
 
   const forget = Effect.fn("BatonMemoryService.forget")(function* (id: string) {
-    if ((yield* read(id)) === null) return false;
+    const item = yield* read(id);
+    if (item === null || !(yield* viewFor(undefined, true))(item)) return false;
     yield* remove(id, yield* nowIso);
     return true;
   });
 
   const accept = Effect.fn("BatonMemoryService.accept")(function* (id: string) {
-    yield* requireItem(id);
+    yield* requireSeen(id);
     yield* sql`UPDATE fabric_memory_items SET proposed = 0 WHERE id = ${id}`.pipe(Effect.orDie);
     yield* touch(id, yield* nowIso);
     return yield* requireItem(id);

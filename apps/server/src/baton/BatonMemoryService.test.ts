@@ -231,7 +231,7 @@ it.effect(
       assert.include(yield* memory.exportMarkdown, "shop deploy key");
 
       // Any token but the desktop app's own: no persona, no admin view, nothing walled on any read.
-      const asClient = <A>(effect: Effect.Effect<A>) =>
+      const asClient = <A, E>(effect: Effect.Effect<A, E>) =>
         effect.pipe(Effect.provideService(MemoryViewer, "client"));
       const shop = (items: ReadonlyArray<{ readonly scopeRef: string | null } | null>) =>
         items.some((i) => i?.scopeRef === "shop");
@@ -245,6 +245,34 @@ it.effect(
       const pulled = yield* asClient(memory.changesSince(null));
       assert.isFalse(shop(pulled.changes.map((c) => c.item)));
       assert.isTrue(shop((yield* memory.changesSince(null)).changes.map((c) => c.item)));
+
+      // To a client a walled item does not exist: it neither merges into it, replaces it, nor changes it.
+      const walled = (yield* memory.list({ admin: true })).find((i) => i.scopeRef === "shop")!;
+      const added = yield* asClient(
+        memory.add({
+          kind: "fact",
+          text: "The shop deploy key rotates on Fridays",
+          source: "user",
+          scope: "project",
+          scopeRef: "shop",
+          supersedes: walled.id,
+        }),
+      );
+      assert.notStrictEqual(added.id, walled.id);
+      const after = yield* memory.list({ admin: true, includeSuperseded: true });
+      assert.deepStrictEqual(
+        after.find((i) => i.id === walled.id),
+        { ...walled, supersededBy: null },
+      );
+      for (const change of [
+        memory.edit(walled.id, { text: "changed" }),
+        memory.pin(walled.id, true),
+        memory.accept(walled.id),
+      ]) {
+        assert.strictEqual((yield* asClient(Effect.flip(change)))._tag, "BatonMemoryRefusedError");
+      }
+      assert.isFalse(yield* asClient(memory.forget(walled.id)));
+      assert.isTrue((yield* memory.list({ admin: true })).some((i) => i.id === walled.id));
     }).pipe(
       Effect.provideService(MemoryViewer, "desktop"),
       Effect.provide(

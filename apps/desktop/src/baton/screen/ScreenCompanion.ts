@@ -668,7 +668,8 @@ export const startScreenCompanion = (input: {
         ? Promise.reject(new Error("Memory is not reachable yet."))
         : actions.memory(op, args),
     notes,
-    agent: () => face.id,
+    // A device's turn names no persona, so it gets the walled view (the lead's would see through every wall).
+    agent: () => (outsideTurn ? undefined : face.id),
   });
   let stopMemorySync: (() => void) | null = null;
   const memorySync = createMemorySync({
@@ -2529,7 +2530,7 @@ export const startScreenCompanion = (input: {
     voiceTurn = !typed;
     woke = wake;
     const pack = readPack(NodePath.join(input.stateDir, PACK_FOLDER));
-    face = personaFor(pack.personas, { wake, text });
+    face = personaFor(pack.personas, { wake, text: outside ? "" : text });
     leadName = pack.personas.find((p) => p.lead)?.name ?? leadName;
     faceModel = modelOf(pack, face.id);
     // VAULT.md section 1: a secret never reaches a prompt, the conversation file, memory or the turn log.

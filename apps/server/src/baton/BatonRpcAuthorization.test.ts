@@ -11,15 +11,21 @@ import {
   BATON_PHONE_WS_METHODS,
   BATON_RECORD_WS_METHODS,
   BatonRecordAppendInput,
+  BatonRpcScopeAuthorization,
 } from "@t3tools/baton-contracts";
+import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import { it as effectIt } from "@effect/vitest";
 import { describe, expect, it } from "vite-plus/test";
 
 import { TOKEN_DELEGATED_SUBJECT } from "../auth/EnvironmentAuth.ts";
+import { MemoryViewer } from "./BatonMemoryService.ts";
+import { AskSource } from "./BatonPhoneInbox.ts";
 import {
   BATON_RPC_REQUIRED_SCOPES,
   DESK_METHODS,
   askSourceOf,
+  layer as batonAuthorization,
   memoryViewerOf,
   missingBatonScope,
 } from "./BatonRpcAuthorization.ts";
@@ -167,4 +173,39 @@ describe("whose words an ask carries", () => {
     );
     expect(memoryViewerOf({ scopes: AuthStandardClientScopes })).toBe("client");
   });
+});
+
+describe("what Baton's middleware tells the handlers", () => {
+  effectIt.effect("who reads memory and whose words an ask carries, from the session alone", () =>
+    Effect.gen(function* () {
+      const told = (session: Parameters<typeof batonAuthorization>[0]) =>
+        Effect.gen(function* () {
+          const middleware = (yield* BatonRpcScopeAuthorization) as unknown as (
+            effect: Effect.Effect<ReadonlyArray<string>>,
+            options: unknown,
+          ) => Effect.Effect<ReadonlyArray<string>>;
+          const read = Effect.gen(function* () {
+            return [yield* MemoryViewer, yield* AskSource];
+          });
+          return yield* middleware(read, {
+            rpc: { _tag: BATON_MEMORY_WS_METHODS.list },
+            payload: { admin: true, agent: "executive" },
+          });
+        }).pipe(Effect.provide(batonAuthorization(session)));
+      expect(
+        yield* told({
+          method: "bearer-access-token",
+          subject: "x",
+          scopes: AuthStandardClientScopes,
+        }),
+      ).toEqual(["client", "device"]);
+      expect(
+        yield* told({
+          method: "bearer-access-token",
+          subject: "desktop-bootstrap",
+          scopes: [...AuthStandardClientScopes, AuthBatonHandsHostScope],
+        }),
+      ).toEqual(["desktop", "phone"]);
+    }),
+  );
 });
