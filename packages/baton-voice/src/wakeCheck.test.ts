@@ -211,6 +211,20 @@ describe("the second check before a wake from sleep", () => {
     expect(r.events.filter((e) => e.type === "wake")).toHaveLength(wakesBefore);
   });
 
+  it("never takes his wake for her voice once she and the room have gone quiet", async () => {
+    const r = rig(async () => true);
+    r.core.noteSpoken("Sebastian, your build is done");
+    r.core.setSpeaking(true);
+    r.push(1);
+    r.core.setSpeaking(false);
+    r.push(2);
+    r.wake();
+    r.push(0.2);
+    await new Promise((resolve) => setImmediate(resolve));
+    r.push(0.2);
+    expect(r.events.some((e) => e.type === "dropped" && e.reason === "own voice")).toBe(false);
+  });
+
   it("does not let its own voice barge in, and a fire over speech must be heard", async () => {
     const r = rig(async () => false);
     r.core.noteSpoken("Sebastian, your build is done");

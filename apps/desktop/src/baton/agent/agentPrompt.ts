@@ -45,7 +45,6 @@ export const agentSystemPrompt = (input: {
 export interface TurnPersona {
   readonly name: string;
   readonly role: string;
-  readonly introduce: boolean;
   /** The lead's name when this persona is a specialist: only the lead hands out work. */
   readonly lead?: string;
 }
@@ -53,7 +52,6 @@ export interface TurnPersona {
 const personaLine = (p: TurnPersona) =>
   [
     `you answer this turn as ${p.name}${p.role === "" ? "." : `: ${p.role}`}`,
-    p.introduce ? `start your reply by saying you are ${p.name}.` : "",
     p.lead === undefined
       ? ""
       : `only ${p.lead} hands out work: if he asks you to start, split, hand over or schedule a job, or send work to the cloud, do not try; say ${p.lead} does that and he can ask ${p.lead}.`,
