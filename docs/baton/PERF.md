@@ -63,8 +63,9 @@ must be heard. It now is (run 41479939470, as shipped and with `BATON_THREADS=1`
    a call waits while it does. That was real but was not what lost the phrase: the model itself loads in about 0.6 s even when starved.
 2. **The hold played its audio back in one burst.** Steps showed `held-audio-played` and `warm-complete`, so the models were ready and the audio
    was handed to the core, and still nothing was heard. The wake check, the command window and the recogniser follow the clock; a phrase pushed
-   in a burst is over before the window that waits for it opens. Now it is played in at the speed it was said, with quiet stretches over 1.2 s
-   cut so a long wait is not replayed as a long silence.
+   in a burst is over before the window that waits for it opens. Now it is played in at twice the speed it was said (at the speed it was said,
+   the frames arriving meanwhile queued behind it and the voice trailed the microphone for good), with quiet stretches over 1.2 s cut so a
+   long wait is not replayed as a long silence.
 3. **Two speech threads on one core.** With the app pinned to one core the warm-up's scoring stage took 211 s (control with one speech thread:
    57 s). std's `available_parallelism` ignores a Windows affinity mask, so the sidecar still started threads for four cores, and ggml's threads
    wait for each other by spinning. The sidecar now counts cores with `GetProcessAffinityMask` and never starts more threads than cores.

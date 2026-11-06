@@ -93,7 +93,7 @@ describe("holding what is heard while the models load", () => {
   const frame = (n: number, loud = true) =>
     Int16Array.from({ length: 320 }, () => (loud ? n * 1000 : 0));
 
-  it("plays the held audio in order, at the speed it was said, then passes frames straight through", async () => {
+  it("plays the held audio in order, at twice the speed it was said, then passes frames straight through", async () => {
     const got: number[] = [];
     const slept: number[] = [];
     let go!: () => void;
@@ -115,7 +115,7 @@ describe("holding what is heard while the models load", () => {
     finished();
     await drained;
     expect(got).toEqual([1, 2, 3]);
-    expect(slept).toEqual([20, 20]);
+    expect(slept).toEqual([10, 10]);
     expect(held.other()).toBe("kept");
   });
 
@@ -153,6 +153,35 @@ describe("holding what is heard while the models load", () => {
     await ready;
     for (let i = 0; i < 20; i += 1) await Promise.resolve();
     expect(got).toEqual([3, 4]);
+  });
+
+  it("catches up with the microphone after playing in what it held, instead of staying behind it", async () => {
+    const at: number[] = [];
+    let go!: () => void;
+    const ready = new Promise<void>((resolve) => (go = resolve));
+    let clock = 0;
+    let due = 0;
+    let held!: { pushAudio: (f: Int16Array) => void };
+    held = holdFramesUntil({ pushAudio: () => void at.push(clock) }, ready, 15_000, {
+      sleep: async (ms) => {
+        clock += ms;
+        // The microphone delivers a frame every 20 ms meanwhile, for ten seconds.
+        while (due + 20 <= clock && due < 10_000) {
+          due += 20;
+          held.pushAudio(frame(1));
+        }
+      },
+    });
+    // Two seconds said before the models were ready.
+    for (let i = 0; i < 100; i += 1) held.pushAudio(frame(1));
+    go();
+    await ready;
+    for (let i = 0; i < 20_000; i += 1) await Promise.resolve();
+    // Live again well before the microphone stopped, not two seconds behind it for good.
+    expect(Math.max(...at)).toBeLessThan(6_000);
+    const before = at.length;
+    held.pushAudio(frame(1));
+    expect(at).toHaveLength(before + 1);
   });
 
   it("cuts a long quiet stretch to 1.2 s so the replay does not wait through minutes of silence", () => {

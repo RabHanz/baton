@@ -138,7 +138,7 @@ describe("the intent bridge", () => {
     );
     const states: string[] = [];
     core.subscribe((e) => e.type === "state" && states.push(e.state));
-    await core.hear("Baton");
+    core.activate("wake");
     await core.hear("dictate");
     await core.hear("Thanks, I'll send the contract tomorrow.");
     await core.hear("Colour is spelt with a u.");

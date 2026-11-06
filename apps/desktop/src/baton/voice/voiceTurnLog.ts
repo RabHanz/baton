@@ -27,13 +27,15 @@ export const makeVoiceTurnLog = (
   write: (line: string) => void,
   clock: () => Date = () => new Date(),
 ): VoiceTurnLog => {
-  let wake: {
+  interface Wake {
     readonly word: string | null;
     readonly score: number;
     readonly lateMs?: number;
     readonly checkMs?: number;
-  } | null = null;
+  }
+  let wake: Wake | null = null;
   let transcript: string | null = null;
+  let screenTurn: { readonly wake: Wake | null; readonly transcript: string | null } | null = null;
   const note: VoiceTurnLog["note"] = (kind, fields) =>
     write(`${JSON.stringify({ at: clock().toISOString(), kind, ...fields })}\n`);
   const clear = () => {
@@ -55,6 +57,7 @@ export const makeVoiceTurnLog = (
           return;
         case "transcript":
           transcript = event.text;
+          screenTurn = null;
           return;
         case "dropped":
           return note("dropped", { wake, text: event.text, reason: event.reason });
@@ -75,7 +78,11 @@ export const makeVoiceTurnLog = (
           note("dictated", { chars: event.effect.text.length });
           return clear();
         case "outcome":
-          if ("source" in event.outcome && event.outcome.source === "screen") return;
+          if ("source" in event.outcome && event.outcome.source === "screen") {
+            // Its timings line may follow, or never come (an agent turn): either way this wake is used.
+            screenTurn = { wake, transcript };
+            return clear();
+          }
           if (event.outcome.kind === "dictated") return;
           note("outcome", {
             wake,
@@ -96,7 +103,8 @@ export const makeVoiceTurnLog = (
       }
     },
     timings: (timings) => {
-      note("turn", { wake, transcript, ...timings });
+      note("turn", { ...(screenTurn ?? { wake, transcript }), ...timings });
+      screenTurn = null;
       clear();
     },
   };

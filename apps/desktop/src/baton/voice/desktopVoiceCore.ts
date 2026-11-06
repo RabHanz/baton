@@ -205,11 +205,7 @@ export interface BrainVoiceHook {
  * Dictation is never in here: `dictate` effects pass straight through. Its only model is the
  * clean-up pass, when he has chosen it (D105).
  */
-export const withBrainRoutes = (
-  inner: VoiceRouter,
-  brain: BrainVoiceHook,
-  woken: () => string | null = () => null,
-): VoiceRouter => ({
+export const withBrainRoutes = (inner: VoiceRouter, brain: BrainVoiceHook): VoiceRouter => ({
   route: async (effect, context) => {
     if (effect.kind !== "command" && effect.kind !== "session_message") {
       return inner.route(effect, context);
@@ -221,7 +217,7 @@ export const withBrainRoutes = (
       direct,
       session:
         focused.workSessionId === null ? null : `${focused.workSessionId} (${focused.evidence})`,
-      wake: woken(),
+      wake: context.wake ?? null,
     });
     if (decision.kind === "handled") {
       return { kind: "ran", reply: "", workSessionId: null, source: "screen" };
@@ -324,8 +320,6 @@ export const createDesktopVoiceCore = async (input: {
     wakes: models,
   });
   const vad = await createSileroVad(at("silero_vad.onnx"));
-  // The last wake word stays until the next wake, so a follow-up in the conversation keeps its persona.
-  let woken: string | null = null;
   const core = createVoiceCore({
     wake,
     vad,
@@ -339,16 +333,13 @@ export const createDesktopVoiceCore = async (input: {
       input.vocabulary === undefined ? router : withPreempt(router, input.vocabulary))(
       input.brain === undefined
         ? createVoiceRouter(input.intent)
-        : withBrainRoutes(createVoiceRouter(input.intent), input.brain, () => woken),
+        : withBrainRoutes(createVoiceRouter(input.intent), input.brain),
     ),
     ...(input.origin === undefined ? {} : { origin: input.origin }),
     ...(input.waitMs === undefined ? {} : { waitMs: input.waitMs }),
     ...(input.verifyWake === undefined ? {} : { verifyWake: input.verifyWake }),
     ...(input.echo === undefined ? {} : { echo: input.echo }),
     ...(input.speakerMode === undefined ? {} : { speakerMode: input.speakerMode }),
-  });
-  core.subscribe((event) => {
-    if (event.type === "wake") woken = event.word;
   });
   if (input.onEvent !== undefined) core.subscribe(input.onEvent);
   if (input.onReply !== undefined) {

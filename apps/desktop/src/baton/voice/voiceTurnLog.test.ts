@@ -84,4 +84,17 @@ describe("the voice log", () => {
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatchObject({ kind: "turn", transcript: "explain this" });
   });
+
+  it("does not hang an answered wake on what is dropped after it", async () => {
+    const { lines, log } = rig();
+    log.event({ type: "wake", word: "Freya", score: 1.05, at: 1, lateMs: 14_340, checkMs: 14_320 });
+    log.event({ type: "transcript", text: "what time is it", at: 2 });
+    // An agent turn: the brain answered it, with no timings line.
+    log.event({
+      type: "outcome",
+      outcome: { kind: "ran", reply: "", workSessionId: null, source: "screen" },
+    });
+    log.event({ type: "dropped", text: "Freya", reason: "own voice" });
+    expect(lines.at(-1)).toMatchObject({ kind: "dropped", wake: null });
+  });
 });

@@ -176,3 +176,142 @@ describe("the second check before a wake from sleep", () => {
     expect(other.events.some((e) => e.type === "barge_in")).toBe(false);
   });
 });
+
+/** 0.1.57 right after launch: a scripted microphone, a wake check that answers when told, and a router that records who was asked. */
+const launch = () => {
+  let firing: { readonly word: string; readonly ago: number } | null = null;
+  let word: string | null = null;
+  let ago = 0;
+  const checks: Array<{ readonly word: string | null; readonly answer: (ok: boolean) => void }> =
+    [];
+  const routed: Array<{ readonly text: string; readonly wake: string | null | undefined }> = [];
+  const events: VoiceCoreEvent[] = [];
+  // Each sentence is its own sample value, so recognition can tell which sentences a clip holds.
+  const SAID: Record<number, string> = {
+    1_000: "what time is it",
+    2_000: "what is the weather",
+    3_000: "what needs me",
+  };
+  const core = createVoiceCore({
+    waitMs: () => 0,
+    verifyWake: (_pcm, w) => new Promise((answer) => checks.push({ word: w, answer })),
+    wake: {
+      name: "fake",
+      reset: () => {},
+      process: () => {
+        if (firing === null) return null;
+        ({ word, ago } = firing);
+        firing = null;
+        return 1;
+      },
+      lastWord: () => word,
+      firedAgo: () => ago,
+    },
+    vad: { name: "fake", reset: () => {}, isSpeech: (frame) => frame[0] !== 0 },
+    stt: {
+      name: "fake",
+      transcribe: async (pcm) =>
+        [...new Set(pcm)]
+          .filter((v) => v !== 0)
+          .map((v) => SAID[v])
+          .join(" "),
+    },
+    router: {
+      route: async (effect, context) => {
+        if (effect.kind === "command") routed.push({ text: effect.text, wake: context.wake });
+        return { kind: "none" };
+      },
+    },
+  });
+  core.subscribe((event) => events.push(event));
+  const say = (value: number, seconds: number) => {
+    for (let i = 0; i < frames(seconds); i += 1) core.pushAudio(new Int16Array(FRAME).fill(value));
+  };
+  return {
+    core,
+    events,
+    routed,
+    checks,
+    say,
+    quiet: (seconds: number) => say(0, seconds),
+    /** The scorer reports a name that ended `agoSeconds` before now. */
+    fire: (w: string, agoSeconds = 0) => {
+      firing = { word: w, ago: Math.round(agoSeconds * 16_000) };
+    },
+    /** He says a name, and the scorer reports it as it ends. */
+    name: (w: string, value: number) => {
+      say(value, 0.5);
+      firing = { word: w, ago: 0 };
+    },
+    confirm: (w: string) => checks.find((c) => c.word === w)?.answer(true),
+    settle: async () => {
+      for (let i = 0; i < 5; i += 1) await new Promise((resolve) => setImmediate(resolve));
+    },
+  };
+};
+
+describe("right after launch, when the wake check is slow", () => {
+  it("answers a name said while the first check still runs, as that name, with only its own sentence", async () => {
+    const r = launch();
+    r.quiet(1);
+    r.name("Freya", 1_000);
+    r.say(1_000, 1.4);
+    r.quiet(3);
+    r.name("Alfred", 2_000);
+    r.say(2_000, 1.4);
+    r.quiet(2);
+    r.confirm("Freya");
+    r.confirm("Alfred");
+    await r.settle();
+    r.quiet(2);
+    await r.core.idle();
+    expect(r.routed).toEqual([
+      { text: "what time is it", wake: "Freya" },
+      { text: "what is the weather", wake: "Alfred" },
+    ]);
+  });
+
+  it("answers each sentence once, as the name said before it, when a name lands in the last one's open window", async () => {
+    const r = launch();
+    r.quiet(1);
+    r.name("Freya", 1_000);
+    r.say(1_000, 1.4);
+    r.quiet(3);
+    r.confirm("Freya");
+    await r.settle();
+    r.quiet(1);
+    // Her window is open; his check is still running when his sentence ends.
+    r.name("Alfred", 2_000);
+    r.say(2_000, 1.4);
+    r.quiet(2);
+    await r.settle();
+    r.confirm("Alfred");
+    await r.settle();
+    r.quiet(2);
+    await r.core.idle();
+    expect(r.routed).toEqual([
+      { text: "what time is it", wake: "Freya" },
+      { text: "what is the weather", wake: "Alfred" },
+    ]);
+  });
+
+  it("takes a name said after her voice stopped as his, though the scorer reports it while she speaks again", async () => {
+    const r = launch();
+    r.core.noteSpoken("Freya here. It is seven in the morning.");
+    r.core.setSpeaking(true);
+    r.quiet(2);
+    r.core.setSpeaking(false);
+    r.quiet(1);
+    r.say(3_000, 0.5);
+    r.quiet(0.5);
+    r.core.setSpeaking(true);
+    r.quiet(0.5);
+    r.fire("Freya", 1);
+    r.quiet(0.2);
+    r.confirm("Freya");
+    await r.settle();
+    r.quiet(0.2);
+    expect(r.events.some((e) => e.type === "dropped" && e.reason === "own voice")).toBe(false);
+    expect(r.events.some((e) => e.type === "wake" && e.word === "Freya")).toBe(true);
+  });
+});

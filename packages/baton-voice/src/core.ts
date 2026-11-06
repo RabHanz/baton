@@ -210,9 +210,21 @@ export const createVoiceCore = (input: {
   let preRollSamples = 0;
   /** The last few seconds, by where each frame ends, for the audio a wake check looks back over. */
   const recent: Array<{ readonly frame: Int16Array; readonly end: number }> = [];
-  let verifying = false;
-  /** While a wake is being checked, `recent` keeps everything since it fired: a slow first check must not lose the command. */
-  let verifyFrom = 0;
+  /**
+   * A wake waiting on its second check. The sentence after the name is segmented as it is said and waits
+   * for the answer, so a slow check (right after launch) neither swallows the next sentence nor repeats this one.
+   */
+  interface Fire {
+    readonly verdict: Promise<boolean>;
+    /** The fire opened the segment (rather than landing in one already being heard). */
+    made: boolean;
+    /** Its segment: being heard, gone to recognition, or never opened (or thrown away under her voice). */
+    segment: "open" | "finished" | "none";
+    ok: boolean | null;
+  }
+  let segmentFire: Fire | null = null;
+  /** The wake word the sentence being routed answers to, set in queue order so each sentence has its own. */
+  let addressee: string | null = null;
   let segment: Int16Array[] | null = null;
   let speechSamples = 0;
   let silenceSamples = 0;
@@ -221,7 +233,9 @@ export const createVoiceCore = (input: {
 
   const publicState = (): VoiceState => {
     if (machine.mode !== "sleeping") return machine.mode;
-    return segment !== null ? "listening" : "sleeping";
+    // A wake the check has not confirmed shows nothing.
+    const unconfirmed = segmentFire !== null && segmentFire.made && segmentFire.ok !== true;
+    return segment !== null && !unconfirmed ? "listening" : "sleeping";
   };
   let shown: VoiceState | null = null;
   let shownTarget: string | null = null;
@@ -323,7 +337,12 @@ export const createVoiceCore = (input: {
       const mine: Flight = { text: current.text, endAt: current.endAt, abort };
       if (turn) flight = mine;
       const outcome = await Promise.race([
-        input.router.route(effect, { bus, now: now(), mostRecentWorkSessionId: lastTarget }),
+        input.router.route(effect, {
+          bus,
+          now: now(),
+          mostRecentWorkSessionId: lastTarget,
+          wake: addressee,
+        }),
         ...(turn ? [dropped] : []),
       ]);
       if (flight === mine) flight = null;
@@ -396,6 +415,13 @@ export const createVoiceCore = (input: {
     const spoken = speechSamples;
     const overItself = barged;
     barged = false;
+    const fire = segmentFire;
+    segmentFire = null;
+    if (fire !== null) fire.segment = "finished";
+    // A segment its wake opened waits for the check: nothing is shown or recognised for a fire that was not the name.
+    const waitFor = fire !== null && fire.made && fire.ok !== true ? fire.verdict : null;
+    const after = (show: () => void) =>
+      waitFor === null ? show() : void waitFor.then((ok) => ok && !disposed && show());
     if (speakingLater !== null) {
       const latest = speakingLater;
       speakingLater = null;
@@ -407,28 +433,37 @@ export const createVoiceCore = (input: {
     segmentSamples = 0;
     input.vad.reset();
     if (parts === null || spoken < msToSamples(seg.minSpeechMs)) {
-      if (parts !== null) emit({ type: "dropped", text: "", reason: "no speech" });
+      if (parts !== null) after(() => emit({ type: "dropped", text: "", reason: "no speech" }));
       return show();
     }
     const pcm = joined(parts);
     const endAt = now();
-    emit({ type: "speech_end", at: endAt });
-    emit({ type: "audio", pcm, at: endAt });
-    emit({ type: "thinking" });
+    after(() => {
+      emit({ type: "speech_end", at: endAt });
+      emit({ type: "audio", pcm, at: endAt });
+      emit({ type: "thinking" });
+    });
     const turn = {
       startAt: endAt - (pcm.length * 1000) / VOICE_SAMPLE_RATE,
       endAt,
       prefix: null as string | null,
       consumed: false,
+      /** Its own wake word was said: it starts a new turn, never the end of the last one. */
+      woken: fire !== null,
     };
     transcribing += 1;
-    const heard = input.stt.transcribe(pcm).finally(() => {
+    const heard = (
+      waitFor === null
+        ? input.stt.transcribe(pcm)
+        : waitFor.then((ok) => (ok ? input.stt.transcribe(pcm) : ""))
+    ).finally(() => {
       transcribing -= 1;
     });
     // Read the moment recognition returns, not when the queue behind a reply frees: a dismissal
     // ends everything at once, and speech that resumes soon after joins the turn before it.
     void heard.then((text) => readEarly(text.trim(), turn)).catch(() => undefined);
     enqueue(async () => {
+      if (waitFor !== null && !(await waitFor)) return;
       const text = await heard;
       const cleaned = text.trim();
       const dictating = machine.mode === "dictation";
@@ -480,7 +515,7 @@ export const createVoiceCore = (input: {
 
   const readEarly = (
     cleaned: string,
-    turn: { startAt: number; prefix: string | null; consumed: boolean },
+    turn: { startAt: number; prefix: string | null; consumed: boolean; woken: boolean },
   ) => {
     if (NOISE.test(cleaned) || machine.mode === "dictation" || machine.pending !== null) return;
     const words = stripWake(cleaned, timings.wakeWords);
@@ -489,7 +524,7 @@ export const createVoiceCore = (input: {
       turn.consumed = true;
       return dismissNow(cleaned);
     }
-    if (!awake || isFiller(words)) return;
+    if (!awake || isFiller(words) || turn.woken) return;
     const near = (endAt: number) => turn.startAt - endAt <= JOIN_WITHIN_MS;
     if (held !== null && near(held.endAt)) {
       turn.prefix = held.text;
@@ -589,6 +624,7 @@ export const createVoiceCore = (input: {
   };
 
   let speaking = false;
+  let spokeFrom = 0;
   let echoUntil = 0;
   /** Speech before this sample is the wake word's tail. */
   let creditFrom = 0;
@@ -601,9 +637,12 @@ export const createVoiceCore = (input: {
       speakingLater = active;
       return;
     }
+    if (active && !speaking) spokeFrom = samples;
     speaking = active;
     if (active) {
       // What was being heard is now mixed with Baton's own voice.
+      if (segmentFire !== null) segmentFire.segment = "none";
+      segmentFire = null;
       segment = null;
       speechSamples = 0;
       silenceSamples = 0;
@@ -613,6 +652,9 @@ export const createVoiceCore = (input: {
   };
   const headphones = () => input.speakerMode?.() === "headphones";
   const hearingItself = () => !headphones() && (speaking || samples < echoUntil);
+  /** Was the microphone hearing her at this sample? A name the scorer reports late is judged by when it was said. */
+  const heardItselfAt = (at: number) =>
+    !headphones() && at >= spokeFrom && (speaking || at < echoUntil);
   let bargeRun = 0;
   let ducked = false;
   let cueUntil = 0;
@@ -620,28 +662,9 @@ export const createVoiceCore = (input: {
   /** Should speech be segmented right now? Only when something will listen. */
   const listening = () => machine.mode !== "sleeping" || segment !== null;
 
-  const acceptWake = (
-    score: number,
-    firedAt: number,
-    word: string | null,
-    late: boolean,
-    checkMs?: number,
-  ) => {
-    if (speaking || hearingItself()) {
-      speaking = false;
-      echoUntil = 0;
-      barged = true;
-      clearStop();
-      emit({ type: "barge_in" });
-    }
-    emit({
-      type: "wake",
-      score,
-      at: now(),
-      word,
-      lateMs: Math.round(((samples - firedAt) * 1000) / VOICE_SAMPLE_RATE),
-      ...(checkMs === undefined ? {} : { checkMs }),
-    });
+  /** Hear what follows a name said at `firedAt`, starting the utterance there if none is being heard. */
+  const openAt = (firedAt: number, late: boolean): boolean => {
+    const made = segment === null;
     // Start the utterance at the wake: "hey jarvis, what's…" is one breath. A wake confirmed late keeps
     // everything said since it fired, so the first words after the name are not lost to the check.
     if (segment === null) {
@@ -662,7 +685,38 @@ export const createVoiceCore = (input: {
     }
     creditFrom = firedAt + msToSamples(WAKE_TAIL_MS);
     silenceSamples = 0;
-    enqueue(() => dispatch({ type: "wake", at: now() }));
+    return made;
+  };
+
+  const acceptWake = (
+    score: number,
+    firedAt: number,
+    word: string | null,
+    late: boolean,
+    checkMs?: number,
+    open = true,
+  ) => {
+    if (speaking || hearingItself()) {
+      speaking = false;
+      echoUntil = 0;
+      barged = true;
+      clearStop();
+      emit({ type: "barge_in" });
+    }
+    emit({
+      type: "wake",
+      score,
+      at: now(),
+      word,
+      lateMs: Math.round(((samples - firedAt) * 1000) / VOICE_SAMPLE_RATE),
+      ...(checkMs === undefined ? {} : { checkMs }),
+    });
+    if (open) openAt(firedAt, late);
+  };
+  /** The machine's side of a wake, in queue order: every sentence queued after it answers to this word. */
+  const woke = (word: string | null) => async () => {
+    addressee = word;
+    await dispatch({ type: "wake", at: now() });
   };
 
   const pushAudio = (heard: Int16Array) => {
@@ -673,9 +727,10 @@ export const createVoiceCore = (input: {
 
     const score = input.wake.process(frame);
     const wakeWord = score === null ? null : (input.wake.lastWord?.() ?? null);
+    const firedAt = samples - Math.min(samples, input.wake.firedAgo?.() ?? 0);
     if (
       score !== null &&
-      hearingItself() &&
+      heardItselfAt(firedAt) &&
       wakeWord !== null &&
       echoesSpeech(wakeWord, spokenLately)
     ) {
@@ -683,33 +738,50 @@ export const createVoiceCore = (input: {
       emit({ type: "dropped", text: wakeWord, reason: "own voice" });
     } else if (score !== null) {
       // Over its own voice too: a barge-in needs the recogniser to hear the name, not just the model.
-      const firedAt = samples - Math.min(samples, input.wake.firedAgo?.() ?? 0);
       if (input.verifyWake !== undefined && machine.mode !== "dictation") {
         // The model alone is not enough, asleep or in a follow-up window (where a false fire would play the
         // cue, flash the pill and extend the window): recognise what was just said first.
-        if (!verifying) {
-          verifying = true;
-          const checkFrom = samples;
-          verifyFrom = firedAt - msToSamples(Math.max(seg.preRollMs, WAKE_LOOKBACK_MS));
-          const word = input.wake.lastWord?.() ?? null;
-          const heard = joined(
-            recent
-              .filter((r) => r.end > firedAt - msToSamples(WAKE_LOOKBACK_MS) && r.end <= firedAt)
-              .map((r) => r.frame),
-          );
-          void input
-            .verifyWake(heard, word)
-            .catch(() => true)
-            .then((ok) => {
-              verifying = false;
-              if (disposed) return;
-              if (ok) {
-                const checkMs = Math.round(((samples - checkFrom) * 1000) / VOICE_SAMPLE_RATE);
-                acceptWake(score, firedAt, word, true, checkMs);
-              } else emit({ type: "dropped", text: "", reason: "wake not confirmed" });
-            });
+        const checkFrom = samples;
+        const fire: Fire = {
+          verdict: input
+            .verifyWake(
+              joined(
+                recent
+                  .filter(
+                    (r) => r.end > firedAt - msToSamples(WAKE_LOOKBACK_MS) && r.end <= firedAt,
+                  )
+                  .map((r) => r.frame),
+              ),
+              wakeWord,
+            )
+            .catch(() => true),
+          made: false,
+          segment: "none",
+          ok: null,
+        };
+        // Over her voice the segment waits for the answer: a barge-in then takes what he said from `recent`.
+        if (!hearingItself()) {
+          fire.made = openAt(firedAt, firedAt < samples);
+          fire.segment = "open";
+          segmentFire = fire;
         }
-      } else acceptWake(score, firedAt, input.wake.lastWord?.() ?? null, firedAt < samples);
+        enqueue(async () => {
+          if (await fire.verdict) await woke(wakeWord)();
+        });
+        void fire.verdict.then((ok) => {
+          fire.ok = ok;
+          if (disposed) return;
+          if (!ok) emit({ type: "dropped", text: "", reason: "wake not confirmed" });
+          else {
+            const checkMs = Math.round(((samples - checkFrom) * 1000) / VOICE_SAMPLE_RATE);
+            acceptWake(score, firedAt, wakeWord, true, checkMs, fire.segment === "none");
+          }
+          show();
+        });
+      } else {
+        acceptWake(score, firedAt, wakeWord, firedAt < samples);
+        enqueue(woke(wakeWord));
+      }
     } else if (machine.deadline !== null || machine.pending !== null) {
       const at = now();
       // The window waits only for speech to START. Words that have begun, or are being recognised, are never
@@ -738,6 +810,7 @@ export const createVoiceCore = (input: {
         if (ducked) emit({ type: "barge_duck", on: false });
         ducked = false;
         acceptWake(1, samples - onset, null, true);
+        enqueue(woke(null));
       } else if (bargeRun >= msToSamples(DUCK_MS) && !ducked) {
         ducked = true;
         emit({ type: "barge_duck", on: true });
@@ -780,11 +853,7 @@ export const createVoiceCore = (input: {
     }
 
     recent.push({ frame, end: samples });
-    // A slow check keeps everything since the name, however long it takes: the command is in there.
-    const keepFrom = verifying
-      ? Math.min(verifyFrom, samples - msToSamples(RECENT_MS))
-      : samples - msToSamples(RECENT_MS);
-    while (recent.length > 0 && recent[0]!.end < keepFrom) recent.shift();
+    while (recent.length > 0 && recent[0]!.end < samples - msToSamples(RECENT_MS)) recent.shift();
     preRoll.push(frame);
     preRollSamples += frame.length;
     while (preRollSamples - (preRoll[0]?.length ?? 0) >= msToSamples(seg.preRollMs)) {
@@ -796,7 +865,7 @@ export const createVoiceCore = (input: {
   const activate = (activation: VoiceActivation) => {
     if (activation === "wake") {
       emit({ type: "wake", score: 1, at: now(), word: null });
-      enqueue(() => dispatch({ type: "wake", at: now() }));
+      enqueue(woke(null));
     } else if (activation === "dismiss") enqueue(() => dispatch({ type: "dismiss", at: now() }));
     else if (activation === "toggle_direct_session") {
       enqueue(() =>
