@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-# Old name of `tessaya-remote`.
-exec "$(dirname "$(readlink -f "$0")")/../tessaya/tessaya-remote" "$@"

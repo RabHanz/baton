@@ -58,7 +58,7 @@ export const promptTerms = (entries: ReadonlyArray<VocabularyEntry>): ReadonlyAr
     .slice(0, PROMPT_TERMS)
     .map((entry) => entry.replacement ?? entry.phrase);
 
-const sameWord = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+const sameWord = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
 /** Adds or strengthens one entry. `source: "added"` wins over learned once he has said it himself. */
 export const upsertEntry = (

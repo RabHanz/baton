@@ -1,5 +1,6 @@
 // @effect-diagnostics globalDate:off
-import { catalogControls, INITIAL_VIEW, sampleCatalogRows } from "../../sessions/catalogRows.ts";
+import { catalogControls, INITIAL_VIEW } from "../../sessions/catalogRows.ts";
+import { sampleCatalogRows } from "../../sessions/sampleCatalog.ts";
 import type { HomeControl, HomeExtra } from "../../home/batonHome.ts";
 import { tabOf } from "../../home/tabs.ts";
 import { STATES } from "../../home/pageStates.ts";

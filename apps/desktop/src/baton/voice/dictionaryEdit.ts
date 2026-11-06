@@ -6,16 +6,13 @@
  */
 import * as NodePath from "node:path";
 
-import type { DictionaryEntry } from "@t3tools/baton-shared/dictationCleanup";
+import { removeEntry, type VocabularyEntry } from "@t3tools/baton-shared/vocabulary";
 
 import { writeJsonFile } from "../writing/jsonStore.ts";
 
-/** A word, with where it came from. A file written before this has none of the extras, and is "added". */
-export type VocabEntry = DictionaryEntry & {
-  readonly source?: "learned" | "added";
-  readonly count?: number;
-  readonly lastSeen?: string;
-};
+/** A word, with where it came from: the one vocabulary model. A file written before it has none of the extras, and is "added". */
+export type VocabEntry = VocabularyEntry;
+export { removeEntry };
 
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
@@ -32,11 +29,6 @@ export const addEntry = (
       : entry.replacement.trim();
   return [{ phrase, replacement, source: "added" }, ...list.filter((e) => !same(e.phrase, phrase))];
 };
-
-export const removeEntry = (
-  list: ReadonlyArray<VocabEntry>,
-  phrase: string,
-): ReadonlyArray<VocabEntry> => list.filter((e) => !same(e.phrase, phrase));
 
 /** Changes the spelling or the phrase of one word and keeps what Baton learned about it. */
 export const editEntry = (

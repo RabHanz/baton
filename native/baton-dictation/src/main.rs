@@ -125,8 +125,7 @@ struct Job {
     language: Option<String>,
 }
 
-// The timings and the table are docs/baton/fixtures/double-tap.json; packages/baton-voice/src/doubleTap.ts is the same machine in
-// TypeScript, and both test suites replay the one table.
+// The timings and the table are docs/baton/fixtures/double-tap.json; the sidecar is the only implementation.
 const SHORT_TAP_MS: f64 = 200.0;
 const FIRST_PRESS_MS: f64 = 350.0;
 const GAP_MS: f64 = 350.0;
@@ -1321,7 +1320,7 @@ mod tests {
         assert_eq!([1, 2, 3, 4, 8, 16].map(default_threads), [1, 2, 2, 2, 4, 8]);
     }
 
-    /// The same table the TypeScript reducer replays (docs/baton/fixtures/double-tap.json): one set of timings, two implementations.
+    /// The timing table in docs/baton/fixtures/double-tap.json.
     #[test]
     fn the_push_to_talk_machine_replays_the_shared_timing_table() {
         let fixture: Value = serde_json::from_str(include_str!("../../../docs/baton/fixtures/double-tap.json")).unwrap();
