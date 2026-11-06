@@ -21,7 +21,7 @@ Turn on **Keep servers in step** on the **Memory** page to carry memory between 
 1. On the other computer, open **Memory** and press **Pair for memory sync** in its own server's row. It shows a code that works once, for five minutes. On a server without the app, run `t3 auth pairing create --scope baton:memory-sync` there instead.
 2. Here, enter that code in that server's row and press **Pair**. The row then says its walled memory syncs.
 
-A row that says **Walled memory not syncing: pair for sync** has no credential yet. **Stop syncing walled memory** drops it here; to end it on the other server too, revoke **Tessaya memory sync** in its **Settings → Sharing & access**.
+The credential is kept only if this computer can encrypt it, and it works for a limited time: the row says until when, and a server that stops accepting it is shown as not syncing again. A row that says **Walled memory not syncing: pair for sync** has no credential yet. **Stop syncing walled memory** drops it here; to end it on the other server too, revoke **Tessaya memory sync** in its **Settings → Sharing & access**.
 
 ## What she has learned
 

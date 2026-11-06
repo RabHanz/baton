@@ -47,6 +47,7 @@ import { batonWorkSessions } from "../../state/batonWorkSessions";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { authEnvironment } from "../../state/auth";
 import { readPreparedConnection } from "../../state/session";
+import { sameSyncOrigin, syncFailureLine, syncPeerUrl } from "../../batonMemorySync";
 import { BatonIntentBar } from "./BatonIntentBar";
 import { BatonProjectsBlock } from "./BatonProjectsBlock";
 
@@ -350,7 +351,12 @@ export function BatonSidebarSection(props: {
    * Memory between the servers this window is connected to (MEMORY.md section 6): for each pair, ask
    * the one what the other has not seen and hand it over. Last writer wins; the servers keep the cursors.
    */
-  const syncMemory = async (tokens: Readonly<Record<string, string>>): Promise<unknown> => {
+  type SyncPeerCredential = { readonly origin: string; readonly token: string };
+  const syncMemory = async (
+    peers: Readonly<Record<string, SyncPeerCredential>>,
+  ): Promise<unknown> => {
+    // Servers whose credential was turned away: the desktop forgets it and says so.
+    const refused = new Set<EnvironmentId>();
     type Reply<V> = { readonly _tag: "Success"; readonly value: V } | { readonly _tag: "Failure" };
     const methods = new Map<unknown, string>([
       [memorySyncHello, "baton.memory.syncHello"],
@@ -363,18 +369,23 @@ export function BatonSidebarSection(props: {
       environmentId: EnvironmentId,
       input: unknown,
     ): Promise<Reply<V>> => {
-      if (environmentId === memoryHome)
+      if (environmentId === primaryEnvironmentId)
         return await (
           run as (c: { environmentId: EnvironmentId; input: never }) => Promise<Reply<V>>
         )({ environmentId, input: input as never });
-      const token = tokens[environmentId];
+      const peer = peers[environmentId];
       const base = readPreparedConnection(environmentId)?.httpBaseUrl;
-      if (token === undefined || base === undefined) return { _tag: "Failure" };
-      const response = await fetch(new URL(`/tessaya/desk/${methods.get(run)}`, base), {
+      const url = base === undefined ? null : syncPeerUrl(base, `tessaya/desk/${methods.get(run)}`);
+      // The credential goes only back to the origin that issued it, never along a redirect.
+      if (peer === undefined || url === null || !sameSyncOrigin(peer.origin, url))
+        return { _tag: "Failure" };
+      const response = await fetch(url, {
         method: "POST",
-        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        redirect: "error",
+        headers: { authorization: `Bearer ${peer.token}`, "content-type": "application/json" },
         body: JSON.stringify(input),
       }).catch(() => null);
+      if (response?.status === 401 || response?.status === 403) refused.add(environmentId);
       const json = (await response?.json().catch(() => null)) as { value?: V } | null;
       return response?.ok === true && json?.value !== undefined
         ? { _tag: "Success", value: json.value }
@@ -412,7 +423,14 @@ export function BatonSidebarSection(props: {
         if (pushed._tag === "Success") applied += pushed.value.applied;
       }
     }
-    return { servers: servers.length, applied };
+    return {
+      servers: servers.length,
+      applied,
+      refused: [...refused].map((environmentId) => ({
+        environmentId,
+        label: fleet.resolveEnvironmentLabel(environmentId) ?? environmentId,
+      })),
+    };
   };
   const onWeave = async (request: BatonWeaveBridgeRequest): Promise<unknown> => {
     const commands = { send: weaveSend, list: weaveList, tick: weaveTick };
@@ -477,12 +495,14 @@ export function BatonSidebarSection(props: {
   };
   const onMemory = async (request: BatonMemoryBridgeRequest): Promise<unknown> => {
     if (request.op === "sync")
-      return syncMemory((request.args["tokens"] ?? {}) as Readonly<Record<string, string>>);
+      return syncMemory(
+        (request.args["peers"] ?? {}) as Readonly<Record<string, SyncPeerCredential>>,
+      );
     if (request.op === "syncPeers")
       return fleet.environmentIds.map((environmentId) => ({
         environmentId,
         label: fleet.resolveEnvironmentLabel(environmentId) ?? environmentId,
-        local: environmentId === memoryHome,
+        local: environmentId === primaryEnvironmentId,
       }));
     if (request.op === "syncPair") {
       if (memoryHome === undefined) throw new Error("This app's own server is not connected.");
@@ -498,8 +518,14 @@ export function BatonSidebarSection(props: {
       const environmentId = String(request.args["environmentId"]) as EnvironmentId;
       const base = readPreparedConnection(environmentId)?.httpBaseUrl;
       if (base === undefined) throw new Error("That server is not connected.");
-      const response = await fetch(new URL("/oauth/token", base), {
+      const url = syncPeerUrl(base, "oauth/token");
+      if (url === null)
+        throw new Error(
+          "That server is reached over plain http off this machine and the tailnet, so no credential is sent to it.",
+        );
+      const response = await fetch(url, {
         method: "POST",
+        redirect: "error",
         headers: { "content-type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
           grant_type: AuthTokenExchangeGrantType,
@@ -509,11 +535,20 @@ export function BatonSidebarSection(props: {
           scope: AuthBatonMemorySyncScope,
           client_label: "Tessaya memory sync",
         }),
-      });
-      const json = (await response.json().catch(() => null)) as { access_token?: string } | null;
+      }).catch(() => null);
+      if (response === null)
+        throw new Error("That server did not answer. Try again when it is online.");
+      const json = (await response.json().catch(() => null)) as {
+        access_token?: string;
+        expires_in?: number;
+      } | null;
       if (!response.ok || typeof json?.access_token !== "string")
-        throw new Error("That code did not work. Make a new one on that machine and try again.");
-      return { token: json.access_token };
+        throw new Error(syncFailureLine(response.status));
+      return {
+        origin: url.origin,
+        token: json.access_token,
+        expiresAt: Date.now() + (json.expires_in ?? 0) * 1000,
+      };
     }
     const commands = {
       list: memoryList,

@@ -675,14 +675,17 @@ export const startScreenCompanion = (input: {
   const memorySync = createMemorySync({
     file: NodePath.join(input.stateDir, "baton-memory.json"),
     peersFile: NodePath.join(input.stateDir, "memory-sync-peers.json"),
-    protect: (plain) =>
-      Electron.safeStorage.isEncryptionAvailable()
-        ? Electron.safeStorage.encryptString(plain).toString("base64")
-        : plain,
-    unprotect: (wrapped) =>
-      Electron.safeStorage.isEncryptionAvailable()
-        ? Electron.safeStorage.decryptString(Buffer.from(wrapped, "base64"))
-        : wrapped,
+    // Linux's basic_text backend is a fixed key, not encryption: no credential is kept there.
+    protection: () =>
+      Electron.safeStorage.isEncryptionAvailable() &&
+      (input.platform !== "linux" ||
+        Electron.safeStorage.getSelectedStorageBackend() !== "basic_text")
+        ? {
+            protect: (plain) => Electron.safeStorage.encryptString(plain).toString("base64"),
+            unprotect: (wrapped) =>
+              Electron.safeStorage.decryptString(Buffer.from(wrapped, "base64")),
+          }
+        : null,
     call: (op, args) =>
       actions?.memory === undefined
         ? Promise.reject(new Error("Memory is not reachable yet."))

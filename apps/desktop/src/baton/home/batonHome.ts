@@ -197,6 +197,7 @@ export type HomeControl =
         readonly label: string;
         readonly local: boolean;
         readonly paired: boolean;
+        readonly expiresAt?: number;
       }>;
       /** The daily pull of learnings from the history index (held for his yes). */
       readonly pullOn: boolean;
