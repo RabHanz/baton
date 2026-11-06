@@ -88,8 +88,9 @@ export interface StandingRun {
 }
 
 /**
- * A timed job whose hour passed while Tessaya was off or asleep: "once" runs it when she is back the same day, "skip"
- * leaves that day out. A missed day before today is never made up either way.
+ * A timed job whose hour came while Tessaya was not running: "once" runs it when she is back the same day, "skip"
+ * leaves that day out. Only being off counts as missing it: quiet hours that delay it, or a clock change that removes
+ * its hour, do not, and it runs at the next pass it can that day. A missed day before today is never made up.
  */
 export type MissedRun = "once" | "skip";
 
@@ -97,6 +98,8 @@ export interface StandingState {
   readonly on: Readonly<Partial<Record<BuiltInId, boolean>>>;
   /** Per timed job; "once" when not set. */
   readonly missed?: Readonly<Partial<Record<BuiltInId, MissedRun>>>;
+  /** The hour of the first pass of the day: whether Tessaya was running before a timed job's hour came. */
+  readonly firstPass?: { readonly day: string; readonly hour: number };
   readonly runs: ReadonlyArray<StandingRun>;
   readonly brief: { readonly day: string; readonly text: string } | null;
   /** Runs ever, by job (the run list keeps only the latest). */
@@ -140,16 +143,28 @@ const WAIT_MINUTES = 60;
 export const missedRunOf = (state: StandingState, id: BuiltInId): MissedRun =>
   state.missed?.[id] ?? "once";
 
-/** A timed job's hour has come: at its hour, or later the same day when a missed run is made up once. */
-const timeHasCome = (state: StandingState, id: BuiltInId, hour: number, at: number): boolean =>
-  hour === at || (hour > at && missedRunOf(state, id) === "once");
+/**
+ * A timed job's hour has come: from its hour on that day, unless it was missed (Tessaya first ran that day after its
+ * hour) and set to skip.
+ */
+const timeHasCome = (
+  state: StandingState,
+  id: BuiltInId,
+  hour: number,
+  at: number,
+  firstHourToday: number,
+): boolean => hour >= at && (firstHourToday <= at || missedRunOf(state, id) === "once");
 
 /** One pass. A failing op is logged as a run that failed, and never stops the others. */
 export const runStandingJobs = async (
   input: StandingInput,
   ops: StandingOps,
 ): Promise<{ readonly state: StandingState; readonly did: ReadonlyArray<StandingRun> }> => {
-  let state = input.state;
+  let state =
+    input.state.firstPass?.day === input.day
+      ? input.state
+      : { ...input.state, firstPass: { day: input.day, hour: input.hour } };
+  const firstHour = state.firstPass!.hour;
   const did: StandingRun[] = [];
   const attempt = async (id: BuiltInId, key: string, work: () => Promise<string>) => {
     if (!isDue(state, id, key)) return;
@@ -180,7 +195,7 @@ export const runStandingJobs = async (
     await attempt("ci_look", t.id, async () => `${t.title}: ${await ops.look(t)}`);
   }
   if (
-    timeHasCome(state, "morning_brief", input.hour, BRIEF_HOUR) &&
+    timeHasCome(state, "morning_brief", input.hour, BRIEF_HOUR, firstHour) &&
     input.quiet !== true &&
     state.brief?.day !== input.day
   ) {
@@ -190,7 +205,7 @@ export const runStandingJobs = async (
       return "Built the morning brief.";
     });
   }
-  if (timeHasCome(state, "nightly_learning", input.hour, LEARN_HOUR))
+  if (timeHasCome(state, "nightly_learning", input.hour, LEARN_HOUR, firstHour))
     await attempt("nightly_learning", input.day, ops.learn);
   for (const f of input.findings) {
     if (f.kind !== "unanswered" || f.minutes < WAIT_MINUTES || input.quiet === true) continue;
