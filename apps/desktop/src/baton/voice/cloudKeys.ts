@@ -16,12 +16,19 @@ export interface KeyProtection {
 }
 
 export interface CloudKeys {
+  /** The key to use, or null: none kept, one that will not unwrap, or one the provider refused. */
   readonly get: (provider: CloudSttProvider) => string | null;
   readonly has: (provider: CloudSttProvider) => boolean;
+  /** The provider answered 401/403: the cloud is not tried with this key again until he saves or removes one. */
+  readonly refuse: (provider: CloudSttProvider) => void;
+  readonly refused: (provider: CloudSttProvider) => boolean;
   /** Throws when this computer cannot encrypt it, so it is never kept in the clear. */
   readonly set: (provider: CloudSttProvider, key: string) => void;
   readonly clear: (provider: CloudSttProvider) => void;
 }
+
+/** API keys are long runs of letters, digits and - _ . (sk-..., AIza..., sk-or-v1-...); anything else is a paste gone wrong. */
+const KEY_SHAPE = /^[A-Za-z0-9_.-]{20,400}$/;
 
 export const createCloudKeys = (
   file: string,
@@ -41,7 +48,10 @@ export const createCloudKeys = (
     NodeFS.mkdirSync(NodePath.dirname(file), { recursive: true });
     NodeFS.writeFileSync(file, JSON.stringify(all), { mode: 0o600 });
   };
-  const get = (provider: CloudSttProvider): string | null => {
+  // Unwrapped once and kept in memory: the settings page asks on every draw, and a file read plus a decrypt each time is waste.
+  const cache = new Map<CloudSttProvider, string | null>();
+  const refusedBy = new Set<CloudSttProvider>();
+  const unwrap = (provider: CloudSttProvider): string | null => {
     const wrapped = read()[provider];
     const os = protection();
     if (typeof wrapped !== "string" || os === null) return null;
@@ -52,9 +62,19 @@ export const createCloudKeys = (
       return null;
     }
   };
+  const kept = (provider: CloudSttProvider): string | null => {
+    if (!cache.has(provider)) cache.set(provider, unwrap(provider));
+    return cache.get(provider) ?? null;
+  };
+  const forget = (provider: CloudSttProvider) => {
+    cache.delete(provider);
+    refusedBy.delete(provider);
+  };
   return {
-    get,
-    has: (provider) => get(provider) !== null,
+    get: (provider) => (refusedBy.has(provider) ? null : kept(provider)),
+    has: (provider) => kept(provider) !== null,
+    refuse: (provider) => void refusedBy.add(provider),
+    refused: (provider) => refusedBy.has(provider),
     set: (provider, key) => {
       const os = protection();
       if (os === null) {
@@ -63,12 +83,18 @@ export const createCloudKeys = (
         );
       }
       const trimmed = key.trim();
-      if (trimmed === "") throw new Error("The key is empty.");
+      if (!KEY_SHAPE.test(trimmed)) {
+        throw new Error(
+          "That does not look like an API key: it should be one line of letters, digits, dashes and underscores.",
+        );
+      }
       write({ ...read(), [provider]: os.protect(trimmed) });
+      forget(provider);
     },
     clear: (provider) => {
       const { [provider]: _gone, ...rest } = read();
       write(rest);
+      forget(provider);
     },
   };
 };

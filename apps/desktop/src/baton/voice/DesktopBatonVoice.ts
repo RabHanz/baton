@@ -787,6 +787,8 @@ export interface VoiceCoreHooks {
   };
   /** Parakeet, in the dictation sidecar. */
   readonly stt: SttProvider;
+  /** This computer's recogniser for the stop listener, never the cloud one. */
+  readonly stopStt: SttProvider;
   /** Everything the core reports, for the cue after a wake word. */
   readonly onEvent: (event: VoiceCoreEvent) => void;
   /** "Add X to my dictionary": the reply to speak, or null when the words were something else. */
@@ -2493,9 +2495,24 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         }),
       local,
       audioMs,
-      onFallback: (why) => {
-        step("cloud-fallback", { provider: cloud.provider, why });
-        note = `${PROVIDER_LABEL[cloud.provider]} did not answer in time, so this computer heard that one.`;
+      onFallback: ({ failure, detail }) => {
+        // Only the status and the provider's short code reach the log, never the key or a body.
+        step("cloud-fallback", { provider: cloud.provider, failure, detail });
+        const name = PROVIDER_LABEL[cloud.provider];
+        if (failure === "key") {
+          cloudKeys.refuse(cloud.provider);
+          configureDictation();
+        }
+        note =
+          failure === "key"
+            ? `${name} refused your key, so recognition is back on this computer until you save a new one.`
+            : failure === "model"
+              ? `${name} has no model "${cloud.model}", so this computer heard that one. Pick another under Cloud model.`
+              : failure === "timeout"
+                ? `${name} did not answer in time, so this computer heard that one.`
+                : failure === "empty"
+                  ? `${name} heard nothing in that, so this computer listened instead.`
+                  : `${name} failed (${detail}), so this computer heard that one.`;
         render();
       },
     });
@@ -2613,9 +2630,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         id: "v.cloudKey",
         section: "Dictation",
         label: `${label} key`,
-        hint: hasKey
-          ? "Encrypted by your computer's account and kept on it; never in settings or logs."
-          : "Paste your own API key. Until one is saved, this computer does the recognition.",
+        hint: cloudKeys.refused(provider)
+          ? `${label} refused this key, so this computer does the recognition. Save a new key to try again.`
+          : hasKey
+            ? "Encrypted by your computer's account and kept on it; never in settings or logs."
+            : "Paste your own API key. Until one is saved, this computer does the recognition.",
         kind: "list",
         secret: true,
         items: hasKey ? ["Saved, encrypted on this computer"] : [],
@@ -2658,6 +2677,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       },
     ];
   };
+  let cloudDictations: Promise<void> = Promise.resolve();
+  /** Where the sidecar writes a recording for the cloud: his own folder, not the shared temp one, emptied at each start. */
+  const cloudTmpDir = NodePath.join(input.stateDir, "voice", "tmp");
+  const resetCloudTmp = () => {
+    NodeFS.rmSync(cloudTmpDir, { recursive: true, force: true });
+    NodeFS.mkdirSync(cloudTmpDir, { recursive: true, mode: 0o700 });
+  };
   /** A hold-key recording the sidecar handed back for cloud recognition; the file is gone once it is heard. */
   const recogniseWav = async (wav: string, audioMs: number): Promise<string> => {
     try {
@@ -2682,7 +2708,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       channel: device === null ? null : channelFor(device),
       paste: settings.paste,
       language: recogniserHint(settings.languages),
-      external: cloudChoice() !== null,
+      external: cloudChoice() === null ? null : cloudTmpDir,
       cleanup: true,
       latch: settings.doubleTap,
       mouse: NodePath.join(input.stateDir, "voice", "input-bindings.json"),
@@ -2840,14 +2866,17 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       keepText("Nothing took the paste. On your clipboard", event.text);
     } else if (event.ev === "text" && typeof event.wav === "string") {
       const wav = event.wav;
-      void recogniseWav(wav, event.audioMs ?? 0).then(
-        (text) => onDictation({ ...event, wav: null, text }),
-        (error: unknown) =>
-          onDictation({
-            ...event,
-            wav: null,
-            error: error instanceof Error ? error.message : String(error),
-          }),
+      // One at a time, so dictations arrive in the order he spoke them; the paste re-checks its window (pasteInto).
+      cloudDictations = cloudDictations.then(() =>
+        recogniseWav(wav, event.audioMs ?? 0).then(
+          (text) => onDictation({ ...event, wav: null, text }),
+          (error: unknown) =>
+            onDictation({
+              ...event,
+              wav: null,
+              error: error instanceof Error ? error.message : String(error),
+            }),
+        ),
       );
     } else if (event.ev === "text") {
       note = event.error ?? event.pasteError ?? note;
@@ -2914,6 +2943,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   /** The sidecar holds no key and no microphone until `configureDictation` gives it a model. */
   const startSidecar = async () => {
     if (binary === null || sidecar !== null) return;
+    resetCloudTmp();
     markPhase("dictation-sidecar-spawn:begin");
     sidecar = startDictationSidecar({
       binary,
@@ -3214,6 +3244,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         },
         recognise,
       ),
+      // The stop listener hears the room while she talks over speakers: it never leaves this computer.
+      stopStt: makeSidecarStt(sidecar),
       onEvent: onCoreEvent,
       waitMs: () => clampWait(settings.waitMs),
       listening: () => ({

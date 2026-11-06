@@ -29,8 +29,8 @@ export interface DictationConfig {
   readonly channel: number | null;
   readonly paste: PasteMethod;
   readonly language: string | null;
-  /** Cloud recognition: hand each recording back as a WAV instead of running the local model on it. */
-  readonly external?: boolean;
+  /** Cloud recognition: each recording is written as a WAV into this private folder and handed back, not recognised here. */
+  readonly external?: string | null;
   /** The sidecar leaves the paste to the desktop, which cleans the text up first. */
   readonly cleanup: boolean;
   /** Two quick taps of the hold key keep the microphone open until the next press. */

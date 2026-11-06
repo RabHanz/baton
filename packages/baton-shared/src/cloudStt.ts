@@ -5,6 +5,8 @@
  * lost. Pure apart from the `fetch` it is given: the key is passed in per call and never kept or logged here.
  */
 
+import { languageName } from "./dictationLanguages.ts";
+
 export type CloudSttProvider = "openai" | "gemini" | "openrouter";
 export const CLOUD_STT_PROVIDERS: ReadonlyArray<CloudSttProvider> = [
   "openai",
@@ -44,22 +46,45 @@ export interface CloudModel {
   readonly recommended: boolean;
 }
 
-/** A failure that says what went wrong without the key or the audio in it. */
-export class CloudSttError extends Error {}
+/** Why a cloud call did not give words: each gets its own note, and a refused key stops the cloud until a new one. */
+export type CloudFailure = "timeout" | "key" | "model" | "empty" | "other";
+
+/** A failure that says what went wrong with only the status and the provider's short code: never the key, the audio or the body. */
+export class CloudSttError extends Error {
+  readonly failure: CloudFailure;
+  constructor(message: string, failure: CloudFailure = "other") {
+    super(message);
+    this.failure = failure;
+  }
+}
 
 const PROMPT =
   "Transcribe this audio exactly as spoken. Reply with the transcript only: no quotes, no labels, no notes.";
+// The models read a name better than a code: "French", not "fr".
 const promptFor = (language: string | null) =>
-  language === null ? PROMPT : `${PROMPT} The speaker's language is ${language}.`;
+  language === null ? PROMPT : `${PROMPT} The speaker's language is ${languageName(language)}.`;
 
 const base64 = (bytes: Uint8Array): string => Buffer.from(bytes).toString("base64");
 
+/** The provider's own short error code (OpenAI `code`/`type`, Gemini `status`, OpenRouter `code`), if it is a plain word. */
+const codeOf = (body: unknown): string | null => {
+  const error = (body as { error?: Record<string, unknown> } | null)?.error;
+  const code = error?.["code"] ?? error?.["status"] ?? error?.["type"];
+  const text = typeof code === "number" ? String(code) : code;
+  return typeof text === "string" && /^[A-Za-z0-9_.-]{1,40}$/.test(text) ? text : null;
+};
+
 const failed = async (provider: CloudSttProvider, response: Response): Promise<never> => {
-  const body = await response.text().catch(() => "");
-  // Providers echo the request id and an error message, never the key; still cut it short.
-  const detail = body.replace(/\s+/g, " ").slice(0, 200);
+  const code = codeOf(await response.json().catch(() => null));
+  const failure: CloudFailure =
+    response.status === 401 || response.status === 403
+      ? "key"
+      : response.status === 404 || (response.status === 400 && code !== null && /model/i.test(code))
+        ? "model"
+        : "other";
   throw new CloudSttError(
-    `${PROVIDER_LABEL[provider]} answered ${response.status}${detail === "" ? "" : `: ${detail}`}`,
+    `${PROVIDER_LABEL[provider]} answered ${response.status}${code === null ? "" : ` (${code})`}`,
+    failure,
   );
 };
 
@@ -80,6 +105,7 @@ export const listCloudModels = async (
       provider,
       await fetch("https://api.openai.com/v1/models", {
         headers: { authorization: `Bearer ${key}` },
+        redirect: "error",
       }),
     )) as { data?: Array<{ id?: string }> };
     ids = (body.data ?? [])
@@ -90,6 +116,7 @@ export const listCloudModels = async (
       provider,
       await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000", {
         headers: { "x-goog-api-key": key },
+        redirect: "error",
       }),
     )) as {
       models?: Array<{ name?: string; supportedGenerationMethods?: string[] }>;
@@ -104,6 +131,7 @@ export const listCloudModels = async (
       provider,
       await fetch("https://openrouter.ai/api/v1/models", {
         headers: { authorization: `Bearer ${key}` },
+        redirect: "error",
       }),
     )) as {
       data?: Array<{ id?: string; architecture?: { input_modalities?: string[] } }>;
@@ -149,6 +177,8 @@ export const cloudTranscribe = async (input: CloudTranscribeInput): Promise<stri
       provider,
       await fetch("https://api.openai.com/v1/audio/transcriptions", {
         method: "POST",
+        // A key is never carried to another host.
+        redirect: "error",
         headers: { authorization: `Bearer ${key}` },
         body: form,
         ...(signal === undefined ? {} : { signal }),
@@ -163,6 +193,8 @@ export const cloudTranscribe = async (input: CloudTranscribeInput): Promise<stri
         `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
         {
           method: "POST",
+          // A key is never carried to another host.
+          redirect: "error",
           headers: { "x-goog-api-key": key, "content-type": "application/json" },
           body: JSON.stringify({
             contents: [
@@ -188,6 +220,8 @@ export const cloudTranscribe = async (input: CloudTranscribeInput): Promise<stri
     provider,
     await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
+      // A key is never carried to another host.
+      redirect: "error",
       headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
       body: JSON.stringify({
         model,
@@ -220,7 +254,10 @@ export const transcribeWithFallback = async (input: {
   readonly cloud: (signal: AbortSignal) => Promise<string>;
   readonly local: () => Promise<string>;
   readonly audioMs: number;
-  readonly onFallback: (reason: string) => void;
+  readonly onFallback: (reason: {
+    readonly failure: CloudFailure;
+    readonly detail: string;
+  }) => void;
   /** A test passes its own; real time by default. */
   readonly timer?: (ms: number, abort: () => void) => () => void;
 }): Promise<{ readonly text: string; readonly via: "cloud" | "local" }> => {
@@ -237,20 +274,21 @@ export const transcribeWithFallback = async (input: {
   const late = new Promise<never>((_, reject) => (timedOut = reject));
   const cancel = timer(budget, () => {
     controller.abort();
-    timedOut(new CloudSttError("timed out"));
+    timedOut(new CloudSttError("timed out", "timeout"));
   });
   try {
     const text = await Promise.race([input.cloud(controller.signal), late]);
     // Nothing back for audio he spoke is a failure too: the local model may still hear words in it.
-    if (text.trim() === "") throw new CloudSttError("an empty answer");
+    if (text.trim() === "") throw new CloudSttError("an empty answer", "empty");
     return { text, via: "cloud" };
   } catch (error) {
     input.onFallback(
       controller.signal.aborted
-        ? `no answer in ${Math.round(budget / 1000)} s`
-        : error instanceof Error
-          ? error.message
-          : String(error),
+        ? { failure: "timeout", detail: `no answer in ${Math.round(budget / 1000)} s` }
+        : error instanceof CloudSttError
+          ? { failure: error.failure, detail: error.message }
+          : // A network error's message names the host at most, never the key.
+            { failure: "other", detail: error instanceof Error ? error.message : String(error) },
     );
     return { text: await input.local(), via: "local" };
   } finally {

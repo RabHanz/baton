@@ -94,9 +94,10 @@ struct Config {
     /// Two quick taps of the hold key keep the microphone open until the next press.
     #[serde(default)]
     latch: bool,
-    /// He chose cloud recognition: a recording is kept as a WAV and handed back, not run through the local model.
+    /// He chose cloud recognition: each recording is written as a WAV into this private folder (the desktop's, 0700) and
+    /// handed back, not run through the local model.
     #[serde(default)]
-    external: bool,
+    external: Option<PathBuf>,
 }
 
 enum Msg {
@@ -230,7 +231,7 @@ enum Work {
     Clip(Job),
     /// Load the model now, so the first real phrase does not wait behind it.
     Load { id: Option<u64>, model: PathBuf },
-    Begin { model: PathBuf, language: Option<String>, external: bool },
+    Begin { model: PathBuf, language: Option<String>, external: Option<PathBuf> },
     Audio(Vec<f32>),
     End { target: Option<isize>, released: Instant },
     Abort,
@@ -305,14 +306,14 @@ struct Live {
     infer_ms: u64,
     pieces: u64,
     failed: Option<String>,
-    /// Kept whole for the desktop's recogniser; nothing is decoded here.
-    external: bool,
+    /// Kept whole for the desktop's recogniser in this folder; nothing is decoded here.
+    external: Option<PathBuf>,
 }
 
 impl Live {
     fn new(language: Option<String>, load_ms: u64, failed: Option<String>) -> Self {
         Self {
-            external: false,
+            external: None,
             chunker: Chunker::new(ChunkParams::from_env()),
             heard: Vec::new(),
             language,
@@ -337,8 +338,8 @@ impl Live {
 
     fn finish(mut self, session: Option<&mut Session>, released: Instant) -> Result<Done, String> {
         let audio_ms = self.heard.len() as u64 / 16;
-        if self.external {
-            let wav = write_wav(&self.heard)?;
+        if let Some(dir) = &self.external {
+            let wav = write_wav(dir, &self.heard)?;
             return Ok(Done {
                 text: String::new(),
                 audio_ms,
@@ -372,22 +373,34 @@ impl Live {
     }
 }
 
-/// A recording as 16 kHz mono 16-bit WAV in the temp folder; the desktop deletes it once it has the words.
-fn write_wav(pcm: &[f32]) -> Result<String, String> {
-    let path = std::env::temp_dir().join(format!(
+/// A recording as 16 kHz mono 16-bit WAV in the desktop's private folder; the desktop deletes it once it has the words,
+/// and a file that failed half-way is removed here.
+fn write_wav(dir: &Path, pcm: &[f32]) -> Result<String, String> {
+    let path = dir.join(format!(
         "tessaya-dictation-{}-{}.wav",
         std::process::id(),
         SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_nanos())
     ));
-    let spec = hound::WavSpec { channels: 1, sample_rate: 16_000, bits_per_sample: 16, sample_format: hound::SampleFormat::Int };
-    let mut writer = hound::WavWriter::create(&path, spec).map_err(|e| format!("{}: {e}", path.display()))?;
-    for &sample in pcm {
-        writer
-            .write_sample((sample.clamp(-1.0, 1.0) * 32767.0) as i16)
-            .map_err(|e| format!("{}: {e}", path.display()))?;
+    let spec = hound::WavSpec {
+        channels: 1,
+        sample_rate: 16_000,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+    let written = (|| {
+        let mut writer = hound::WavWriter::create(&path, spec)?;
+        for &sample in pcm {
+            writer.write_sample((sample.clamp(-1.0, 1.0) * 32767.0) as i16)?;
+        }
+        writer.finalize()
+    })();
+    match written {
+        Ok(()) => Ok(path.to_string_lossy().into_owned()),
+        Err(e) => {
+            let _ = std::fs::remove_file(&path);
+            Err(format!("{}: {e}", path.display()))
+        }
     }
-    writer.finalize().map_err(|e| format!("{}: {e}", path.display()))?;
-    Ok(path.to_string_lossy().into_owned())
 }
 
 fn ensure_loaded(loaded: &mut Option<(PathBuf, Session)>, model: &Path) -> Result<u64, String> {
@@ -455,10 +468,10 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>) {
                 };
                 emit(line);
             }
-            Ok(Work::Begin { external: true, language, .. }) => {
-                live = Some(Live { external: true, ..Live::new(language, 0, None) });
+            Ok(Work::Begin { external: Some(dir), language, .. }) => {
+                live = Some(Live { external: Some(dir), ..Live::new(language, 0, None) });
             }
-            Ok(Work::Begin { model, language, external: false }) => {
+            Ok(Work::Begin { model, language, external: None }) => {
                 live = Some(match ensure_loaded(&mut loaded, &model) {
                     Ok(load_ms) => Live::new(language, load_ms, None),
                     Err(e) => {
@@ -470,7 +483,7 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>) {
             Ok(Work::Audio(pcm)) => {
                 let Some(current) = live.as_mut() else { continue };
                 current.heard.extend_from_slice(&pcm);
-                if current.failed.is_none() && !current.external {
+                if current.failed.is_none() && current.external.is_none() {
                     if let (Some(piece), Some((_, session))) = (current.chunker.push(&pcm), loaded.as_mut()) {
                         current.decode(session, piece);
                     }
@@ -902,7 +915,7 @@ fn serve() {
             emit(json!({"ev": "error", "message": "no model configured"}));
             return;
         };
-        let _ = job_tx.send(Work::Begin { model, language: config.language.clone(), external: config.external });
+        let _ = job_tx.send(Work::Begin { model, language: config.language.clone(), external: config.external.clone() });
         let samples = Arc::new(AtomicUsize::new(0));
         let opened = match fake_mic() {
             Some(path) => {
@@ -1360,13 +1373,16 @@ mod tests {
 
     #[test]
     fn a_cloud_recording_comes_back_as_a_wav_with_no_text() {
-        let mut live = Live { external: true, ..Live::new(None, 0, None) };
+        let dir = std::env::temp_dir().join(format!("tessaya-wav-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut live = Live { external: Some(dir.clone()), ..Live::new(None, 0, None) };
         live.heard = vec![0.0, 0.5, -0.5, 1.0];
         let done = live.finish(None, Instant::now()).unwrap();
         assert_eq!(done.text, "");
         let wav = done.wav.unwrap();
+        assert!(Path::new(&wav).starts_with(&dir));
         let back = read_wav(Path::new(&wav)).unwrap();
-        std::fs::remove_file(&wav).unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
         assert_eq!(back.len(), 4);
         assert!((back[1] - 0.5).abs() < 0.001 && (back[3] - 1.0).abs() < 0.001);
     }

@@ -138,7 +138,8 @@ describe("transcribing a clip on his key", () => {
     );
     expect(headers(seen[0]!.init).get("x-goog-api-key")).toBe(KEY);
     const sent = JSON.parse(seen[0]!.init.body as string);
-    expect(sent.contents[0].parts[0].text).toContain("language is fr");
+    // The name, not the code: the model reads "French" better than "fr".
+    expect(sent.contents[0].parts[0].text).toContain("language is French");
     expect(sent.contents[0].parts[1].inline_data).toEqual({
       mime_type: "audio/wav",
       data: Buffer.from(WAV).toString("base64"),
@@ -168,25 +169,48 @@ describe("transcribing a clip on his key", () => {
     });
   });
 
-  it("says what failed without the key", async () => {
-    const { fetch } = recorded(401, {
-      error: {
-        message: "Incorrect API key provided: sk-test-***-123.",
-        type: "invalid_request_error",
-      },
-    });
-    const call = cloudTranscribe({
-      provider: "openai",
-      key: KEY,
-      model: "whisper-1",
-      wav: WAV,
-      language: null,
-      fetch,
-    });
-    await expect(call).rejects.toBeInstanceOf(CloudSttError);
-    await expect(call).rejects.toThrow(/OpenAI answered 401/);
-    await expect(call).rejects.not.toThrow(KEY);
-  });
+  it.each<[CloudSttProvider, number, unknown, string, string]>([
+    [
+      "openai",
+      401,
+      { error: { message: `Incorrect API key provided: ${KEY}.`, code: "invalid_api_key" } },
+      "key",
+      "OpenAI answered 401 (invalid_api_key)",
+    ],
+    [
+      "openai",
+      404,
+      { error: { message: "The model `gpt-9` does not exist", code: "model_not_found" } },
+      "model",
+      "OpenAI answered 404 (model_not_found)",
+    ],
+    [
+      "gemini",
+      403,
+      { error: { code: 403, message: "API key not valid.", status: "PERMISSION_DENIED" } },
+      "key",
+      "Google Gemini answered 403 (403)",
+    ],
+    ["openrouter", 500, "<html>upstream error</html>", "other", "OpenRouter answered 500"],
+  ])(
+    "%s %d: names the status and short code, never the key or the body",
+    async (provider, status, body, failure, message) => {
+      const { fetch, seen } = recorded(status, body);
+      const error = await cloudTranscribe({
+        provider,
+        key: KEY,
+        model: "m",
+        wav: WAV,
+        language: null,
+        fetch,
+      }).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(CloudSttError);
+      expect((error as CloudSttError).failure).toBe(failure);
+      expect((error as CloudSttError).message).toBe(message);
+      // A key is never carried to another host by a redirect.
+      expect(seen[0]!.init.redirect).toBe("error");
+    },
+  );
 });
 
 describe("falling back to this computer", () => {
@@ -207,25 +231,31 @@ describe("falling back to this computer", () => {
       cloud: async () => "hello there",
       local: async () => "local words",
       audioMs: 2_000,
-      onFallback: (why) => void notes.push(why),
+      onFallback: (why) => void notes.push(why.failure),
     });
     expect(result).toEqual({ text: "hello there", via: "cloud" });
     expect(notes).toEqual([]);
   });
 
   it.each([
-    ["an error", async () => Promise.reject(new CloudSttError("OpenAI answered 500"))],
-    ["an empty answer", async () => ""],
-  ])("hears the clip locally after %s, and says so once", async (_name, cloud) => {
+    [
+      "a refused key",
+      async () => Promise.reject(new CloudSttError("OpenAI answered 401", "key")),
+      "key",
+    ],
+    ["a missing model", async () => Promise.reject(new CloudSttError("404", "model")), "model"],
+    ["a network error", async () => Promise.reject(new TypeError("fetch failed")), "other"],
+    ["an empty answer", async () => "", "empty"],
+  ])("hears the clip locally after %s, and says why once", async (_name, cloud, failure) => {
     const notes: string[] = [];
     const result = await transcribeWithFallback({
       cloud,
       local: async () => "local words",
       audioMs: 2_000,
-      onFallback: (why) => void notes.push(why),
+      onFallback: (why) => void notes.push(why.failure),
     });
     expect(result).toEqual({ text: "local words", via: "local" });
-    expect(notes).toHaveLength(1);
+    expect(notes).toEqual([failure]);
   });
 
   it("does not wait past the budget, even for a call that ignores the abort", async () => {
@@ -239,13 +269,13 @@ describe("falling back to this computer", () => {
       },
       local: async () => "local words",
       audioMs: 3_000,
-      onFallback: (why) => void notes.push(why),
+      onFallback: (why) => void notes.push(`${why.failure}: ${why.detail}`),
       timer: clock.timer,
     });
     clock.expire();
     expect(await pending).toEqual({ text: "local words", via: "local" });
     expect(aborted).toBe(true);
-    expect(notes).toEqual([`no answer in ${Math.round(cloudBudgetMs(3_000) / 1000)} s`]);
+    expect(notes).toEqual([`timeout: no answer in ${Math.round(cloudBudgetMs(3_000) / 1000)} s`]);
   });
 
   it("gives a long clip longer, within a ceiling", () => {
