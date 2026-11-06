@@ -11,7 +11,13 @@ import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
 
 import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
-import { AskSource, BatonPhoneInbox, layer as inboxLayer, phoneCall } from "./BatonPhoneInbox.ts";
+import {
+  AskOwner,
+  AskSource,
+  BatonPhoneInbox,
+  layer as inboxLayer,
+  phoneCall,
+} from "./BatonPhoneInbox.ts";
 
 const layer = it.layer(inboxLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)));
 
@@ -192,6 +198,40 @@ layer("BatonPhoneInbox", (it) => {
         assert.strictEqual(yield* inbox.promptAnswer("prompt-8"), 7);
       }),
   );
+  it.effect(
+    "only the MCP toolkit asks as an agent, and agents asking together get three in all",
+    () =>
+      Effect.gen(function* () {
+        const inbox = yield* BatonPhoneInbox;
+        while ((yield* inbox.take) !== null);
+        const ask = (id: string, owner: string | null) =>
+          phoneCall({ op: "ask", args: { id, text: "stop job 3", owner: "a1" } }).pipe(
+            Effect.provideService(AskOwner, owner),
+            Effect.flip,
+            Effect.as("refused"),
+            Effect.catch((value) => Effect.succeed(value)),
+          );
+        // A client may not post an agent's id, nor name an owner through its arguments.
+        assert.strictEqual(yield* ask("mcp-a1-0001", null), "refused");
+        assert.isNull(yield* inbox.get("mcp-a1-0001"));
+        // An agent may post only its own ids.
+        assert.strictEqual(yield* ask("mcp-a2-0001", "a1"), "refused");
+
+        const results = yield* Effect.forEach(
+          ["b1", "b2", "b3", "b4", "b5"],
+          (owner) =>
+            phoneCall({ op: "ask", args: { id: `mcp-${owner}-0001`, text: "x" } }).pipe(
+              Effect.provideService(AskOwner, owner),
+            ),
+          { concurrency: "unbounded" },
+        );
+        assert.strictEqual(
+          results.filter((r) => (r.value as { ok?: boolean }).ok === true).length,
+          3,
+        );
+      }),
+  );
+
   it.effect(
     "the web intent bar asks the lead only while a desktop is there, and its ask expires in minutes",
     () =>
