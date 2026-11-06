@@ -1,12 +1,20 @@
 import { expect, it } from "@effect/vitest";
-import { EnvironmentId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  ProviderInstanceId,
+  ThreadId,
+  type AuthMcpClientAccess,
+} from "@t3tools/contracts";
 import type { BatonMemoryQuery } from "@t3tools/baton-contracts";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 
+import { layerMemory as SqlitePersistenceMemory } from "../../../baton/BatonDatabase.ts";
 import { BatonMemoryService, MemoryViewer } from "../../../baton/BatonMemoryService.ts";
+import { BatonPhoneInbox, layer as inboxLayer } from "../../../baton/BatonPhoneInbox.ts";
 import { BatonRuntime } from "../../../baton/BatonRpcHandlers.ts";
 import * as ThreadManagement from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -14,6 +22,59 @@ import * as McpToolAccess from "../../McpToolAccess.ts";
 import { liveThreadShell } from "../../McpToolAccess.testkit.ts";
 import * as TessayaHandlers from "./handlers.ts";
 import { TessayaToolkit } from "./tools.ts";
+
+const thread = ThreadId.make("thread:tessaya");
+
+/** One tool call by an outside agent with this access, or by a T3 thread agent when access is "thread". */
+const callTool = (
+  caller: AuthMcpClientAccess | "thread",
+  runtime: Context.Context<never>,
+  name: keyof (typeof TessayaToolkit)["tools"],
+  input: unknown,
+  sessionId = "agent-1",
+) =>
+  Effect.gen(function* () {
+    const toolkit = yield* TessayaToolkit;
+    const result = yield* toolkit
+      .handle(name, input as never)
+      .pipe(Stream.unwrap, Stream.runCollect);
+    return result.at(-1)!;
+  }).pipe(
+    Effect.provide(
+      McpToolAccess.HandlersLayer.layer(TessayaHandlers.layer).pipe(
+        Layer.provideMerge(
+          Layer.mergeAll(
+            Layer.succeed(McpInvocationContext.McpInvocationContext, {
+              environmentId: EnvironmentId.make("environment:tessaya"),
+              requestNamespace: "client:tessaya",
+              thread:
+                caller === "thread"
+                  ? {
+                      threadId: thread,
+                      providerSessionId: "provider:tessaya",
+                      providerInstanceId: ProviderInstanceId.make("codex"),
+                    }
+                  : undefined,
+              client:
+                caller === "thread"
+                  ? undefined
+                  : { sessionId, label: "Claude Code", access: caller },
+              capabilities: new Set(["orchestration" as const]),
+              issuedAt: 0,
+            }),
+            Layer.mock(ThreadManagement.ThreadManagementService)({
+              getThreadShell: () => Effect.succeed(liveThreadShell(thread)),
+            }),
+            Layer.succeed(BatonRuntime, runtime as never),
+            Layer.succeed(
+              SecureRandom.SecureRandom,
+              SecureRandom.make((size) => new Uint8Array(size).fill(7)),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
 
 it.effect(
   "an outside agent searches memory as a client, so walls hold and it names no persona",
@@ -27,31 +88,13 @@ it.effect(
             return [];
           }),
       } as never);
-      const dependencies = Layer.mergeAll(
-        Layer.succeed(McpInvocationContext.McpInvocationContext, {
-          environmentId: EnvironmentId.make("environment:tessaya"),
-          requestNamespace: "client:tessaya",
-          thread: undefined,
-          client: { sessionId: "agent-1", label: "Claude Code", access: "read-only" },
-          capabilities: new Set(["orchestration" as const]),
-          issuedAt: 0,
-        }),
-        Layer.mock(ThreadManagement.ThreadManagementService)({}),
-        Layer.succeed(BatonRuntime, Context.make(BatonMemoryService, memory) as never),
+      const result = yield* callTool(
+        "read-only",
+        Context.make(BatonMemoryService, memory) as never,
+        "tessaya_memory_search",
+        { text: "deploy key" },
       );
-      const result = yield* Effect.gen(function* () {
-        const toolkit = yield* TessayaToolkit;
-        return yield* toolkit
-          .handle("tessaya_memory_search", { text: "deploy key" })
-          .pipe(Stream.unwrap, Stream.runCollect);
-      }).pipe(
-        Effect.provide(
-          McpToolAccess.HandlersLayer.layer(TessayaHandlers.layer).pipe(
-            Layer.provideMerge(dependencies),
-          ),
-        ),
-      );
-      expect(result.at(-1)?.isFailure).toBe(false);
+      expect(result.isFailure).toBe(false);
       expect(asked).toEqual([[{ text: "deploy key", limit: 10 }, "client"]]);
     }),
 );
@@ -61,36 +104,72 @@ it.effect(
   () =>
     Effect.gen(function* () {
       const memory = BatonMemoryService.of({ search: () => Effect.succeed([]) } as never);
-      const dependencies = Layer.mergeAll(
-        Layer.succeed(McpInvocationContext.McpInvocationContext, {
-          environmentId: EnvironmentId.make("environment:tessaya"),
-          requestNamespace: "provider:tessaya",
-          thread: {
-            threadId: ThreadId.make("thread:tessaya"),
-            providerSessionId: "provider:tessaya",
-            providerInstanceId: ProviderInstanceId.make("codex"),
-          },
-          client: undefined,
-          capabilities: new Set(["orchestration" as const]),
-          issuedAt: 0,
-        }),
-        Layer.mock(ThreadManagement.ThreadManagementService)({
-          getThreadShell: () => Effect.succeed(liveThreadShell(ThreadId.make("thread:tessaya"))),
-        }),
-        Layer.succeed(BatonRuntime, Context.make(BatonMemoryService, memory) as never),
+      const result = yield* callTool(
+        "thread",
+        Context.make(BatonMemoryService, memory) as never,
+        "tessaya_memory_search",
+        { text: "deploy key" },
       );
-      const result = yield* Effect.gen(function* () {
-        const toolkit = yield* TessayaToolkit;
-        return yield* toolkit
-          .handle("tessaya_memory_search", { text: "deploy key" })
-          .pipe(Stream.unwrap, Stream.runCollect);
-      }).pipe(
-        Effect.provide(
-          McpToolAccess.HandlersLayer.layer(TessayaHandlers.layer).pipe(
-            Layer.provideMerge(dependencies),
-          ),
-        ),
-      );
-      expect(result.at(-1)?.result).toMatchObject({ code: "capability_denied" });
+      expect(result.result).toMatchObject({ code: "capability_denied" });
     }),
+);
+
+it.effect(
+  "an outside agent's ask reaches the desktop as a device's words; read-only agents cannot ask, and only its own asks can be read",
+  () =>
+    Effect.gen(function* () {
+      const inbox = yield* BatonPhoneInbox;
+      // The desktop has taken from the queue, so it counts as connected.
+      yield* inbox.take;
+      const runtime = Context.make(BatonPhoneInbox, inbox) as never;
+
+      const refused = yield* callTool("read-only", runtime, "tessaya_ask", { text: "stop job 3" });
+      expect(refused.isFailure).toBe(true);
+      expect(yield* inbox.take).toBeNull();
+
+      const made = yield* callTool("auto", runtime, "tessaya_ask", { text: "stop job 3" });
+      const id = (made.result as { id: string }).id;
+      expect(id).toMatch(/^mcp-/);
+      expect(yield* inbox.take).toMatchObject({ id, text: "stop job 3", source: "device" });
+
+      const status = yield* callTool("read-only", runtime, "tessaya_ask_status", { id });
+      expect(status.result).toMatchObject({ id, status: "taken" });
+
+      yield* inbox.post({ id: "web-aaaa-0001", text: "his own words" });
+      const other = yield* callTool("read-only", runtime, "tessaya_ask_status", {
+        id: "web-aaaa-0001",
+      });
+      expect(other.result).toMatchObject({ id: null, line: "No such request." });
+    }).pipe(Effect.provide(inboxLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)))),
+);
+
+it.effect(
+  "an agent has one request open at a time, agents three in all, and none reads another's",
+  () =>
+    Effect.gen(function* () {
+      const inbox = yield* BatonPhoneInbox;
+      yield* inbox.take;
+      const runtime = Context.make(BatonPhoneInbox, inbox) as never;
+      const ask = (sessionId: string) =>
+        callTool("auto", runtime, "tessaya_ask", { text: "stop job 3" }, sessionId).pipe(
+          Effect.map((r) => r.result as { id: string | null; line: string }),
+        );
+
+      const first = yield* ask("agent-1");
+      expect(first.id).not.toBeNull();
+      expect((yield* ask("agent-1")).line).toContain("still waiting");
+
+      const theirs = yield* callTool(
+        "read-only",
+        runtime,
+        "tessaya_ask_status",
+        { id: first.id },
+        "agent-2",
+      );
+      expect(theirs.result).toMatchObject({ id: null, status: "unknown" });
+
+      expect((yield* ask("agent-2")).id).not.toBeNull();
+      expect((yield* ask("agent-3")).id).not.toBeNull();
+      expect((yield* ask("agent-4")).line).toContain("three requests waiting");
+    }).pipe(Effect.provide(inboxLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)))),
 );

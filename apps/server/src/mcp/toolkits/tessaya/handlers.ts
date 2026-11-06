@@ -2,17 +2,30 @@ import {
   BATON_JOB_WS_METHODS,
   BATON_MEMORY_WS_METHODS,
   BATON_ORCHESTRATION_WS_METHODS,
+  BATON_PHONE_WS_METHODS,
   BATON_RECORD_WS_METHODS,
   BATON_SESSIONS_WS_METHODS,
   BATON_WATCH_WS_METHODS,
 } from "@t3tools/baton-contracts";
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 
 import * as BatonRpcHandlers from "../../../baton/BatonRpcHandlers.ts";
+import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import { readCaller } from "../../threadAccess.ts";
 import { TessayaToolkit } from "./tools.ts";
+
+const decodeAsked = Schema.decodeUnknownOption(
+  Schema.Struct({
+    ok: Schema.optional(Schema.Boolean),
+    status: Schema.optional(Schema.String),
+    line: Schema.optional(Schema.String),
+  }),
+);
 
 const failed = (cause: unknown) =>
   new OrchestratorMcpFailure({
@@ -27,8 +40,18 @@ export const layer = McpToolAccess.toLayer(
   TessayaToolkit,
   Effect.gen(function* () {
     const handlers = yield* BatonRpcHandlers.makeHandlers;
+    const random = yield* SecureRandom.SecureRandom;
+    // No RPC session here, so the inbox's AskSource stays "device": the desktop's gate asks him before any act.
+    const phone = (op: "ask" | "askGet", args: Record<string, unknown>) =>
+      Effect.map(handlers[BATON_PHONE_WS_METHODS.call]({ op, args }), ({ value }) =>
+        Option.getOrNull(decodeAsked(value)),
+      );
+    // The agent's own requests carry its session in their id, so it reads only those and is capped per session.
+    const ownerOf = Effect.map(McpInvocationContext.McpInvocationContext, (scope) =>
+      (scope.client?.sessionId ?? "").replace(/[^a-zA-Z0-9]/g, "").slice(0, 24),
+    );
     // The same handlers as the clients' RPC, behind T3's read check for this credential.
-    const call = <A, E>(effect: Effect.Effect<A, E>) =>
+    const call = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       readCaller().pipe(
         Effect.filterOrFail(
           ({ scope }) => scope.client !== undefined,
@@ -63,6 +86,37 @@ export const layer = McpToolAccess.toLayer(
             limit: input.limit ?? 30,
             history: false,
           }),
+        ),
+      ),
+      tessaya_ask: McpToolAccess.writesWithCapability((input) =>
+        call(
+          Effect.gen(function* () {
+            const owner = yield* ownerOf;
+            const id = `mcp-${owner}-${yield* random.uuidV4()}`;
+            const asked = yield* phone("ask", { id, text: input.text, owner });
+            return {
+              id: asked?.ok === false ? null : id,
+              status: asked?.status ?? "not asked",
+              line: asked?.line ?? "Nothing was asked.",
+            };
+          }),
+        ),
+      ),
+      // Only this agent's own requests: another agent's, the phone's and the web bar's are not its to read.
+      tessaya_ask_status: McpToolAccess.reads((input) =>
+        call(
+          Effect.map(
+            Effect.flatMap(ownerOf, (owner) =>
+              input.id.startsWith(`mcp-${owner}-`)
+                ? phone("askGet", { id: input.id })
+                : Effect.succeed(null),
+            ),
+            (asked) => ({
+              id: asked === null ? null : input.id,
+              status: asked?.status ?? "unknown",
+              line: asked?.line ?? "No such request.",
+            }),
+          ),
         ),
       ),
     };

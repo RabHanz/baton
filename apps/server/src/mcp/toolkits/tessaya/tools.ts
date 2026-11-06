@@ -127,6 +127,37 @@ const SessionsTool = Tool.make("tessaya_sessions", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+const AskResult = Schema.Struct({
+  /** Pass it to `tessaya_ask_status`; null when nothing was asked. */
+  id: Schema.NullOr(Schema.String),
+  status: Schema.String,
+  line: Schema.String,
+});
+const AskTool = Tool.make("tessaya_ask", {
+  ...shared,
+  description:
+    "Ask Tessaya, the Director's assistant on his computer, to do something for you: start, stop or steer a job, message one of his sessions, change one of her settings. Write it as one plain request. She asks the Director before she acts, every time, so the outcome can take minutes, and he may say no. Returns an id for `tessaya_ask_status`; you can have one request open at a time. Nothing is asked when no Tessaya desktop is connected. For looking things up, use the other tessaya_ tools instead.",
+  parameters: Schema.Struct({ text: Schema.String.check(Schema.isMaxLength(2000)) }),
+  success: AskResult,
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, false);
+const AskStatusTool = Tool.make("tessaya_ask_status", {
+  ...shared,
+  description:
+    "Where one of your `tessaya_ask` requests stands. `status` is queued (waiting for his computer), taken (she is on it), answered (`line` is her answer), failed, expired (dropped: ask again only if still needed), not asked, or unknown (not one of yours). You can have one request open at a time.",
+  parameters: Schema.Struct({ id: Schema.String.check(Schema.isMaxLength(80)) }),
+  success: AskResult,
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
 export const TessayaToolkit = Toolkit.make(
   JobsTool,
   WatchTool,
@@ -134,4 +165,6 @@ export const TessayaToolkit = Toolkit.make(
   MemorySearchTool,
   RulesTool,
   SessionsTool,
+  AskTool,
+  AskStatusTool,
 );
