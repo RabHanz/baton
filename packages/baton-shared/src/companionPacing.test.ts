@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { AFTER_SPEECH_MS, holdAfterSpeechMs, pageText, readingMs } from "./companionPacing.ts";
+import {
+  AFTER_SPEECH_MS,
+  holdAfterSpeechMs,
+  pageText,
+  queueSpeech,
+  readingMs,
+} from "./companionPacing.ts";
 
 describe("how long things stay up", () => {
   it("never shows anything for less than a glance, and grows with the words", () => {
@@ -26,5 +32,21 @@ describe("how long things stay up", () => {
   it("keeps a single sentence longer than a page whole", () => {
     const long = `${"word ".repeat(40).trim()}.`;
     expect(pageText(long, 50)).toEqual([long]);
+  });
+});
+
+describe("queueSpeech", () => {
+  it("starts each sentence's caption after the one before has played, and all of them before it is done", async () => {
+    const played: string[] = [];
+    const startedAfter: Record<string, ReadonlyArray<string>> = {};
+    const speech = queueSpeech((text) => Promise.resolve().then(() => void played.push(text)));
+    for (const text of ["One.", "Two.", "Done."])
+      speech.add(text, () => (startedAfter[text] = [...played]));
+    await speech.finished();
+    // A one-sentence reply's card is up by now too, so lingering after `finished` never misses it.
+    expect(Object.keys(startedAfter)).toEqual(["One.", "Two.", "Done."]);
+    expect(startedAfter["One."]).toEqual([]);
+    expect(startedAfter["Two."]).toContain("One.");
+    expect(startedAfter["Done."]).toEqual(expect.arrayContaining(["One.", "Two."]));
   });
 });

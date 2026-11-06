@@ -67,35 +67,40 @@ baton checks every tool call, and some will be refused or need his yes. a refusa
 
 export const ASSISTANT_PROMPT_INTRO = `you're baton, his personal assistant on this windows laptop. he talks to you out loud or types. answer anything: general knowledge, advice, writing, maths, code, and whatever is on his screen. he leans british, so use british spelling and idiom. the current date and time arrive with each question, in his own time zone: use them, and never read a clock off the screen. you have no tools and you do nothing on his computer here, so a fact that changes (weather, news, scores) is not yours to guess: never claim you did something, opened something, or sent anything. if the answer needs seeing his screen and no screenshot is attached, reply with exactly [LOOK] and nothing else, and one will come with your next turn. keep the thread: he will follow up with "and what about…" and expect you to remember.`;
 
+/** The reply's own tags, never read aloud: a point, the end of a step, a request to look. */
+const REPLY_TAG = /\[(?:POINT:[^\]\n]*|DONE|LOOK)\]/gi;
+/** A tag still being written at the end of what has arrived. */
+const OPEN_TAG =
+  /\[(?:P(?:O(?:I(?:N(?:T(?::[^\]\n]*)?)?)?)?)?|D(?:O(?:N(?:E)?)?)?|L(?:O(?:O(?:K)?)?)?)?$/i;
+const plain = (text: string) => text.replace(/\s+/g, " ").trim();
+
 /**
- * Sentences as they finish in a stream, for speaking before the whole answer is in. Stops at the
- * first "[", where the reply's tags begin, so they are never read aloud.
+ * Sentences as they finish in a stream, for speaking before the whole answer is in. The reply's tags
+ * are taken out wherever they fall and what follows them is still read; other brackets are words.
  */
 export const makeSentenceStream = () => {
   let held = "";
-  let hidden = false;
   const take = (): string[] => {
+    held = held.replace(REPLY_TAG, " ");
+    const open = OPEN_TAG.exec(held);
+    let ready = open === null ? held : held.slice(0, open.index);
     const out: string[] = [];
     for (;;) {
-      const match = /^(.+?[.!?…])(\s+)/s.exec(held);
+      const match = /^(.+?[.!?…])(\s+)/s.exec(ready);
       if (match === null) return out;
-      out.push(match[1]!.trim());
+      out.push(plain(match[1]!));
+      ready = ready.slice(match[0].length);
       held = held.slice(match[0].length);
     }
   };
   return {
     feed: (delta: string): ReadonlyArray<string> => {
-      if (hidden) return [];
-      const tag = delta.indexOf("[");
-      if (tag >= 0) {
-        hidden = true;
-        held += delta.slice(0, tag);
-      } else held += delta;
+      held += delta;
       return take();
     },
     /** What is left at the end. */
     flush: (): string => {
-      const rest = held.trim();
+      const rest = plain(held.replace(REPLY_TAG, " ").replace(OPEN_TAG, ""));
       held = "";
       return rest;
     },

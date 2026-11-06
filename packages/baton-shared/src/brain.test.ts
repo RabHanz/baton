@@ -43,6 +43,17 @@ describe("makeSentenceStream", () => {
     expect(stream.feed("ick save [POINT:1,2:save]")).toEqual([]);
     expect(stream.flush()).toBe("Then click save");
   });
+
+  it("reads on after a tag, and keeps brackets that are not one", () => {
+    const stream = makeSentenceStream();
+    expect(stream.feed("Click save [POI")).toEqual([]);
+    expect(stream.feed("NT:1,2:save] and then OK. Your [baton] tab is open. ")).toEqual([
+      "Click save and then OK.",
+      "Your [baton] tab is open.",
+    ]);
+    expect(stream.feed("Last of all, the editor")).toEqual([]);
+    expect(stream.flush()).toBe("Last of all, the editor");
+  });
 });
 
 describe("live facts", () => {
