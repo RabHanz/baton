@@ -17,7 +17,8 @@ WORDS = {
                      "the essay", "tasia", "the sire", "teasing", "tess", "testing", "thesis", "that's a", "taser",
                      "sayer", "tis a", "messiah", "to sail", "thesaurus", "tea say", "chaya", "tessier", "vanessa",
                      "nessa", "teresa", "melissa", "tessie", "let me say a", "yes say", "dress a", "less say",
-                     "tessellate", "thessaly", "contessa", "odyssey"],
+                     "tessellate", "thessaly", "contessa", "odyssey", "say yeah",
+                     "just say yeah", "say aye", "says yeah", "to say yes", "say a word"],
     },
     "onyx": {
         # ON-iks. He owns the name Onnyx, so it can come up when he is not addressing Baton.
