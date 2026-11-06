@@ -31,6 +31,7 @@ const callTool = (
   runtime: Context.Context<never>,
   name: keyof (typeof TessayaToolkit)["tools"],
   input: unknown,
+  sessionId = "agent-1",
 ) =>
   Effect.gen(function* () {
     const toolkit = yield* TessayaToolkit;
@@ -57,7 +58,7 @@ const callTool = (
               client:
                 caller === "thread"
                   ? undefined
-                  : { sessionId: "agent-1", label: "Claude Code", access: caller },
+                  : { sessionId, label: "Claude Code", access: caller },
               capabilities: new Set(["orchestration" as const]),
               issuedAt: 0,
             }),
@@ -139,5 +140,36 @@ it.effect(
         id: "web-aaaa-0001",
       });
       expect(other.result).toMatchObject({ id: null, line: "No such request." });
+    }).pipe(Effect.provide(inboxLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)))),
+);
+
+it.effect(
+  "an agent has one request open at a time, agents three in all, and none reads another's",
+  () =>
+    Effect.gen(function* () {
+      const inbox = yield* BatonPhoneInbox;
+      yield* inbox.take;
+      const runtime = Context.make(BatonPhoneInbox, inbox) as never;
+      const ask = (sessionId: string) =>
+        callTool("auto", runtime, "tessaya_ask", { text: "stop job 3" }, sessionId).pipe(
+          Effect.map((r) => r.result as { id: string | null; line: string }),
+        );
+
+      const first = yield* ask("agent-1");
+      expect(first.id).not.toBeNull();
+      expect((yield* ask("agent-1")).line).toContain("still waiting");
+
+      const theirs = yield* callTool(
+        "read-only",
+        runtime,
+        "tessaya_ask_status",
+        { id: first.id },
+        "agent-2",
+      );
+      expect(theirs.result).toMatchObject({ id: null, status: "unknown" });
+
+      expect((yield* ask("agent-2")).id).not.toBeNull();
+      expect((yield* ask("agent-3")).id).not.toBeNull();
+      expect((yield* ask("agent-4")).line).toContain("three requests waiting");
     }).pipe(Effect.provide(inboxLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)))),
 );

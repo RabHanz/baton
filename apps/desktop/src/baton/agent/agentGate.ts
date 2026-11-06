@@ -97,8 +97,6 @@ const OUTSIDE_READS: ReadonlySet<string> = new Set([
   "fleet_status",
   "memory_search",
   "memory_used",
-  "vault_list",
-  "history_search",
   "wait",
   "jobs_list",
   "watch_report",

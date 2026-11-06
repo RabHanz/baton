@@ -294,6 +294,12 @@ export const layer = Layer.effect(BatonPhoneInbox, make);
 const str = (v: unknown, max: number): string | null =>
   typeof v === "string" && v.length > 0 && v.length <= max ? v : null;
 
+const AGENT_ASKS_OPEN_MAX = 3;
+const AGENT_ASK_OPEN =
+  "Your last request is still waiting for the Director. Check it with tessaya_ask_status before asking again.";
+const AGENT_ASKS_FULL =
+  "Agents already have three requests waiting for the Director, so nothing was asked. Try again later.";
+
 /** The desktop's calls (`baton.phone.call`): every argument is checked here, whatever the window sent. */
 export const phoneCall = Effect.fn("BatonPhoneInbox.call")(function* (input: BatonPhoneCallInput) {
   const inbox = yield* BatonPhoneInbox;
@@ -305,6 +311,17 @@ export const phoneCall = Effect.fn("BatonPhoneInbox.call")(function* (input: Bat
     case "ask": {
       // Nothing is queued with no desktop to take it, and what is queued expires in minutes, not a day.
       if (!(yield* inbox.connected)) return { value: { ok: false, line: BAR_NOT_CONNECTED } };
+      // An outside agent's (tessaya_ask): one open request each and three in all, so agents never fill his queue.
+      const owner = str(a["owner"], 40);
+      if (owner !== null) {
+        const open = (yield* inbox.recent(100)).filter(
+          (ask) => ask.id.startsWith("mcp-") && (ask.status === "queued" || ask.status === "taken"),
+        );
+        if (open.some((ask) => ask.id.startsWith(`mcp-${owner}-`)))
+          return { value: { ok: false, line: AGENT_ASK_OPEN } };
+        if (open.length >= AGENT_ASKS_OPEN_MAX)
+          return { value: { ok: false, line: AGENT_ASKS_FULL } };
+      }
       const made = yield* inbox.post({
         id: id ?? "",
         text: typeof a["text"] === "string" ? a["text"] : "",

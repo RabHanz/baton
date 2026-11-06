@@ -12,7 +12,7 @@ An agent you connect to this computer's MCP URL, as described in [Outside agents
 
 ## Asking her to do something
 
-`tessaya_ask` passes a request to Tessaya on this computer, such as "stop job 7", and `tessaya_ask_status` shows where it stands. She treats it as a request from a paired device, not from you: she asks you before she does anything, every time, and you can say no. An agent with read-only access cannot ask, and nothing is asked while Tessaya's desktop app is closed. A request waits five minutes for it.
+`tessaya_ask` passes a request to Tessaya on this computer, such as "stop job 7", and `tessaya_ask_status` shows where it stands. She treats it as a request from a paired device, not from you: she asks you before she does anything, every time, and you can say no. An agent with read-only access cannot ask, and nothing is asked while Tessaya's desktop app is closed. A request waits five minutes for it. Each agent can have one request waiting at a time, and agents three in all, so they never crowd out your phone.
 
 ## Good to know
 

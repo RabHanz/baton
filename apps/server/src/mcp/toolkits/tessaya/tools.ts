@@ -136,7 +136,7 @@ const AskResult = Schema.Struct({
 const AskTool = Tool.make("tessaya_ask", {
   ...shared,
   description:
-    "Ask Tessaya, the Director's assistant on his computer, to do something for you: start, stop or steer a job, message one of his sessions, change one of her settings. Write it as one plain request. She asks the Director before she acts, every time, so the outcome can take minutes, and he may say no. Returns an id for `tessaya_ask_status`. Nothing is asked when no Tessaya desktop is connected. For looking things up, use the other tessaya_ tools instead.",
+    "Ask Tessaya, the Director's assistant on his computer, to do something for you: start, stop or steer a job, message one of his sessions, change one of her settings. Write it as one plain request. She asks the Director before she acts, every time, so the outcome can take minutes, and he may say no. Returns an id for `tessaya_ask_status`; you can have one request open at a time. Nothing is asked when no Tessaya desktop is connected. For looking things up, use the other tessaya_ tools instead.",
   parameters: Schema.Struct({ text: Schema.String.check(Schema.isMaxLength(2000)) }),
   success: AskResult,
 })
@@ -148,7 +148,7 @@ const AskTool = Tool.make("tessaya_ask", {
 const AskStatusTool = Tool.make("tessaya_ask_status", {
   ...shared,
   description:
-    "Where a `tessaya_ask` request stands: waiting, taken, answered (with her answer), failed or expired. An expired request was dropped: ask again only if it is still needed.",
+    "Where one of your `tessaya_ask` requests stands. `status` is queued (waiting for his computer), taken (she is on it), answered (`line` is her answer), failed, expired (dropped: ask again only if still needed), not asked, or unknown (not one of yours). You can have one request open at a time.",
   parameters: Schema.Struct({ id: Schema.String.check(Schema.isMaxLength(80)) }),
   success: AskResult,
 })
