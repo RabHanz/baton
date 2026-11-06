@@ -337,6 +337,44 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodePlatformCrypto.layer))(
       }).pipe(Effect.provide(layerEnvironmentAuth({ mode: "web", host: "192.168.1.50" }))),
     );
 
+    it.effect("a cookie bought with a token's pairing keeps the token's provenance", () =>
+      Effect.gen(function* () {
+        const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
+        const sessions = yield* SessionStore.SessionStore;
+        const cookieFrom = (delegatedByToken: boolean) =>
+          Effect.gen(function* () {
+            const pairing = yield* serverAuth.issuePairingCredential(
+              { scopes: ["orchestration:read"] },
+              { delegatedByToken },
+            );
+            const exchange = yield* serverAuth.createBrowserSession(
+              pairing.credential,
+              requestMetadata,
+            );
+            return yield* serverAuth.authenticateHttpRequest({
+              cookies: { [sessions.cookieName]: exchange.sessionToken },
+              headers: {},
+            } as unknown as Parameters<
+              EnvironmentAuth.EnvironmentAuth["Service"]["authenticateHttpRequest"]
+            >[0]);
+          });
+        const bought = yield* cookieFrom(true);
+        expect(bought.method).toBe("browser-session-cookie");
+        expect(bought.subject).toBe(EnvironmentAuth.TOKEN_DELEGATED_SUBJECT);
+        // It cannot launder that through a second pairing of its own.
+        expect(EnvironmentAuth.delegatesAsToken(bought, false)).toBe(true);
+        const his = yield* cookieFrom(false);
+        expect(his.subject).not.toBe(EnvironmentAuth.TOKEN_DELEGATED_SUBJECT);
+        expect(EnvironmentAuth.delegatesAsToken(his, false)).toBe(false);
+        expect(
+          EnvironmentAuth.delegatesAsToken({ method: "bearer-access-token", subject: "x" }, false),
+        ).toBe(true);
+        expect(
+          EnvironmentAuth.delegatesAsToken({ method: "bearer-access-token", subject: "x" }, true),
+        ).toBe(false);
+      }).pipe(Effect.provide(layerEnvironmentAuth())),
+    );
+
     it.effect("preserves pairing grants after rejecting scopes they do not grant", () =>
       Effect.gen(function* () {
         const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;

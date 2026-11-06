@@ -37,7 +37,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type * as RpcGroup from "effect/rpc/RpcGroup";
 
-import type { AuthenticatedSession } from "../auth/EnvironmentAuth.ts";
+import { TOKEN_DELEGATED_SUBJECT, type AuthenticatedSession } from "../auth/EnvironmentAuth.ts";
 import { rpcAuthorizationError } from "../auth/RpcAuthorization.ts";
 import { AskSource } from "./BatonPhoneInbox.ts";
 
@@ -196,6 +196,9 @@ export const DESK_METHODS: ReadonlySet<string> = new Set([
   ).map((op) => BATON_MEMORY_WS_METHODS[op]),
 ]);
 
+/** The phone inbox ops a client may call: leaving words for the assistant and reading where they stand. */
+const PHONE_CLIENT_OPS: ReadonlySet<string> = new Set(["ask", "askGet"]);
+
 /** The scope a caller lacks for this method and payload, or null when it may call it. */
 export const missingBatonScope = (
   tag: string,
@@ -211,27 +214,31 @@ export const missingBatonScope = (
   if (required === undefined) return AuthOrchestrationOperateScope;
   const all: ReadonlyArray<AuthEnvironmentScope> =
     typeof required === "string" ? [required] : required;
-  // Seeing through memory walls is his own view: only the desktop app's own session holds hands-host, and no grant can.
-  const walls =
-    tag === BATON_MEMORY_WS_METHODS.search &&
-    typeof payload === "object" &&
-    payload !== null &&
-    (payload as { admin?: unknown }).admin === true
+  const fields = typeof payload === "object" && payload !== null ? payload : {};
+  // Only the desktop app's own session holds hands-host, and no grant can: seeing through memory walls is his own view,
+  // and only the desktop works the phone inbox (taking his asks, answering them, mirroring its questions).
+  const desktopOnly =
+    (tag === BATON_MEMORY_WS_METHODS.search && (fields as { admin?: unknown }).admin === true) ||
+    (tag === BATON_PHONE_WS_METHODS.call &&
+      !PHONE_CLIENT_OPS.has(String((fields as { op?: unknown }).op)))
       ? [AuthBatonHandsHostScope]
       : [];
-  return [...all, ...walls].find((scope) => !scopes.includes(scope)) ?? null;
+  return [...all, ...desktopOnly].find((scope) => !scopes.includes(scope)) ?? null;
 };
 
 /**
- * Whose words an ask carries: his own from a paired browser (the phone page, the web app) or the desktop app's own session;
- * any bearer token's are a device's, which may be an agent holding a token.
+ * Whose words an ask carries: his own from a browser he paired (the phone page, the web app) or the desktop app's own
+ * session; any token's are a device's, which may be an agent's, and so is a cookie a token bought (its pairing's subject).
  */
-export const askSourceOf = (session: Pick<AuthenticatedSession, "method" | "scopes">) =>
-  session.method === "browser-session-cookie" || session.scopes.includes(AuthBatonHandsHostScope)
+export const askSourceOf = (
+  session: Pick<AuthenticatedSession, "method" | "scopes" | "subject">,
+) =>
+  session.scopes.includes(AuthBatonHandsHostScope) ||
+  (session.method === "browser-session-cookie" && session.subject !== TOKEN_DELEGATED_SUBJECT)
     ? ("phone" as const)
     : ("device" as const);
 
-export const layer = (session: Pick<AuthenticatedSession, "method" | "scopes">) =>
+export const layer = (session: Pick<AuthenticatedSession, "method" | "scopes" | "subject">) =>
   Layer.succeed(BatonRpcScopeAuthorization)((effect, { rpc, payload }) => {
     const missing = missingBatonScope(rpc._tag, session.scopes, payload);
     return missing === null

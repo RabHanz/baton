@@ -609,8 +609,7 @@ export const startScreenCompanion = (input: {
   /** While the phone's ask runs, what the assistant says and shows is kept for the phone as well. */
   let phoneCapture: { readonly spoken: string[]; card: string | null } | null = null;
   let phoneTurn = false;
-  /** A device's words waiting for their turn, the turn running them, and every such sentence, so none counts as his. */
-  let outsideAsk: string | null = null;
+  /** Whether the running turn's words are a device's, and every such sentence, so none counts as his. */
   let outsideTurn = false;
   const outsideSaid = new Set<string>();
   let phoneMirror: PhoneMirror | null = null;
@@ -2376,10 +2375,9 @@ export const startScreenCompanion = (input: {
           before === undefined ? "" : `he said: ${before.said}\nyou replied: ${before.reply}`,
         );
       },
-      beginTurn: (said) => {
+      beginTurn: (said, outside) => {
         memory.beginTurn();
-        outsideTurn = said === outsideAsk;
-        if (outsideTurn) outsideAsk = null;
+        outsideTurn = outside;
         agentTaint.reset(said);
         planGrant = null;
         keysAllowed = null;
@@ -2397,6 +2395,7 @@ export const startScreenCompanion = (input: {
     started: number,
     direct: boolean,
     focusedSession: string | null,
+    outside = false,
   ) => {
     answering += 1;
     const mine = turns.ask();
@@ -2451,6 +2450,7 @@ export const startScreenCompanion = (input: {
       const reply = await agentOf().say(
         direct ? `(to the focused session) ${text}` : text,
         {
+          outside,
           window: windowLabel,
           session: focusedSession,
           project,
@@ -2553,7 +2553,7 @@ export const startScreenCompanion = (input: {
     // A device's words always go to the assistant, whose gate asks; they never pick a mode or a control.
     const instant = outside ? null : instantDecision(text, busy);
     if (instant === null) {
-      void agentTurn(text, started, direct, session);
+      void agentTurn(text, started, direct, session, outside);
       return { kind: "handled" };
     }
     const decision = guardDecision(instant, text);
@@ -2586,9 +2586,8 @@ export const startScreenCompanion = (input: {
     phoneCapture = mine;
     phoneTurn = true;
     if (source === "device") {
-      outsideAsk = text;
       if (outsideSaid.size > 200) outsideSaid.clear();
-      outsideSaid.add(outsideAsk);
+      outsideSaid.add(text);
     }
     try {
       await typed(text, source === "device");

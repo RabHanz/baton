@@ -181,7 +181,7 @@ describe("the one assistant's session", () => {
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 
-  it("starts a second sentence only after the first has finished", async () => {
+  it("starts a second sentence only after the first has finished, each with whose words it carries", async () => {
     const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-agent-"));
     const conversation = createConversationLog({ file: NodePath.join(dir, "c.ndjson") });
     const events: string[] = [];
@@ -190,10 +190,12 @@ describe("the one assistant's session", () => {
     let n = 0;
     const agent = createAssistantAgent({
       start: async () => ({
-        ask: async () => {
+        ask: async (content) => {
           n += 1;
           if (n === 1) await first;
-          events.push(`answered ${n}`);
+          events.push(
+            `answered ${n}${JSON.stringify(content).includes("a paired device (not him) says: type it") ? " (device)" : ""}`,
+          );
           return "ok";
         },
         alive: () => true,
@@ -201,14 +203,15 @@ describe("the one assistant's session", () => {
       }),
       conversation,
       clockLine: () => "now",
-      beginTurn: () => void events.push("begin"),
+      beginTurn: (_said, outside) => void events.push(outside ? "begin device" : "begin"),
     });
+    // A device's ask queued behind his own sentence keeps its flag until its own turn begins.
     const a = agent.say("read the page", { window: null, session: null });
-    const b = agent.say("type it", { window: null, session: null });
+    const b = agent.say("type it", { window: null, session: null, outside: true });
     await Promise.resolve();
     release();
     await Promise.all([a, b]);
-    expect(events).toEqual(["begin", "answered 1", "begin", "answered 2"]);
+    expect(events).toEqual(["begin", "answered 1", "begin device", "answered 2 (device)"]);
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 

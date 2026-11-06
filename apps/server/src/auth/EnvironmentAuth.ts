@@ -85,6 +85,20 @@ export interface McpClientSession {
   readonly peerLink: boolean;
 }
 
+/**
+ * The subject of a pairing a token holder (not a person's browser or the desktop app) minted, kept by the session it
+ * becomes, so a cookie bought with a token is still known as the token's (Tessaya's ask provenance).
+ */
+export const TOKEN_DELEGATED_SUBJECT = "token-delegated";
+
+/** A pairing this session mints carries its provenance: a token's, or a cookie session that itself came from one. */
+export const delegatesAsToken = (
+  session: Pick<AuthenticatedSession, "method" | "subject">,
+  isDesktopApp: boolean,
+): boolean =>
+  session.subject === TOKEN_DELEGATED_SUBJECT ||
+  (session.method !== "browser-session-cookie" && !isDesktopApp);
+
 export interface AuthenticatedSession {
   readonly sessionId: AuthSessionId;
   readonly subject: string;
@@ -494,6 +508,7 @@ export class EnvironmentAuth extends Context.Service<
     >;
     readonly issuePairingCredential: (
       input?: AuthCreatePairingCredentialInput,
+      issuer?: { readonly delegatedByToken: boolean },
     ) => Effect.Effect<
       AuthPairingCredentialResult,
       ServerAuthInternalError | ManagedLimits.ManagedPolicyRefusedError
@@ -1130,10 +1145,13 @@ export const make = Effect.gen(function* () {
       Effect.withSpan("EnvironmentAuth.revokeOtherSessionsExcept"),
     );
 
-  const issuePairingCredential: EnvironmentAuth["Service"]["issuePairingCredential"] = (input) =>
+  const issuePairingCredential: EnvironmentAuth["Service"]["issuePairingCredential"] = (
+    input,
+    issuer,
+  ) =>
     createPairingLink({
       scopes: input?.scopes ?? AuthStandardClientScopes,
-      subject: "one-time-token",
+      subject: issuer?.delegatedByToken === true ? TOKEN_DELEGATED_SUBJECT : "one-time-token",
       ...(input?.label ? { label: input.label } : {}),
     }).pipe(
       Effect.map(toPairingCredential),
