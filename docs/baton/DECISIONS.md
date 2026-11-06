@@ -966,7 +966,7 @@ control still tells the truth about what the work is waiting for.
 
 ## D41 — The capability plane is the abstraction, not the capabilities
 
-**Decided** 2026-09-18, during Phase 10. **Follows** §23's own instruction.
+**Decided** 2026-09-18, during Phase 10. **Follows** §23's own instruction. **Superseded by D154.**
 
 §23 lists twelve provider-neutral capabilities and then says plainly: _do not
 implement every capability during the first Tessaya milestone; build the
@@ -988,7 +988,7 @@ is a later phase's work and will not need this decided again.
 
 ## D42 — Production turns high-risk capabilities off rather than gating them
 
-**Decided** 2026-09-18, during Phase 10. **Stricter than** §24.2.
+**Decided** 2026-09-18, during Phase 10. **Stricter than** §24.2. **Superseded by D154.**
 
 §24.2 allows a high-risk operation through an explicit confirmation surface. The
 production template does not use one: deployment, databases and email are
@@ -3788,3 +3788,7 @@ No push, ever: in-window cards, the Now page and spoken lines only (`NOTIFICATIO
 ## D153 — Acting is quiet: nothing drawn at the target, the pill is the one sign (2026-11-04)
 
 The Director did not like the inspector-style marks shown while Tessaya drove Notepad. While the assistant, Drive or a remote session acts, nothing is drawn over the app: no dashed box, ring or step badge, no numbered dots, no separate Stop window and no "Thinking" card. The pill carries one line and Stop (a click on it stops the work), and one card gives the result. Teach and Look keep only the flying pointer and its label. Questions asked mid-task never take the keyboard (mouse, voice and phone answer them), and a typing call whose window changed while he was asked is refused. Esc that Tessaya sends itself reaches the app instead of stopping the turn. A remote window picture or `ui_tree` follows his screen setting while he is present; with "I'm away" on, that toggle is his yes.
+
+## D154 — One trust gate; the capability policy is deleted (2026-11-05)
+
+Supersedes D41 and D42. `evaluateCapability`, its three templates and the capability contract types never had a runtime caller, so the docs described a check that never ran. What an agent may do is decided by the desktop tool gate alone; production's "off rather than asked" for deploys, databases and email was never enforced and is not claimed. Retention (D43) and the audit trail (D44) stay, with their tests in `retention.test.ts` and `audit.test.ts`.
