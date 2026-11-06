@@ -6,7 +6,9 @@ import {
 } from "@t3tools/baton-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { buildIntentRows, previewResolution } from "./batonIntentView";
+import { BAR_ASK_TTL_MS } from "@t3tools/baton-shared/phoneRelay";
+
+import { buildIntentRows, leadAskSettled, previewResolution } from "./batonIntentView";
 
 const workSessionId = WorkSessionId.make("ws-scheduler");
 
@@ -104,6 +106,19 @@ describe("previewResolution", () => {
       },
     });
     expect(preview.unplaced).toBeNull();
+  });
+});
+
+describe("leadAskSettled", () => {
+  it("stops reading an ask once it has an outcome, is gone, or is older than the server keeps one", () => {
+    expect(leadAskSettled({ status: "queued" }, 0, 1_000)).toBe(false);
+    expect(leadAskSettled({ status: "taken" }, 0, 1_000)).toBe(false);
+    // A failed read is retried, but not past the ask's own life.
+    expect(leadAskSettled(undefined, 0, 1_000)).toBe(false);
+    expect(leadAskSettled({ status: "answered" }, 0, 1_000)).toBe(true);
+    expect(leadAskSettled({ status: "expired" }, 0, 1_000)).toBe(true);
+    expect(leadAskSettled(null, 0, 1_000)).toBe(true);
+    expect(leadAskSettled(undefined, 0, BAR_ASK_TTL_MS + 1)).toBe(true);
   });
 });
 

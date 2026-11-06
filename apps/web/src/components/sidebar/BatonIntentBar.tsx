@@ -35,7 +35,7 @@ import { classifyDictation } from "@t3tools/baton-shared/dictation";
 
 import { cn, randomUUID } from "~/lib/utils";
 import { dictationModeLabel, dictationRefusal } from "../../batonContextView";
-import { goesToLead, previewResolution } from "../../batonIntentView";
+import { goesToLead, leadAskSettled, previewResolution } from "../../batonIntentView";
 import { batonWorkSessions } from "../../state/batonWorkSessions";
 import { Input } from "../ui/input";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -76,12 +76,13 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
   } | null>(null);
   const [reply, setReply] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
-  /** An ask left for the lead (the one assistant), re-read until it settles. */
-  const [leadAsk, setLeadAsk] = useState<string | null>(null);
+  /** An ask left for the lead (the one assistant) on this bar's server, re-read until it settles. */
+  const [leadAsk, setLeadAsk] = useState<{ readonly id: string; readonly at: number } | null>(null);
   /** §12.3's mode. While it is on, ordinary words are text, not instructions. */
   const [dictating, setDictating] = useState(false);
   const resolveIntent = useAtomCommand(batonWorkSessions.intentResolve, { reportFailure: false });
   const runIntent = useAtomCommand(batonWorkSessions.intentRun, { reportFailure: false });
+  const phoneCall = useAtomCommand(batonWorkSessions.phoneCall, { reportFailure: false });
   const latest = useRef(0);
 
   // Resolve while typing. `intentResolve` is a read: it decides what the words
@@ -237,15 +238,21 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
             }).then((result) => (result._tag === "Success" ? result.value.resolution : null));
       if (grammar !== null && goesToLead(grammar)) {
         const id = `web-${randomUUID()}`;
-        const made = (await props
-          .onPhone?.({ kind: "phone", op: "ask", args: { id, text: trimmed } })
-          .catch(() => null)) as { ok?: boolean; line?: string } | null | undefined;
+        // The same server the grammar just checked against: its own desktop answers.
+        const result = await phoneCall({
+          environmentId: props.environmentId,
+          input: { op: "ask", args: { id, text: trimmed } },
+        });
+        const made =
+          result._tag === "Success"
+            ? (result.value.value as { ok?: boolean; line?: string })
+            : null;
         setRunning(false);
         setReply(made?.line ?? "Tessaya is not reachable from here.");
         if (made?.ok !== true) return;
         setText("");
         setResolution(null);
-        setLeadAsk(id);
+        setLeadAsk({ id, at: Date.now() });
         return;
       }
       if (grammar?.outcome === "refused") {
@@ -271,22 +278,25 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
     })();
   };
 
-  const { onPhone: askPhone } = props;
-  // Reads the lead's answer from the server until it settles.
+  const { environmentId: askEnvironment } = props;
+  // Reads the lead's answer from the server until it settles; the server expires an undelivered ask in minutes.
   useEffect(() => {
-    if (leadAsk === null || askPhone === undefined) return;
+    if (leadAsk === null) return;
     const timer = setInterval(() => {
-      void askPhone({ kind: "phone", op: "askGet", args: { id: leadAsk } })
-        .then((value) => {
-          const got = value as { status?: string; line?: string } | null;
-          if (got === null) return setLeadAsk(null);
-          if (got.line !== undefined) setReply(got.line);
-          if (got.status !== "queued" && got.status !== "taken") setLeadAsk(null);
-        })
-        .catch(() => undefined);
+      void phoneCall({
+        environmentId: askEnvironment,
+        input: { op: "askGet", args: { id: leadAsk.id } },
+      }).then((result) => {
+        const got =
+          result._tag === "Success"
+            ? (result.value.value as { status?: string; line?: string } | null)
+            : undefined;
+        if (got?.line !== undefined) setReply(got.line);
+        if (leadAskSettled(got, leadAsk.at, Date.now())) setLeadAsk(null);
+      });
     }, LEAD_POLL_MS);
     return () => clearInterval(timer);
-  }, [leadAsk, askPhone]);
+  }, [leadAsk, askEnvironment, phoneCall]);
 
   const trimmedText = text.trim();
   const shown =

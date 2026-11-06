@@ -16,6 +16,7 @@ import type {
   BatonIntentResolution,
   BatonIntentRisk,
 } from "@t3tools/baton-contracts";
+import { BAR_ASK_TTL_MS } from "@t3tools/baton-shared/phoneRelay";
 
 export interface IntentPreview {
   /** `will` — pressing enter does this. `refused` — it will not happen. */
@@ -38,6 +39,19 @@ const FOR_THE_LEAD: ReadonlySet<string> = new Set(["unrecognised", "unknown_targ
 
 export const goesToLead = (resolution: BatonIntentResolution): boolean =>
   resolution.outcome === "refused" && FOR_THE_LEAD.has(resolution.refusal.reason);
+
+/**
+ * Whether the bar stops re-reading an ask it left for the lead: it has an outcome, the server no longer knows it,
+ * or it is older than the server would keep it undelivered (a lost connection must not poll for ever).
+ */
+export const leadAskSettled = (
+  got: { readonly status?: string } | null | undefined,
+  askedAt: number,
+  now: number,
+): boolean =>
+  got === null ||
+  (got !== undefined && got.status !== "queued" && got.status !== "taken") ||
+  now - askedAt > BAR_ASK_TTL_MS;
 
 export const previewResolution = (resolution: BatonIntentResolution): IntentPreview =>
   goesToLead(resolution)
