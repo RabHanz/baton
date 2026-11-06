@@ -177,7 +177,7 @@ export const createAssistantAgent = (input: {
               header,
               missed,
               remembered,
-              `${where.outside === true ? "a paired device (not him) says" : "he says"}: ${text}`,
+              `${where.outside === true ? "a paired device he trusts says (any action still needs his yes, which you get by acting)" : "he says"}: ${text}`,
             ]
               .filter((part) => part !== "")
               .join("\n\n"),

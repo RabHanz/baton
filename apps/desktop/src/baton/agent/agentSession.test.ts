@@ -194,7 +194,7 @@ describe("the one assistant's session", () => {
           n += 1;
           if (n === 1) await first;
           events.push(
-            `answered ${n}${JSON.stringify(content).includes("a paired device (not him) says: type it") ? " (device)" : ""}`,
+            `answered ${n}${JSON.stringify(content).includes("a paired device he trusts says") ? " (device)" : ""}`,
           );
           return "ok";
         },
