@@ -289,9 +289,7 @@ export const catalogControls = (input: {
           : "Reattach"
         : null,
     keptLabel:
-      (r.waiting ?? 0) > 0 || input.kept?.has(r.id) === true
-        ? `${r.waiting ?? 0} kept message${r.waiting === 1 ? "" : "s"}`
-        : null,
+      (r.waiting ?? 0) > 0 ? `${r.waiting} kept message${r.waiting === 1 ? "" : "s"}` : null,
     kept: input.kept?.get(r.id)?.messages ?? null,
     keptNote: input.kept?.get(r.id)?.sending === true ? WORDS.keptSending : "",
     discardLabel: WORDS.discard,
@@ -299,12 +297,17 @@ export const catalogControls = (input: {
   return [bar, ...list];
 };
 
+const KEPT_RECHECK_MS = 2_000;
+
 /** The window's side of the catalog: the rows, the view, and a resume that shows "Resuming..." until it is live. */
 export const createCatalog = (input: {
   readonly service: CatalogService;
   readonly onChange: () => void;
   readonly now?: () => number;
+  /** Runs `run` after `ms`; tests run it when they choose. */
+  readonly later?: (run: () => void, ms: number) => void;
 }) => {
+  const later = input.later ?? ((run: () => void, ms: number) => void setTimeout(run, ms));
   let rows: ReadonlyArray<CatalogRow> = [];
   let view = INITIAL_VIEW;
   let loaded = false;
@@ -332,8 +335,14 @@ export const createCatalog = (input: {
   const readKept = (row: CatalogRow, discard?: { index: number; text: string }) =>
     (input.service.kept?.(row, discard) ?? Promise.reject(new Error("no kept")))
       .then((found) => {
-        kept.set(row.id, found);
+        if (found.messages.length === 0) kept.delete(row.id);
+        else kept.set(row.id, found);
         set({ id: row.id, waiting: found.messages.length });
+        // Mid-send the list changes as it goes; look again once it may have ended, while it is open.
+        if (found.sending)
+          later(() => {
+            if (kept.has(row.id)) void readKept(row);
+          }, KEPT_RECHECK_MS);
       })
       .catch(() => {
         status = "Its kept messages could not be read.";
