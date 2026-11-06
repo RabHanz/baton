@@ -149,6 +149,34 @@ index 1dd273dbe64ce41e473ec144e0b8cb754dc3bb9a..baa4f5acb50c7fd5afbf8009468d7eb4
            },
            Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
              failEnvironmentInternal("pairing_credential_issuance_failed", error),
+diff --git a/apps/server/src/mcp/OrchestratorMcpService.ts b/apps/server/src/mcp/OrchestratorMcpService.ts
+index 9d15408483a3eac9fe4b09ff20c6c987a46711f7..fa445d77c87e52d1a5f2970bdce39dfb441fcf0a 100644
+--- a/apps/server/src/mcp/OrchestratorMcpService.ts
++++ b/apps/server/src/mcp/OrchestratorMcpService.ts
+@@ -128,6 +128,7 @@ import { isLiveCallerShell, threadNotFound } from "./threadAccess.ts";
+ import * as SecretRequests from "../secrets/SecretRequests.ts";
+ import * as PeerForwarding from "../peer/PeerForwarding.ts";
+ import * as RemoteDelegation from "../peer/RemoteDelegation.ts";
++import { agentMessageFrom, withAgentMessageFrom } from "../baton/AgentMessageFrom.ts";
+ 
+ const DEFAULT_WAIT_TIMEOUT_MS = 10 * 60 * 1_000;
+ const MAX_WAIT_TIMEOUT_MS = 60 * 60 * 1_000;
+@@ -3164,7 +3165,14 @@ const make = Effect.gen(function* () {
+           threadId: input.threadId,
+           ...(parent === undefined ? {} : { senderThreadId: parent.thread.id }),
+           messageId,
+-          text: input.message,
++          text: withAgentMessageFrom(
++            agentMessageFrom({
++              sender: parent?.thread,
++              target: target.thread,
++              client: scope.client,
++            }),
++            input.message,
++          ),
+           attachments: [],
+           mode,
+           ...(input.freshContext ? { freshContext: true } : {}),
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.migration.test.ts b/apps/server/src/orchestration-v2/Orchestrator.migration.test.ts
 index 911c1b8de7df58ba468a2c530ae3ae49f834d0ca..4eee02669579c4e1160a4705fc8165a2037fd38e 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.migration.test.ts
@@ -766,6 +794,68 @@ index 035f8b1688d44a9c4ff39ebad30099fffdc3a9d2..52a48d55b3a64d3fcc3a61d707336d27
                ),
              ),
              Effect.forkScoped,
+diff --git a/evals/mcp-tool-use/cases/orchestration.ndjson b/evals/mcp-tool-use/cases/orchestration.ndjson
+index 41eb03e0939fc18c29a9642b526f4b31d65490df..82722edf726dd9fafac42d9f65d96dd50d529a56 100644
+--- a/evals/mcp-tool-use/cases/orchestration.ndjson
++++ b/evals/mcp-tool-use/cases/orchestration.ndjson
+@@ -35,3 +35,5 @@
+ {"id": "worker-counts-per-model", "area": "orchestration", "kind": "bad", "pattern": "named-model rule read as a cap", "experience": "Asked for 20 Sol workers and 20 Luna workers, the agent started one worker per model (#25359).", "rule": "Before delegate_task ... One child per named model. (intended: every named model gets a child; read as a cap of one child per model)", "privacy": "commit-safe", "setup": {"role": "top", "mocks": {"orchestrator_capabilities": {"parentThreadId": "33333333-3333-4333-8333-333333333333", "inheritedProviderInstanceId": "claudeAgent", "inheritedModel": "claude-sonnet-5-5", "inheritedOptions": [{"id": "effort", "value": "high"}], "runtimeMode": "full-access", "interactionMode": "default", "features": {"appOwnedSubagents": true, "asyncPolling": true, "cancellation": true, "batchThreadCreation": true, "threadManagement": true, "incrementalThreadRead": true, "scheduledTasks": true}, "providers": [{"providerInstanceId": "claudeAgent", "driverKind": "claudeAgent", "displayName": "Claude", "models": [{"id": "claude-opus-5-5", "label": "Claude Opus 5.5", "options": [{"id": "effort", "values": ["low", "medium", "high", "xhigh", "max"], "default": "high"}, {"id": "fastMode", "type": "boolean", "default": false}]}, {"id": "claude-sonnet-5-5", "label": "Claude Sonnet 5.5", "options": [{"id": "effort", "values": ["low", "medium", "high", "xhigh", "max"], "default": "high"}]}, {"id": "claude-haiku-5-5", "label": "Claude Haiku 5.5", "options": [{"id": "effort", "values": ["low", "medium", "high", "xhigh", "max"], "default": "high"}]}]}, {"providerInstanceId": "codex", "driverKind": "codex", "displayName": "Codex", "models": [{"id": "gpt-6.1-sol", "label": "GPT-6.1 Sol", "options": [{"id": "reasoningEffort", "values": ["low", "medium", "high", "xhigh", "max"], "default": "high"}, {"id": "serviceTier", "values": ["default", "priority"], "default": "default"}]}]}, {"providerInstanceId": "muse", "driverKind": "muse", "displayName": "Muse Code", "runtimeModes": ["approval-required", "full-access"], "models": [{"id": "muse-wonder-full", "label": "Muse Wonder Full", "options": [{"id": "reasoningEffort", "values": ["minimal", "low", "medium", "high", "xhigh", "max"], "default": "high"}]}]}, {"providerInstanceId": "grok", "driverKind": "grok", "displayName": "Grok", "models": [{"id": "grok-4.7", "label": "Grok 4.7", "options": []}]}]}, "delegate_task": "default"}, "world": {"files": {"tests/flaky/retry.test.ts": "it('retry is flaky', async () => { /* fails 1 in 5 runs */ });\n", "tests/flaky/upload.test.ts": "it('upload is flaky', async () => { /* fails 1 in 5 runs */ });\n", "tests/flaky/session.test.ts": "it('session is flaky', async () => { /* fails 1 in 5 runs */ });\n", "tests/flaky/search.test.ts": "it('search is flaky', async () => { /* fails 1 in 5 runs */ });\n", "tests/flaky/billing.test.ts": "it('billing is flaky', async () => { /* fails 1 in 5 runs */ });\n", "tests/flaky/webhook.test.ts": "it('webhook is flaky', async () => { /* fails 1 in 5 runs */ });\n"}}}, "prompt": "Six tests in tests/flaky/ fail now and then. Start 3 Muse Wonder Full workers and 3 Grok workers, one test file each, to find and fix the flake.", "expect": {"calls": [{"tool": "delegate_task", "args": {"target.model": "muse-wonder-full"}}, {"tool": "delegate_task", "args": {"target.model": "grok-4.7"}}], "minCalls": {"delegate_task": 6}}, "notes": "Scaled down from the real 20 Sol + 20 Luna ask. Muse and Grok need delegate_task from every parent, so a native Sol helper cannot pass or fail it."}
+ {"id": "linked-thread-chip-reads-there", "area": "orchestration", "kind": "guard", "pattern": "thread chip from a linked machine read on this one", "experience": "A thread chip from a linked machine names its environmentId; an agent that reads it without passing that id reads this machine, where the thread does not exist.", "rule": "The thread chip names its environmentId; t3_thread_read takes it.", "privacy": "commit-safe", "setup": {"role": "top", "linkedEnvironments": true, "mocks": {"t3_environment_links": {"environmentId": "environment-laptop", "links": [{"environmentId": "environment-vps", "label": "Hetzner VPS", "status": "reachable", "access": "auto-accept-edits", "expiresAt": "2026-12-01T00:00:00.000Z", "lastError": null}], "notListed": "Not listed: not linked yet. Call t3_environment_link with a hint from the user's words."}, "t3_thread_read": {"thread": {"threadId": "thread-deploy-api", "title": "Deploy the API", "status": "idle"}, "items": [{"position": 1, "createdBy": "user", "text": "Deploy the API to the VPS and check the health endpoint."}, {"position": 2, "createdBy": "assistant", "text": "Deployed. /health returns 200, but /health/db times out after 5s: the API can't reach Postgres on 10.0.0.5:5432."}], "nextPosition": 3, "hasMore": false}}}, "prompt": "Pick up where [Deploy the API](t3-context://v1/thread/thread_deploy-api) left off. What is still failing?", "promptContext": {"records": [{"version": 1, "kind": "thread", "contextId": "thread_deploy-api", "label": "Deploy the API", "environmentId": "environment-vps", "threadId": "thread-deploy-api", "title": "Deploy the API"}]}, "expect": {"calls": [{"tool": "t3_thread_read", "args": {"threadId": "thread-deploy-api", "environmentId": "environment-vps"}}], "notCalls": ["t3_environment_link"]}, "source": {"request": "akj on #17130: attach a linked machine's thread without dragging"}}
+ {"id": "thread-send-fresh-context", "area": "orchestration", "kind": "guard", "pattern": "t3_thread_send that should start a fresh provider session", "experience": "The user wanted a confused long-running thread to start over in the same thread without its old context; a plain send would keep feeding it the history.", "rule": "`freshContext: true` on t3_thread_send starts a new provider session in the same thread, like /clear.", "privacy": "commit-safe", "setup": {"role": "top", "priorTurns": [{"role": "user", "text": "The thread working on the CSV importer keeps reverting to the old column mapping from early in its history."}, {"role": "assistant", "text": "That thread has a long history with three different mappings in it, so the model keeps picking up the stale one."}], "mocks": {"t3_thread_send": {"threadId": "11111111-1111-4111-8111-111111111111", "link": "<t3-thread://v2/eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee/11111111-1111-4111-8111-111111111111>", "messageId": "msg-1", "runId": "run-1", "status": "starting", "delivery": "started"}}}, "prompt": "Send it the final mapping below and have it start over with a clean context in that same thread, so the old history stops leaking in: thread 11111111-1111-4111-8111-111111111111.\n\nFinal mapping: id -> customer_id, amt -> amount_cents, ts -> created_at.", "expect": {"calls": [{"tool": "t3_thread_send", "args": {"threadId": "11111111-1111-4111-8111-111111111111", "freshContext": true}}], "notCalls": ["delegate_task", "t3_thread_launch", "create_threads"]}, "source": {"request": "juliusmarminge (maintainer) request, 2026-11-03: fresh provider sessions in one T3 thread"}, "notes": "Pairs with thread-send-to-named-top-level-thread, where an ordinary send must not set freshContext."}
++{"id": "peer-message-reply-to-sender", "area": "orchestration", "kind": "bad", "pattern": "a message from another agent's thread: answer it in that thread", "experience": "Agents in two threads could not hold a conversation: a message one agent sent with t3_thread_send reached the other as if the user had typed it, so the answer stayed in the receiving thread and the asking agent never got it.", "rule": "A message from another agent says so in its first line, with the sender's threadId; answer it with t3_thread_send to that thread.", "privacy": "commit-safe", "setup": {"role": "top", "priorTurns": [], "mocks": {"orchestrator_capabilities": {"parentThreadId": "33333333-3333-4333-8333-333333333333", "inheritedProviderInstanceId": "claudeAgent", "inheritedModel": "claude-sonnet-5-5", "inheritedOptions": [{"id": "effort", "value": "high"}], "runtimeMode": "full-access", "interactionMode": "default", "features": {"appOwnedSubagents": true, "asyncPolling": true, "cancellation": true, "batchThreadCreation": true, "threadManagement": true, "incrementalThreadRead": true, "scheduledTasks": true}, "providers": [{"providerInstanceId": "claudeAgent", "driverKind": "claudeAgent", "displayName": "Claude", "models": [{"id": "claude-opus-5-5", "label": "Claude Opus 5.5", "options": [{"id": "effort", "values": ["low", "medium", "high", "xhigh", "max"], "default": "high"}, {"id": "fastMode", "type": "boolean", "default": false}]}, {"id": "claude-sonnet-5-5", "label": "Claude Sonnet 5.5", "options": [{"id": "effort", "values": ["low", "medium", "high", "xhigh", "max"], "default": "high"}]}, {"id": "claude-haiku-5-5", "label": "Claude Haiku 5.5", "options": [{"id": "effort", "values": ["low", "medium", "high", "xhigh", "max"], "default": "high"}]}]}, {"providerInstanceId": "codex", "driverKind": "codex", "displayName": "Codex", "models": [{"id": "gpt-6.1-sol", "label": "GPT-6.1 Sol", "options": [{"id": "reasoningEffort", "values": ["low", "medium", "high", "xhigh", "max"], "default": "high"}, {"id": "serviceTier", "values": ["default", "priority"], "default": "default"}]}]}, {"providerInstanceId": "muse", "driverKind": "muse", "displayName": "Muse Code", "runtimeModes": ["approval-required", "full-access"], "models": [{"id": "muse-wonder-full", "label": "Muse Wonder Full", "options": [{"id": "reasoningEffort", "values": ["minimal", "low", "medium", "high", "xhigh", "max"], "default": "high"}]}]}, {"providerInstanceId": "grok", "driverKind": "grok", "displayName": "Grok", "models": [{"id": "grok-4.7", "label": "Grok 4.7", "options": []}]}]}}, "world": {"files": {"package.json": "{\n  \"name\": \"acme-app\",\n  \"version\": \"4.12.0\"\n}\n"}}}, "fromAgent": {"threadId": "77777777-7777-4777-8777-777777777777", "title": "Release notes"}, "prompt": "What version is this repo's package.json at? I need it for the release notes.", "expect": {"calls": [{"tool": "t3_thread_send", "args": {"threadId": "77777777-7777-4777-8777-777777777777", "message": "~4.12.0"}}]}, "source": {"request": "Tessaya peer messaging, manager decision 2026-11-06"}}
++{"id": "peer-message-control-user-asks", "area": "orchestration", "kind": "control", "pattern": "the same question from the user: answer here", "experience": "The user asks the same question directly; the answer belongs in this thread, not in a send to another thread.", "rule": "Only another agent's message is answered with t3_thread_send.", "privacy": "commit-safe", "setup": {"role": "top", "priorTurns": [], "mocks": {"orchestrator_capabilities": {"parentThreadId": "33333333-3333-4333-8333-333333333333", "inheritedProviderInstanceId": "claudeAgent", "inheritedModel": "claude-sonnet-5-5", "inheritedOptions": [{"id": "effort", "value": "high"}], "runtimeMode": "full-access", "interactionMode": "default", "features": {"appOwnedSubagents": true, "asyncPolling": true, "cancellation": true, "batchThreadCreation": true, "threadManagement": true, "incrementalThreadRead": true, "scheduledTasks": true}, "providers": [{"providerInstanceId": "claudeAgent", "driverKind": "claudeAgent", "displayName": "Claude", "models": [{"id": "claude-opus-5-5", "label": "Claude Opus 5.5", "options": [{"id": "effort", "values": ["low", "medium", "high", "xhigh", "max"], "default": "high"}, {"id": "fastMode", "type": "boolean", "default": false}]}, {"id": "claude-sonnet-5-5", "label": "Claude Sonnet 5.5", "options": [{"id": "effort", "values": ["low", "medium", "high", "xhigh", "max"], "default": "high"}]}, {"id": "claude-haiku-5-5", "label": "Claude Haiku 5.5", "options": [{"id": "effort", "values": ["low", "medium", "high", "xhigh", "max"], "default": "high"}]}]}, {"providerInstanceId": "codex", "driverKind": "codex", "displayName": "Codex", "models": [{"id": "gpt-6.1-sol", "label": "GPT-6.1 Sol", "options": [{"id": "reasoningEffort", "values": ["low", "medium", "high", "xhigh", "max"], "default": "high"}, {"id": "serviceTier", "values": ["default", "priority"], "default": "default"}]}]}, {"providerInstanceId": "muse", "driverKind": "muse", "displayName": "Muse Code", "runtimeModes": ["approval-required", "full-access"], "models": [{"id": "muse-wonder-full", "label": "Muse Wonder Full", "options": [{"id": "reasoningEffort", "values": ["minimal", "low", "medium", "high", "xhigh", "max"], "default": "high"}]}]}, {"providerInstanceId": "grok", "driverKind": "grok", "displayName": "Grok", "models": [{"id": "grok-4.7", "label": "Grok 4.7", "options": []}]}]}}, "world": {"files": {"package.json": "{\n  \"name\": \"acme-app\",\n  \"version\": \"4.12.0\"\n}\n"}}}, "prompt": "What version is this repo's package.json at? I need it for the release notes.", "expect": {"notCalls": ["t3_thread_send"], "finalTextMust": ["4.12.0"]}, "source": {"request": "Tessaya peer messaging, manager decision 2026-11-06"}}
+diff --git a/evals/mcp-tool-use/run.ts b/evals/mcp-tool-use/run.ts
+index 92ae6fe28cc4f33305d18d2921955f60ab8845eb..77a278863d595c0050bf34c4ceb23f5aaa6a2d1f 100644
+--- a/evals/mcp-tool-use/run.ts
++++ b/evals/mcp-tool-use/run.ts
+@@ -35,6 +35,10 @@ import { Tool } from "effect/ai";
+ import * as McpSchema from "effect/ai/McpSchema";
+ import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http";
+ 
++import {
++  agentMessageFrom,
++  withAgentMessageFrom,
++} from "../../apps/server/src/baton/AgentMessageFrom.ts";
+ import { taskPrompt } from "../../apps/server/src/mcp/delegatedTaskModes.ts";
+ import * as McpInvocationContext from "../../apps/server/src/mcp/McpInvocationContext.ts";
+ import { advertisedJsonSchema } from "../../apps/server/src/mcp/advertisedJsonSchema.ts";
+@@ -316,6 +320,8 @@ export const McpToolUseCase = Schema.Struct({
+   }),
+   /** Empty to resume a top-level thread without side-chat context after its last tool result. */
+   prompt: Schema.String,
++  /** `prompt` was sent by an agent in another thread: T3 puts its "from" line ahead of it. */
++  fromAgent: Schema.optional(Schema.Struct({ threadId: Schema.String, title: Schema.String })),
+   /** Records for the context chips `prompt` links, projected as T3 sends them. */
+   promptContext: Schema.optional(Schema.Struct({ records: Schema.Array(ComposerContextRecord) })),
+   expect: McpToolUseExpect,
+@@ -1010,10 +1016,25 @@ export const buildMessages = (sample: Sample) => {
+     }
+     if (turn.text) push(turn.role, text(turn.text));
+   }
++  const caseText =
++    testCase.fromAgent === undefined
++      ? testCase.prompt
++      : withAgentMessageFrom(
++          agentMessageFrom({
++            sender: {
++              id: testCase.fromAgent.threadId,
++              title: testCase.fromAgent.title,
++              lineage: { rootThreadId: testCase.fromAgent.threadId },
++            },
++            target: { id: "eval-thread", title: "", lineage: { rootThreadId: "eval-thread" } },
++            client: undefined,
++          }),
++          testCase.prompt,
++        );
+   const userText =
+     testCase.promptContext === undefined
+-      ? testCase.prompt
+-      : projectComposerContextForProvider({ text: testCase.prompt, ...testCase.promptContext });
++      ? caseText
++      : projectComposerContextForProvider({ text: caseText, ...testCase.promptContext });
+   const prompt =
+     sideChatContext === undefined ? userText : withInlineContext(sideChatContext, userText);
+   const childPrompt = () => taskPrompt({ task: prompt, role: delegateRole });
 diff --git a/packages/contracts/src/agentSessions.ts b/packages/contracts/src/agentSessions.ts
 index 93e0e36e4fbd44accb21563995304a7490bcd59b..7b712c02989de891fb22e6081bea5bc40e13108e 100644
 --- a/packages/contracts/src/agentSessions.ts

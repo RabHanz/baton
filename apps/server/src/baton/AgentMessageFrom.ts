@@ -3,6 +3,7 @@
  * person. Never on his own sends, and never inside one delegation tree (a parent and its sub-tasks).
  */
 interface Lineage {
+  readonly id: string;
   readonly title: string;
   readonly lineage: { readonly rootThreadId: string };
 }
@@ -17,9 +18,9 @@ export const agentMessageFrom = (input: {
   if (input.sender !== undefined)
     return input.sender.lineage.rootThreadId === input.target.lineage.rootThreadId
       ? null
-      : `From the agent in the thread "${input.sender.title}", via Tessaya (another agent, not the user):`;
+      : `From the agent in thread "${input.sender.title}" (threadId ${input.sender.id}), via Tessaya. It is another agent, not the user; to answer it, send to that thread with t3_thread_send.`;
   return input.client?.linked === true
-    ? `From an agent on ${input.client.label}, via Tessaya (another agent, not the user):`
+    ? `From an agent on ${input.client.label}, via Tessaya. It is another agent, not the user.`
     : null;
 };
 

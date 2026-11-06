@@ -35,6 +35,10 @@ import { Tool } from "effect/ai";
 import * as McpSchema from "effect/ai/McpSchema";
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http";
 
+import {
+  agentMessageFrom,
+  withAgentMessageFrom,
+} from "../../apps/server/src/baton/AgentMessageFrom.ts";
 import { taskPrompt } from "../../apps/server/src/mcp/delegatedTaskModes.ts";
 import * as McpInvocationContext from "../../apps/server/src/mcp/McpInvocationContext.ts";
 import { advertisedJsonSchema } from "../../apps/server/src/mcp/advertisedJsonSchema.ts";
@@ -316,6 +320,8 @@ export const McpToolUseCase = Schema.Struct({
   }),
   /** Empty to resume a top-level thread without side-chat context after its last tool result. */
   prompt: Schema.String,
+  /** `prompt` was sent by an agent in another thread: T3 puts its "from" line ahead of it. */
+  fromAgent: Schema.optional(Schema.Struct({ threadId: Schema.String, title: Schema.String })),
   /** Records for the context chips `prompt` links, projected as T3 sends them. */
   promptContext: Schema.optional(Schema.Struct({ records: Schema.Array(ComposerContextRecord) })),
   expect: McpToolUseExpect,
@@ -1010,10 +1016,25 @@ export const buildMessages = (sample: Sample) => {
     }
     if (turn.text) push(turn.role, text(turn.text));
   }
+  const caseText =
+    testCase.fromAgent === undefined
+      ? testCase.prompt
+      : withAgentMessageFrom(
+          agentMessageFrom({
+            sender: {
+              id: testCase.fromAgent.threadId,
+              title: testCase.fromAgent.title,
+              lineage: { rootThreadId: testCase.fromAgent.threadId },
+            },
+            target: { id: "eval-thread", title: "", lineage: { rootThreadId: "eval-thread" } },
+            client: undefined,
+          }),
+          testCase.prompt,
+        );
   const userText =
     testCase.promptContext === undefined
-      ? testCase.prompt
-      : projectComposerContextForProvider({ text: testCase.prompt, ...testCase.promptContext });
+      ? caseText
+      : projectComposerContextForProvider({ text: caseText, ...testCase.promptContext });
   const prompt =
     sideChatContext === undefined ? userText : withInlineContext(sideChatContext, userText);
   const childPrompt = () => taskPrompt({ task: prompt, role: delegateRole });
