@@ -142,9 +142,16 @@ describe("standing jobs", () => {
       brief: null,
     };
     const moved = migrateStanding(old, true);
-    expect(moved.on).toEqual({ ci_look: true, morning_brief: true });
+    // Nightly learning starts on (the Director asked for it); one he turned off stays off.
+    expect(moved.on).toEqual({ ci_look: true, morning_brief: true, nightly_learning: true });
     expect(moved.runs[0]?.outcome).toBe("ran");
-    expect(migrateStanding(null, false).on).toEqual({ morning_brief: false });
+    expect(migrateStanding(null, false).on).toEqual({
+      morning_brief: false,
+      nightly_learning: true,
+    });
+    expect(migrateStanding({ on: { nightly_learning: false } }, true).on.nightly_learning).toBe(
+      false,
+    );
     expect(migrateStanding({ on: { morning_brief: true } }, false).on.morning_brief).toBe(true);
   });
 

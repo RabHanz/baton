@@ -228,6 +228,7 @@ import {
   type BuiltInId,
   type StandingJobDef,
 } from "../presence/standingJobs.ts";
+import { skillsDirOf, waitingSkillsLine } from "../pack/learnedSkills.ts";
 import { standingVerdict } from "@t3tools/baton-shared/trust";
 import type { OrchestrationRuleWithFirings } from "@t3tools/baton-contracts";
 import { nodeExec } from "@t3tools/baton-shared/cloud/nodeExec";
@@ -1830,6 +1831,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const lines = [
       briefCommitments(commitments.list(), Date.now()),
       jobsDigest(jobsCache ?? [], Date.now()),
+      waitingSkillsLine(skillsDirOf(NodePath.join(input.stateDir, PACK_FOLDER)), new Date()),
     ];
     return lines.filter((l): l is string => l !== null);
   };

@@ -14,6 +14,7 @@ import {
   learnNightly,
   readSkills,
   skillsForTurn,
+  waitingSkillsLine,
   type LastTurn,
 } from "./learnedSkills.ts";
 
@@ -91,8 +92,13 @@ describe("learning from a turn", () => {
     );
     expect(row).toMatchObject({ button: "Accept", secondary: "Reject" });
     expect(learnedAction(row!.id)).toEqual({ slug: skill!.slug, secondary: false });
+    expect(waitingSkillsLine(dir, now)).toBe(
+      "I learned one thing yesterday; it's waiting for you.",
+    );
+    expect(waitingSkillsLine(dir, new Date(now.getTime() + 2 * 86_400_000))).toBeNull();
     expect(decideSkill(dir, skill!.slug, "accept", now)).toBe(true);
     expect(skillsForTurn(dir, sentence, allowed).slugs).toEqual([skill!.slug]);
+    expect(waitingSkillsLine(dir, now)).toBeNull();
     // A persona that may not use its tools does not get it.
     expect(skillsForTurn(dir, sentence, ["screen_capture"]).slugs).toEqual([]);
     // Edited after its test, it is not used, and cannot be accepted again until tested.

@@ -127,6 +127,17 @@ export const decideSkill = (
 
 const REJECT_KEEP_MS = 30 * 24 * 60 * 60_000;
 
+/** The morning brief's line: skills learned in the last day that wait for his tap; null when none. */
+export const waitingSkillsLine = (dir: string, now: Date): string | null => {
+  const n = Object.values(readStates(dir)).filter(
+    (s) => s.state === "waiting" && now.getTime() - Date.parse(s.at) <= 86_400_000,
+  ).length;
+  if (n === 0) return null;
+  return n === 1
+    ? "I learned one thing yesterday; it's waiting for you."
+    : `I learned ${n} things yesterday; they're waiting for you.`;
+};
+
 /** The bare "What I've learned" list, with the button that learns from the last turn. */
 export const learnedControls = (
   dir: string,

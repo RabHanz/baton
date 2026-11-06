@@ -71,7 +71,7 @@ export const BUILT_INS: ReadonlyArray<StandingJobDef> = [
   {
     id: "nightly_learning",
     title: "Every night, learn from the day",
-    what: `Once a day from ${LEARN_HOUR} o'clock, finds the last day's slow or corrected turns, writes a skill for the worst two kinds, and tests each by replaying the turn. A skill that passes waits for your yes under What I've learned; one that fails is logged and not tried again.`,
+    what: `On unless you turn it off. Once a day from ${LEARN_HOUR} o'clock, finds the last day's slow or corrected turns, writes a skill for the worst two kinds, and tests each by replaying the turn. A skill that passes waits for your yes under What I've learned; one that fails is logged and not tried again.`,
     owner: "executive",
     trigger: { kind: "time", hour: LEARN_HOUR },
     tool: "skill_draft",
@@ -201,6 +201,13 @@ export const runStandingJobs = async (
   return { state, did };
 };
 
+/** Learning was asked for: on unless he turned it off. Never adopts anything by itself. */
+const ON_UNLESS_OFF: ReadonlyArray<BuiltInId> = ["nightly_learning"];
+const withDefaults = (state: StandingState): StandingState => ({
+  ...state,
+  on: { ...Object.fromEntries(ON_UNLESS_OFF.map((id) => [id, true])), ...state.on },
+});
+
 /**
  * Reads the state, moving an older `playbooks.json` over once. The brief used to have its own switch
  * besides the playbook: a brief he was getting either way stays on.
@@ -226,13 +233,13 @@ export const migrateStanding = (
             text: "Given before the update.",
           },
         ];
-  return {
+  return withDefaults({
     ...EMPTY_STANDING,
     ...value,
     on,
     runs: [...(value.runs ?? []).map((r) => ({ ...r, outcome: r.outcome ?? "ran" })), ...given],
     counts: value.counts ?? {},
-  };
+  });
 };
 
 export const createStandingStore = (
@@ -250,7 +257,8 @@ export const createStandingStore = (
   };
   const load = (): StandingState => {
     const current = read("standing-jobs.json");
-    if (current !== undefined) return { ...EMPTY_STANDING, ...(current as Partial<StandingState>) };
+    if (current !== undefined)
+      return withDefaults({ ...EMPTY_STANDING, ...(current as Partial<StandingState>) });
     const old = legacy();
     return migrateStanding(read("playbooks.json") ?? null, old.briefOn, old.briefGivenOn);
   };
