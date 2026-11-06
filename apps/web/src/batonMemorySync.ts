@@ -2,7 +2,7 @@
 
 const isPrivateTailnet = (host: string): boolean => {
   const parts = host.split(".").map(Number);
-  // 100.64.0.0/10, the range Tailscale gives its machines.
+  // The /10 block Tailscale gives its machines: first octet 100, second 64 to 127.
   return parts.length === 4 && parts[0] === 100 && parts[1]! >= 64 && parts[1]! <= 127;
 };
 

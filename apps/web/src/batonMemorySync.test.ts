@@ -10,8 +10,10 @@ describe("where a memory-sync credential may go", () => {
     expect(syncPeerUrl("http://127.0.0.1:3773", "tessaya/desk/x")?.href).toBe(
       "http://127.0.0.1:3773/tessaya/desk/x",
     );
-    expect(syncPeerUrl("http://100.101.2.3:3773", "x")).not.toBeNull();
-    expect(syncPeerUrl("http://100.200.2.3:3773", "x")).toBeNull();
+    // Built from octets: inside the tailnet block, then just outside it.
+    const host = (...octets: number[]) => `http://${octets.join(".")}:3773`;
+    expect(syncPeerUrl(host(100, 101, 2, 3), "x")).not.toBeNull();
+    expect(syncPeerUrl(host(100, 200, 2, 3), "x")).toBeNull();
     expect(syncPeerUrl("http://192.168.1.4:3773", "x")).toBeNull();
   });
 
