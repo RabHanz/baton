@@ -97,20 +97,28 @@ describe("the one assistant's session", () => {
     const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-agent-"));
     const conversation = createConversationLog({ file: NodePath.join(dir, "c.ndjson") });
     const sessions: VisionSession[] = [];
+    const started: string[] = [];
     const agent = createAssistantAgent({
-      start: async () => {
+      start: async (prompt, brain) => {
         const s = fakeSession([]);
         sessions.push(s);
+        started.push(`${brain?.model}/${brain?.effort}: ${prompt.includes("zebra")}`);
         return s;
       },
       conversation,
       clockLine: () => "now",
       beginTurn: () => undefined,
     });
-    await agent.say("hello", { window: null, session: null });
+    const opus = { model: "opus", effort: "medium" };
+    await agent.say("hello", { window: null, session: null, brain: opus });
     sessions[0]!.dispose();
-    await agent.say("again", { window: null, session: null });
+    await agent.say("zebra", { window: null, session: null, brain: opus });
     expect(sessions).toHaveLength(2);
+    // A persona on another model gets a session on its own model, seeded with the same conversation.
+    const sonnet = { model: "sonnet", effort: "medium" };
+    await agent.say("Freya, what is on today", { window: null, session: null, brain: sonnet });
+    await agent.say("and tomorrow", { window: null, session: null, brain: sonnet });
+    expect(started).toEqual(["opus/medium: false", "opus/medium: false", "sonnet/medium: true"]);
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 

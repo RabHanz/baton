@@ -4,7 +4,6 @@
  * cheap model proposes memory items; the pure rules decide which become drafts and the store's door
  * decides which are kept. A failure here never reaches the user: learning is a bonus, never a gate.
  */
-import { modelFor } from "@t3tools/baton-shared/costRouting";
 import { detectSecret } from "@t3tools/baton-shared/memory";
 import {
   draftsFromProposals,
@@ -80,7 +79,7 @@ export const make = Effect.gen(function* () {
       .run({
         prompt: extractionPrompt(input, known),
         outputSchema: Proposals,
-        model: modelFor("routine", readRouting(NodePath.dirname(config.dbPath))),
+        model: readRouting(NodePath.dirname(config.dbPath)).cheap,
       })
       .pipe(Effect.orElseSucceed(() => ({ items: [] })));
     const drafts = draftsFromProposals(proposals.items, input, yield* Clock.currentTimeMillis);

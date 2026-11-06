@@ -207,18 +207,18 @@ layer("BatonJobFlow", (it) => {
             projects: [],
             tools: ["read" as const, "edit" as const],
           },
-          modelSelection: { instanceId: ProviderInstanceId.make("claude"), model: "sonnet" },
+          modelSelection: { instanceId: ProviderInstanceId.make("claude"), model: "picked" },
           runtimeMode: "approval-required",
         });
         const shell = (id: ThreadId) =>
           ({
             id,
             status: "completed",
-            modelSelection: { instanceId: "claude", model: "sonnet" },
+            modelSelection: { instanceId: "claude", model: "picked" },
           }) as unknown as OrchestrationV2ThreadShell;
         shells.push(shell(threadId));
         // A model he chose is kept for the whole job.
-        assert.strictEqual(launched.at(-1)?.modelSelection.model, "sonnet");
+        assert.strictEqual(launched.at(-1)?.modelSelection.model, "picked");
         assert.lengthOf(yield* splitJob({ id: parent, parts: [{ title: "A", goal: "do a" }] }), 0);
         yield* agreeJob(parent);
         const before = launched.length;
@@ -227,25 +227,32 @@ layer("BatonJobFlow", (it) => {
           parts: [
             { title: "Copy", goal: "write the copy", role: "marketing", routine: true },
             { title: "Code", goal: "build the page" },
+            { title: "Sources", goal: "check the sources", role: "research" },
           ],
         });
-        assert.lengthOf(started, 2);
+        assert.lengthOf(started, 3);
         const mine = launched.slice(before);
         assert.deepEqual(
           mine.map((l) => l.interactionMode),
-          ["default", "default"],
+          ["default", "default", "default"],
         );
         assert.include(mine[0]?.text ?? "", "Your role (marketing)");
         assert.include(mine[0]?.text ?? "", "already agreed");
-        // Routine work runs on the cheap model of the routing table; the rest on the parent's.
+        // Routine work runs on the cheap model at low effort; a specialist on its own file's model;
+        // a part with no role on the parent's.
         assert.deepEqual(
-          mine.map((l) => l.modelSelection.model),
-          ["haiku", "sonnet"],
+          mine.map((l) => [l.modelSelection.model, l.modelSelection.options]),
+          [
+            ["haiku", [{ id: "effort", value: "low" }]],
+            ["picked", undefined],
+            ["sonnet", [{ id: "effort", value: "medium" }]],
+          ],
         );
         const parts = yield* jobs.parts(parent);
         assert.deepEqual(
           parts.map((p) => [p.parentId, p.phase, p.permissions.tools.length]),
           [
+            [parent, "approved", 2],
             [parent, "approved", 2],
             [parent, "approved", 2],
           ],
@@ -265,18 +272,20 @@ layer("BatonJobFlow", (it) => {
           entry(parent, "working"),
           entry(parts[0]!.workSessionId, "done_unseen"),
           entry(parts[1]!.workSessionId, "working"),
+          entry(parts[2]!.workSessionId, "done_unseen"),
         ];
         assert.isFalse(yield* summarizeParts(parent, running));
         const done = [
           entry(parent, "working"),
           entry(parts[0]!.workSessionId, "done_unseen"),
           entry(parts[1]!.workSessionId, "failed"),
+          entry(parts[2]!.workSessionId, "done_unseen"),
         ];
         assert.isTrue(yield* summarizeParts(parent, done));
         assert.isFalse(yield* summarizeParts(parent, done));
         assert.lengthOf(sent.slice(sentBefore), 1);
         assert.include(sent.at(-1)?.text ?? "", "Summary of the parts:");
-        assert.include(sent.at(-1)?.text ?? "", "1 of 2 failed or did not start");
+        assert.include(sent.at(-1)?.text ?? "", "1 of 3 failed or did not start");
       }),
   );
 
@@ -349,11 +358,14 @@ layer("BatonJobFlow", (it) => {
       }),
   );
 
-  it.effect("runs a job he picked no model for on the routing table's strong model", () =>
+  it.effect("runs a job he picked no model for on the lead's model and effort from its file", () =>
     Effect.gen(function* () {
       const dir = NodePath.join(NodeOS.tmpdir(), "baton-flow-test", "operating-system");
       NodeFS.mkdirSync(dir, { recursive: true });
-      NodeFS.writeFileSync(NodePath.join(dir, "routing.json"), '{"strong":"strong-model"}');
+      NodeFS.writeFileSync(
+        NodePath.join(dir, "executive.md"),
+        "---\nmodel: lead-model\neffort: high\n---\n",
+      );
       try {
         yield* startJob({
           id: WorkSessionId.make("job-flow-default"),
@@ -367,7 +379,11 @@ layer("BatonJobFlow", (it) => {
           },
           runtimeMode: "approval-required",
         });
-        assert.strictEqual(launched.at(-1)?.modelSelection.model, "strong-model");
+        assert.deepEqual(launched.at(-1)?.modelSelection, {
+          instanceId: ProviderInstanceId.make("claude"),
+          model: "lead-model",
+          options: [{ id: "effort", value: "high" }],
+        });
       } finally {
         NodeFS.rmSync(dir, { recursive: true, force: true });
       }

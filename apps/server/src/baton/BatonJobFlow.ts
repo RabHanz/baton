@@ -36,6 +36,7 @@ import {
 import { watchFleet } from "@t3tools/baton-shared/watch";
 import {
   DEFAULT_MODEL_BY_PROVIDER,
+  type ModelSelection,
   type ProviderInstanceId,
   ProviderDriverKind,
   type ThreadId,
@@ -56,7 +57,8 @@ import { ProviderInstanceRegistry } from "../provider/ProviderInstanceRegistry.t
 import { BatonEngine } from "./BatonEngine.ts";
 import { spendOf, type Spend } from "./BatonJobSpend.ts";
 import { planningFrame, readPack, readRouting } from "./OperatingSystemPack.ts";
-import { modelFor } from "@t3tools/baton-shared/costRouting";
+import { ROUTINE_EFFORT } from "@t3tools/baton-shared/costRouting";
+import { modelOf, type Brain } from "@t3tools/baton-shared/osPack";
 import { BatonJobService } from "./BatonJobService.ts";
 import { BatonRecordService } from "./BatonRecordService.ts";
 import * as FleetQuery from "./FleetQuery.ts";
@@ -77,6 +79,13 @@ const routesByTable = Effect.fn("BatonJobFlow.routesByTable")(function* (
   if (Option.isNone(registry)) return true;
   const instance = yield* registry.value.getInstance(instanceId);
   return instance === undefined || instance.driverKind === "claudeAgent";
+});
+
+/** A Claude worker on a model alias and its effort; the alias resolves to the newest model of that size. */
+const onBrain = (selection: ModelSelection, brain: Brain): ModelSelection => ({
+  ...selection,
+  model: brain.model,
+  options: [{ id: "effort", value: brain.effort }],
 });
 
 /** The planning frame, with the brief of the specialist a part is given to. */
@@ -109,14 +118,14 @@ export const startJob = Effect.fn("BatonJobFlow.start")(function* (
   });
   const id = input.id ?? WorkSessionId.make(`job-${yield* uuid}`);
   const userdata = NodePath.dirname((yield* ServerConfig.ServerConfig).dbPath);
-  // A whole job he did not pick a model for runs on the strong model of his routing table (D148);
+  // A whole job he did not pick a model for is the lead's, on the model its pack file names (D148);
   // a model he chose, and a part, keep their own. The clients send Claude's default when he picked none.
   const modelSelection =
     options.parentId === undefined &&
     input.modelSelection.model ===
       DEFAULT_MODEL_BY_PROVIDER[ProviderDriverKind.make("claudeAgent")] &&
     (yield* routesByTable(input.modelSelection.instanceId))
-      ? { ...input.modelSelection, model: modelFor("planning", readRouting(userdata)) }
+      ? onBrain(input.modelSelection, modelOf(readPack(userdata), "executive"))
       : input.modelSelection;
   const terms = yield* jobs.create({
     id,
@@ -475,7 +484,7 @@ const launchPart = Effect.fn("BatonJobFlow.launchPart")(function* (input: {
   const jobs = yield* BatonJobService;
   const parent = yield* jobs.terms(input.parentId);
   const workSession = yield* (yield* WorkSessionService).get(input.parentId);
-  const dbPath = (yield* ServerConfig.ServerConfig).dbPath;
+  const userdata = NodePath.dirname((yield* ServerConfig.ServerConfig).dbPath);
   const parentThread = yield* threadOf(input.parentId);
   const shell =
     parentThread === null ? null : yield* (yield* BatonEngine).threadShell(parentThread);
@@ -488,14 +497,17 @@ const launchPart = Effect.fn("BatonJobFlow.launchPart")(function* (input: {
       goal: input.goal,
       // A part never has more than its parent: the same folders, projects and tools.
       permissions: parent.permissions,
-      // Routine work on the cheap model of his routing table; the rest stays on the parent's.
-      modelSelection:
-        input.routine === true && (yield* routesByTable(shell.modelSelection.instanceId))
-          ? {
-              ...shell.modelSelection,
-              model: modelFor("routine", readRouting(NodePath.dirname(dbPath))),
-            }
-          : shell.modelSelection,
+      // Routine work on the cheap model; a specialist on the model its pack file names; else the parent's.
+      modelSelection: !(yield* routesByTable(shell.modelSelection.instanceId))
+        ? shell.modelSelection
+        : input.routine === true
+          ? onBrain(shell.modelSelection, {
+              model: readRouting(userdata).cheap,
+              effort: ROUTINE_EFFORT,
+            })
+          : input.role !== undefined
+            ? onBrain(shell.modelSelection, modelOf(readPack(userdata), input.role))
+            : shell.modelSelection,
       runtimeMode: "approval-required",
     },
     {
