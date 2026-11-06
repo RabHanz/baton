@@ -24,10 +24,12 @@ describe("the palette art", () => {
         expect(icon?.readUInt16LE(4)).toBeGreaterThanOrEqual(9);
       }
   });
-  it("finds the folder from the built script's place, and says null for a file that is not there", () => {
-    expect(NodeFS.realpathSync(artDir(NodePath.resolve(here, "../../../dist-electron")))).toBe(
-      NodeFS.realpathSync(dir),
-    );
+  it("finds the folder in the packaged app's resources first, else beside the built script, and says null for a file that is not there", () => {
+    expect(
+      NodeFS.realpathSync(artDir(NodePath.resolve(here, "../../../dist-electron"), undefined)),
+    ).toBe(NodeFS.realpathSync(dir));
+    // Packaged: the app's resources folder comes first.
+    expect(artDir("/nowhere/dist-electron", NodePath.resolve(dir, ".."))).toBe(dir);
     expect(readArt(dir, "nothing.webp")).toBeNull();
   });
 });

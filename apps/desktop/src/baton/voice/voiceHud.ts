@@ -2,7 +2,6 @@
  * What the tray says, as pure functions of the state, so the words and colours
  * are tested rather than eyeballed. The pill's words are in voiceTurn.
  */
-import { accentOf, type Palette } from "../home/palette.ts";
 import type { VoiceState, VoiceUtterance } from "./voiceTypes.ts";
 
 export interface HudView {
@@ -24,13 +23,6 @@ const VIEWS: Record<VoiceState, HudView> = {
 };
 
 export const hudView = (state: VoiceState): HudView => VIEWS[state];
-
-/**
- * The tray's state dot: the states that mean something keep their colours; resting (Sleeping) is the palette's own
- * accent for the taskbar's ground instead of a neutral grey.
- */
-export const trayDotColor = (state: VoiceState, palette: Palette, onDark: boolean): string =>
-  state === "sleeping" ? accentOf(palette, onDark) : VIEWS[state].color;
 
 /** Where an utterance goes, said the way the HUD shows it after he speaks. */
 export type VoiceRoute = "focused_session" | "focused_field" | "fabric_intent";

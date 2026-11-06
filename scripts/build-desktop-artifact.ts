@@ -750,6 +750,7 @@ const WindowsPackagedPayloadValidationReason = Schema.Literals([
   "unpacked-native-missing",
   "resource-monitor-missing",
   "baton-voice-missing",
+  "tessaya-art-missing",
   "wsl-runtime-missing",
   "wsl-runtime-invalid",
   "file-limit-exceeded",
@@ -778,6 +779,9 @@ export class WindowsPackagedPayloadValidationError extends Schema.TaggedError<Wi
     }
     if (this.reason === "baton-voice-missing") {
       return `Windows packaged payload is missing Baton voice files: ${(this.missingFiles ?? []).join(", ")}.`;
+    }
+    if (this.reason === "tessaya-art-missing") {
+      return `Windows packaged payload is missing Tessaya's palette art: ${(this.missingFiles ?? []).join(", ")}.`;
     }
     if (this.reason === "wsl-runtime-missing") {
       return "Windows packaged payload is missing the WSL runtime archive or SHA-256 sidecar.";
@@ -1082,8 +1086,9 @@ export function resolveWindowsServerAsarIgnoreGlobs(arch: typeof BuildArch.Type)
   ];
 }
 
-// Baton ships the voice sidecar, wake and speech runtimes and models beside the app: about 40 more files than upstream.
-export const WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT = 140;
+// Baton ships the voice sidecar, wake and speech runtimes and models beside the app: about 40 more files than upstream,
+// and Tessaya's palette art (a sting and a taskbar icon per palette and theme) 12 more.
+export const WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT = 152;
 export const WINDOWS_SERVER_RESOURCE_SOURCE_DIR = "apps/desktop/prod-resources/windows-server";
 export const WINDOWS_SERVER_EXTRA_RESOURCES = [
   {
@@ -1124,6 +1129,11 @@ export const DESKTOP_EXTRA_RESOURCES = [
   {
     from: "apps/desktop/prod-resources/baton-voice",
     to: "baton-voice",
+  },
+  // apps/desktop/resources is electron-builder's buildResources, which never reaches the app: the art goes beside it.
+  {
+    from: "apps/desktop/resources/tessaya",
+    to: "tessaya",
   },
 ] as const;
 export const LINUX_CAPTURE_EXTRA_RESOURCES = [
@@ -2373,6 +2383,14 @@ export const stageLinuxCaptureHelper = Effect.fn("stageLinuxCaptureHelper")(func
   }
 });
 
+/** A sting and a taskbar icon per palette and theme (apps/desktop/src/baton/home/artFiles.ts). */
+export const TESSAYA_ART_PAYLOAD_FILES = ["woad", "damson", "madder"].flatMap((palette) =>
+  ["light", "dark"].flatMap((theme) => [
+    `sting-${palette}-${theme}.webp`,
+    `taskbar-${palette}-${theme}.ico`,
+  ]),
+);
+
 export const BATON_VOICE_PAYLOAD_FILES = [
   "tessaya-voice.exe",
   "models/melspectrogram.onnx",
@@ -3563,6 +3581,19 @@ export const validateWindowsPackagedPayload = Effect.fn(
       reason: "baton-voice-missing",
       packagedAppDir,
       missingFiles: missingVoiceFiles,
+    });
+  }
+
+  const missingArt: string[] = [];
+  for (const file of TESSAYA_ART_PAYLOAD_FILES) {
+    if (!(yield* isFile(path.join(resourcesDir, "tessaya", file))))
+      missingArt.push(`tessaya/${file}`);
+  }
+  if (missingArt.length > 0) {
+    return yield* new WindowsPackagedPayloadValidationError({
+      reason: "tessaya-art-missing",
+      packagedAppDir,
+      missingFiles: missingArt,
     });
   }
 

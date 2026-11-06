@@ -37,10 +37,6 @@ export const PALETTES: Readonly<Record<Palette, Swatch>> = {
   },
 };
 
-/** The palette's accent where it must read on the given ground: the tray's resting dot, the taskbar. */
-export const accentOf = (p: Palette, onDark: boolean): string =>
-  onDark ? PALETTES[p].dyeOnDark : PALETTES[p].dye;
-
 export const parsePalette = (v: unknown): Palette =>
   v === "damson" || v === "madder" ? v : "woad";
 

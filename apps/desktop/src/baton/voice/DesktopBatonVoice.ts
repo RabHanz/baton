@@ -182,6 +182,8 @@ import { snippetAction, snippetControls } from "../writing/snippetRows.ts";
 import { createExternalNeeds } from "../presence/needsSources.ts";
 import { briefCommitments, needsFromCommitments } from "@t3tools/baton-shared/commitments";
 import { markPhase } from "../lifecycle/mainStall.ts";
+import { taskbarIconFile } from "../home/artFiles.ts";
+import { showTaskbarIcon } from "../taskbarIcon.ts";
 import { createCommitmentSync } from "../presence/commitmentSync.ts";
 import { createCommitmentStore } from "../presence/commitmentStore.ts";
 import { runCommitOp } from "../presence/commitTools.ts";
@@ -294,7 +296,7 @@ import {
   type Palette,
 } from "../home/palette.ts";
 import { parseAppearance, type Appearance } from "../home/theme.ts";
-import { createBatonHome, type HomeControl, type HomeState } from "../home/batonHome.ts";
+import { ART_DIR, createBatonHome, type HomeControl, type HomeState } from "../home/batonHome.ts";
 import { isCompanionWindow, keepRunningForTray } from "../lastAppWindow.ts";
 import * as Electron from "electron";
 
@@ -346,7 +348,7 @@ import {
 import { mouseHookConfig } from "../bindings/inputConfig.ts";
 import { VOICE_HOTKEYS } from "./voiceActivation.ts";
 import { ensureModel, modelPresent, PARAKEET_FAST_MODEL, PARAKEET_MODEL } from "./voiceModels.ts";
-import { hudView, trayDotColor, utteranceCaption } from "./voiceHud.ts";
+import { hudView, utteranceCaption } from "./voiceHud.ts";
 import type { AssistantActions, PhoneMirror } from "../screen/ScreenCompanion.ts";
 import { focusedFolder } from "../screen/focusedFolder.ts";
 import { createVoicePill, type VoicePill } from "./voicePill.ts";
@@ -1613,11 +1615,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const on = (id: string) =>
       input.extras?.controls().some((c) => c.id === id && c.kind === "toggle" && c.on) ?? false;
     return {
-      color: trayDotColor(
-        state,
-        settings.palette,
-        Electron.nativeTheme.shouldUseDarkColorsForSystemIntegratedUI,
-      ),
+      color: hudView(state).color,
       caps: [settings.enabled, on("s.capture"), on("s.act")],
       muted: state === "muted",
       badge: input.updates?.ready() ?? false,
@@ -1632,6 +1630,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     pill.setReason(loop === null ? "off" : state === "muted" ? "muted" : "sleeping");
     const image = trayIcon(markOptions());
     if (image !== trayImage) tray.setImage((trayImage = image));
+    const taskbarDark = Electron.nativeTheme.shouldUseDarkColorsForSystemIntegratedUI;
+    showTaskbarIcon(
+      NodePath.join(ART_DIR, taskbarIconFile(settings.palette, taskbarDark ? "dark" : "light")),
+      input.platform,
+    );
     const tip = `Tessaya: ${hudView(state).label} · ${deviceName()}${note ? ` · ${note}` : ""}`;
     if (tip !== trayTip) tray.setToolTip((trayTip = tip));
     rebuildMenu();

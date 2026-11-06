@@ -263,19 +263,20 @@ index 95d8b2d57e09faa9301be955e21e004cd64727e1..090ecfa67b3478d44621b1fce2f9375d
    objc-js: false
    "react-native-enriched-markdown@file:apps/mobile/deps/react-native-enriched-markdown-1.2.0-t3.16-29ddd424.tgz": true
 diff --git a/scripts/build-desktop-artifact.test.ts b/scripts/build-desktop-artifact.test.ts
-index 02f19b07b4531a4cd2760c99e642f694f56ab138..257a15b13995c48a1ce7abf5b448bed9db21dacc 100644
+index 02f19b07b4531a4cd2760c99e642f694f56ab138..351641956f1cbba3ab35d76187c49d6810a5fb79 100644
 --- a/scripts/build-desktop-artifact.test.ts
 +++ b/scripts/build-desktop-artifact.test.ts
-@@ -56,6 +56,8 @@ import {
+@@ -56,6 +56,9 @@ import {
    WindowsDesktopBuildPrerequisitesMissingError,
    WindowsPackagedPayloadValidationError,
    stageCursorSdkPlatformPackages,
 +  BATON_VOICE_PAYLOAD_FILES,
++  TESSAYA_ART_PAYLOAD_FILES,
 +  batonSidecarBuild,
    WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT,
    WINDOWS_SERVER_ASAR_IGNORE_GLOBS,
    WINDOWS_SERVER_ASAR_RESOURCE,
-@@ -158,6 +160,10 @@ const makeWindowsPayloadFixture = Effect.fn("test.makeWindowsPayloadFixture")(fu
+@@ -158,6 +161,14 @@ const makeWindowsPayloadFixture = Effect.fn("test.makeWindowsPayloadFixture")(fu
    const stageDistDir = path.join(tempDir, "dist");
    const packagedAppDir = path.join(stageDistDir, "win-unpacked");
    const resourcesDir = path.join(packagedAppDir, "resources");
@@ -283,10 +284,14 @@ index 02f19b07b4531a4cd2760c99e642f694f56ab138..257a15b13995c48a1ce7abf5b448bed9
 +  for (const file of BATON_VOICE_PAYLOAD_FILES) {
 +    yield* fs.writeFileString(path.join(resourcesDir, "baton-voice", file), "voice");
 +  }
++  yield* fs.makeDirectory(path.join(resourcesDir, "tessaya"), { recursive: true });
++  for (const file of TESSAYA_ART_PAYLOAD_FILES) {
++    yield* fs.writeFileString(path.join(resourcesDir, "tessaya", file), "art");
++  }
    yield* fs.makeDirectory(path.join(resourcesDir, "resource-monitor"), { recursive: true });
    yield* fs.copyFile(generatedAsarPath, path.join(resourcesDir, WINDOWS_SERVER_ASAR_RESOURCE));
    if (input.copyUnpackedNatives) {
-@@ -1292,6 +1298,21 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
+@@ -1292,6 +1303,36 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
          assert.deepStrictEqual(resourceMonitorError.missingFiles, [
            "resource-monitor/t3-resource-monitor.exe",
          ]);
@@ -305,10 +310,25 @@ index 02f19b07b4531a4cd2760c99e642f694f56ab138..257a15b13995c48a1ce7abf5b448bed9
 +        assert.instanceOf(voiceError, WindowsPackagedPayloadValidationError);
 +        assert.equal(voiceError.reason, "baton-voice-missing");
 +        assert.deepStrictEqual(voiceError.missingFiles, ["baton-voice/tessaya-voice.exe"]);
++
++        yield* fs.writeFileString(
++          path.join(fixture.packagedAppDir, "resources/baton-voice/tessaya-voice.exe"),
++          "voice",
++        );
++        yield* fs.remove(path.join(fixture.packagedAppDir, "resources/tessaya/sting-madder-dark.webp"));
++        const artError = yield* validateWindowsPackagedPayload({
++          stageDistDir: fixture.stageDistDir,
++          appExecutableName: fixture.appExecutableName,
++          targetArch: "x64",
++          appVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
++        }).pipe(Effect.flip);
++        assert.instanceOf(artError, WindowsPackagedPayloadValidationError);
++        assert.equal(artError.reason, "tessaya-art-missing");
++        assert.deepStrictEqual(artError.missingFiles, ["tessaya/sting-madder-dark.webp"]);
        }),
      ),
    );
-@@ -1828,3 +1849,18 @@ it.effect.skipIf(!symlinksSupported)("preserves relative links when replacing di
+@@ -1828,3 +1869,18 @@ it.effect.skipIf(!symlinksSupported)("preserves relative links when replacing di
      assert.equal(yield* fs.readFileString(path.join(output, app, "Current")), "rebuilt-app");
    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
  );
@@ -328,28 +348,32 @@ index 02f19b07b4531a4cd2760c99e642f694f56ab138..257a15b13995c48a1ce7abf5b448bed9
 +  assert.include(batonSidecarBuild("mac", "x64")[0]!.cmake, "CMAKE_OSX_ARCHITECTURES=x86_64");
 +});
 diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
-index 599c6b809a18ff4ce320c9780c87bd244d94dad3..cac3cad1340d4f92eb27f8bc9dbe91e89ad8dd66 100644
+index 599c6b809a18ff4ce320c9780c87bd244d94dad3..77254636bd27a6de2d8abc44ba1aebd8fbfea7a6 100644
 --- a/scripts/build-desktop-artifact.ts
 +++ b/scripts/build-desktop-artifact.ts
-@@ -749,6 +749,7 @@ const WindowsPackagedPayloadValidationReason = Schema.Literals([
+@@ -749,6 +749,8 @@ const WindowsPackagedPayloadValidationReason = Schema.Literals([
    "sidecar-invalid",
    "unpacked-native-missing",
    "resource-monitor-missing",
 +  "baton-voice-missing",
++  "tessaya-art-missing",
    "wsl-runtime-missing",
    "wsl-runtime-invalid",
    "file-limit-exceeded",
-@@ -775,6 +776,9 @@ export class WindowsPackagedPayloadValidationError extends Schema.TaggedError<Wi
+@@ -775,6 +777,12 @@ export class WindowsPackagedPayloadValidationError extends Schema.TaggedError<Wi
      if (this.reason === "resource-monitor-missing") {
        return "Windows packaged payload is missing the resource monitor executable.";
      }
 +    if (this.reason === "baton-voice-missing") {
 +      return `Windows packaged payload is missing Baton voice files: ${(this.missingFiles ?? []).join(", ")}.`;
 +    }
++    if (this.reason === "tessaya-art-missing") {
++      return `Windows packaged payload is missing Tessaya's palette art: ${(this.missingFiles ?? []).join(", ")}.`;
++    }
      if (this.reason === "wsl-runtime-missing") {
        return "Windows packaged payload is missing the WSL runtime archive or SHA-256 sidecar.";
      }
-@@ -994,6 +998,8 @@ export const DESKTOP_FILE_EXCLUSIONS = [
+@@ -994,6 +1002,8 @@ export const DESKTOP_FILE_EXCLUSIONS = [
    "!**/*.d.cts",
    "!apps/desktop/resources/browser-secret",
    "!apps/desktop/resources/browser-secret/**/*",
@@ -358,7 +382,7 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..cac3cad1340d4f92eb27f8bc9dbe91e8
    "!apps/desktop/prod-resources/browser-secret",
    "!apps/desktop/prod-resources/browser-secret/**/*",
    "!apps/desktop/prod-resources/windows-server",
-@@ -1024,6 +1030,21 @@ export function resolveMacFileExclusions(arch?: typeof BuildArch.Type) {
+@@ -1024,6 +1034,21 @@ export function resolveMacFileExclusions(arch?: typeof BuildArch.Type) {
    const unusedArch = arch === "arm64" ? "x64" : "arm64";
    return [...MAC_FILE_EXCLUSIONS, `!**/node_modules/**/prebuilds/darwin-${unusedArch}/**/*`];
  }
@@ -380,17 +404,18 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..cac3cad1340d4f92eb27f8bc9dbe91e8
  // Large ASAR sidecars avoid NSIS extracting thousands of loose files during installs and updates.
  export const WINDOWS_SERVER_ASAR_RESOURCE = "server.asar";
  // Native modules and executables need real paths, so place them in ASAR's .unpacked sibling.
-@@ -1061,7 +1082,8 @@ export function resolveWindowsServerAsarIgnoreGlobs(arch: typeof BuildArch.Type)
+@@ -1061,7 +1086,9 @@ export function resolveWindowsServerAsarIgnoreGlobs(arch: typeof BuildArch.Type)
    ];
  }
  
 -export const WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT = 80;
-+// Baton ships the voice sidecar, wake and speech runtimes and models beside the app: about 40 more files than upstream.
-+export const WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT = 140;
++// Baton ships the voice sidecar, wake and speech runtimes and models beside the app: about 40 more files than upstream,
++// and Tessaya's palette art (a sting and a taskbar icon per palette and theme) 12 more.
++export const WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT = 152;
  export const WINDOWS_SERVER_RESOURCE_SOURCE_DIR = "apps/desktop/prod-resources/windows-server";
  export const WINDOWS_SERVER_EXTRA_RESOURCES = [
    {
-@@ -1099,6 +1121,10 @@ export const DESKTOP_EXTRA_RESOURCES = [
+@@ -1099,6 +1126,15 @@ export const DESKTOP_EXTRA_RESOURCES = [
      from: "apps/desktop/prod-resources/resource-monitor",
      to: "resource-monitor",
    },
@@ -398,13 +423,26 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..cac3cad1340d4f92eb27f8bc9dbe91e8
 +    from: "apps/desktop/prod-resources/baton-voice",
 +    to: "baton-voice",
 +  },
++  // apps/desktop/resources is electron-builder's buildResources, which never reaches the app: the art goes beside it.
++  {
++    from: "apps/desktop/resources/tessaya",
++    to: "tessaya",
++  },
  ] as const;
  export const LINUX_CAPTURE_EXTRA_RESOURCES = [
    {
-@@ -2347,6 +2373,120 @@ export const stageLinuxCaptureHelper = Effect.fn("stageLinuxCaptureHelper")(func
+@@ -2347,6 +2383,128 @@ export const stageLinuxCaptureHelper = Effect.fn("stageLinuxCaptureHelper")(func
    }
  });
  
++/** A sting and a taskbar icon per palette and theme (apps/desktop/src/baton/home/artFiles.ts). */
++export const TESSAYA_ART_PAYLOAD_FILES = ["woad", "damson", "madder"].flatMap((palette) =>
++  ["light", "dark"].flatMap((theme) => [
++    `sting-${palette}-${theme}.webp`,
++    `taskbar-${palette}-${theme}.ico`,
++  ]),
++);
++
 +export const BATON_VOICE_PAYLOAD_FILES = [
 +  "tessaya-voice.exe",
 +  "models/melspectrogram.onnx",
@@ -522,7 +560,7 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..cac3cad1340d4f92eb27f8bc9dbe91e8
  export const stageResourceMonitor = Effect.fn("stageResourceMonitor")(function* (input: {
    readonly repoRoot: string;
    readonly stageResourcesDir: string;
-@@ -2792,6 +2932,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
+@@ -2792,6 +2950,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
          : platform === "linux"
            ? LINUX_FILE_EXCLUSIONS
            : []),
@@ -530,7 +568,7 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..cac3cad1340d4f92eb27f8bc9dbe91e8
      ],
      directories: {
        buildResources: "apps/desktop/resources",
-@@ -3411,6 +3552,20 @@ export const validateWindowsPackagedPayload = Effect.fn(
+@@ -3411,6 +3570,32 @@ export const validateWindowsPackagedPayload = Effect.fn(
      });
    }
  
@@ -548,10 +586,22 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..cac3cad1340d4f92eb27f8bc9dbe91e8
 +    });
 +  }
 +
++  const missingArt: string[] = [];
++  for (const file of TESSAYA_ART_PAYLOAD_FILES) {
++    if (!(yield* isFile(path.join(resourcesDir, "tessaya", file)))) missingArt.push(`tessaya/${file}`);
++  }
++  if (missingArt.length > 0) {
++    return yield* new WindowsPackagedPayloadValidationError({
++      reason: "tessaya-art-missing",
++      packagedAppDir,
++      missingFiles: missingArt,
++    });
++  }
++
    const wslArchivePath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_NAME);
    const wslArchiveHashPath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_HASH_NAME);
    const [hasWslArchive, hasWslArchiveHash] = yield* Effect.all([
-@@ -3772,6 +3927,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
+@@ -3772,6 +3957,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
      arch: options.arch,
      verbose: options.verbose,
    });

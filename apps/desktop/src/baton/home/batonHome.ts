@@ -29,8 +29,7 @@ import {
   type Motion,
 } from "./look.ts";
 import type { Palette } from "./palette.ts";
-import { artDir, readArt, stingFile, taskbarIconFile } from "./artFiles.ts";
-import { showTaskbarIcon } from "../taskbarIcon.ts";
+import { artDir, readArt, stingFile } from "./artFiles.ts";
 import { shouldSplash, splashCentre } from "./splash.ts";
 import { startSplash } from "./splashWindow.ts";
 
@@ -389,7 +388,9 @@ const PUSH_MS = 250;
 const THEME = "baton-home:theme";
 const LEVEL = "baton-home:level";
 const STING = "baton-home:sting";
-const art = artDir(__dirname);
+/** Tessaya's palette art: the app's resources when packaged, the source tree when run from it. */
+export const ART_DIR = artDir(__dirname, process.resourcesPath);
+const art = ART_DIR;
 
 const withTabs = (state: HomeState): HomeState => ({
   ...state,
@@ -500,7 +501,6 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
       }
     }
     open.webContents.send(THEME, theme());
-    showTaskbarIcon(NodePath.join(art, taskbarIconFile(look().palette, theme())), process.platform);
   };
   Electron.nativeTheme.on("updated", applyTheme);
   /** The classes on the page's root, and the window's material: live, no reload. */

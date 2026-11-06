@@ -15,9 +15,13 @@ export const stingFile = (palette: Palette, theme: Theme): string =>
 export const taskbarIconFile = (palette: Palette, theme: Theme): string =>
   `taskbar-${palette}-${theme}.ico`;
 
-/** Beside the built main script in the app (dist-electron/..), or in the source tree when run from it. */
-export const artDir = (dirname: string): string => {
+/**
+ * In the packaged app the build puts them in its resources folder (`DESKTOP_EXTRA_RESOURCES`); run from the source tree
+ * they are beside the built main script (dist-electron/..).
+ */
+export const artDir = (dirname: string, resourcesPath: string | undefined): string => {
   const candidates = [
+    ...(resourcesPath === undefined ? [] : [NodePath.join(resourcesPath, "tessaya")]),
     NodePath.join(dirname, "..", "resources", "tessaya"),
     NodePath.join(dirname, "..", "..", "resources", "tessaya"),
   ];
