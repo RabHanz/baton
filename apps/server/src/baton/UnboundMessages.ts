@@ -125,7 +125,8 @@ export const stampKept = Effect.fn("UnboundMessages.stampKept")(function* (
   for (const shell of yield* engine.threadShells) {
     if (!String(shell.id).startsWith(LIVE_PREFIX)) continue;
     const nativeId = (yield* engine.activeProviderThread(shell.id))?.nativeThreadRef?.nativeId;
-    if (typeof nativeId === "string" && wanted.has(nativeId)) byNative.set(nativeId, String(shell.id));
+    if (typeof nativeId === "string" && wanted.has(nativeId))
+      byNative.set(nativeId, String(shell.id));
   }
   for (const entry of open) {
     const thread = byNative.get(entry.sessionId!);

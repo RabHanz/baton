@@ -1,6 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off globalDate:off globalDateInEffect:off preferSchemaOverJson:off globalTimers:off
 /** The real machine behind the session catalog: Claude's transcripts, the history index, `baton`, Herdr. */
 import * as NodeChildProcess from "node:child_process";
+import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
@@ -186,6 +187,12 @@ export const realCatalogPorts = (type: CatalogPorts["type"]): CatalogPorts => ({
           resolve({ ok: error === null, out: `${stdout}${stderr}`.trim() }),
       ),
     ),
+  hasTranscript: (sessionId) => {
+    scanned ??= scanTranscriptTimes(claudeConfigDirs(), new Set(), null, Date.now());
+    for (const { files } of scanned.folders.values())
+      if (files.has(`${sessionId}.jsonl`)) return true;
+    return false;
+  },
   type,
   screen: (session, pane) =>
     new Promise((resolve) =>
@@ -199,3 +206,45 @@ export const realCatalogPorts = (type: CatalogPorts["type"]): CatalogPorts => ({
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   now: () => Date.now(),
 });
+
+/**
+ * The kept-messages file: `{ sessionId: [text, ...] }`. Missing is empty. Anything unreadable or of another shape is
+ * moved aside (never silently replaced, since it holds his words) and reported, and the catalog starts empty.
+ */
+export const readKeptFile = (
+  file: string,
+): { readonly kept: Record<string, ReadonlyArray<string>>; readonly problem: string | null } => {
+  let raw: string | null = null;
+  try {
+    raw = NodeFS.readFileSync(file, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { kept: {}, problem: null };
+  }
+  try {
+    const parsed: unknown = raw === null ? null : JSON.parse(raw);
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      !Array.isArray(parsed) &&
+      Object.values(parsed).every(
+        (texts) => Array.isArray(texts) && texts.every((text) => typeof text === "string"),
+      )
+    )
+      return { kept: parsed as Record<string, ReadonlyArray<string>>, problem: null };
+  } catch {}
+  const aside = `${file}.bad-${Date.now()}-${NodeCrypto.randomUUID().slice(0, 8)}`;
+  try {
+    NodeFS.renameSync(file, aside);
+  } catch {}
+  return {
+    kept: {},
+    problem: `${file} ${raw === null ? "could not be read" : "was not a kept-messages file"}; moved to ${aside}`,
+  };
+};
+
+/** Written whole to a temporary file and renamed over, so a crash mid-write never leaves half a file. */
+export const writeKeptFile = (file: string, all: Record<string, ReadonlyArray<string>>): void => {
+  const temp = `${file}.tmp`;
+  NodeFS.writeFileSync(temp, JSON.stringify(all), { mode: 0o600 });
+  NodeFS.renameSync(temp, file);
+};

@@ -35,6 +35,10 @@ import {
   keptEntry,
   liveQueueDir,
   takeDrainLock,
+  UNSURE_NOTE,
+  maybeNote,
+  run,
+  sendFailure,
 } from "./baton-live-acp.mjs";
 import { parsePanePrompt, parseReviewScreen, screenTail } from "./pane-prompt.mjs";
 
@@ -380,6 +384,27 @@ NodeTest.test(
     NodeAssert.deepEqual(typed, ["first", "added meanwhile"]);
     NodeAssert.equal(readQueue(dir, "s10").length, 0);
     NodeAssert.notEqual(takeDrainLock(dir), null, "the lock is released after a pass");
+  },
+);
+
+NodeTest.test(
+  "a send Herdr never answered may have been typed, so it is handed back, never typed again",
+  async () => {
+    const dir = queueDir();
+    const state = { live: { pane: "p", status: "idle" }, failure: UNSURE_NOTE };
+    const { deps, said } = harness(state);
+    enqueue(dir, "s12", msg("only once"));
+    await drainSession(dir, "s12", deps);
+    NodeAssert.equal(readQueue(dir, "s12").length, 0);
+    NodeAssert.deepEqual(said, [maybeNote("only once")]);
+    // A killed herdr (timeout) maps to unsure; a refusal does not.
+    const killed = await run(process.execPath, ["-e", "setTimeout(() => {}, 5000)"], 50);
+    NodeAssert.equal(killed.timedOut, true);
+    NodeAssert.equal(sendFailure(killed), UNSURE_NOTE);
+    NodeAssert.notEqual(
+      sendFailure({ ok: false, timedOut: false, out: "agent_blocked" }),
+      UNSURE_NOTE,
+    );
   },
 );
 

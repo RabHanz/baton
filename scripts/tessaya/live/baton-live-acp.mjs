@@ -228,10 +228,14 @@ function findIn(sessionId, dir) {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const run = (file, args, timeout = 15_000) =>
+export const run = (file, args, timeout = 15_000) =>
   new Promise((resolve) =>
     NodeChildProcess.execFile(file, args, { timeout }, (error, stdout, stderr) =>
-      resolve({ ok: error === null, out: `${stdout}${stderr}`.trim() }),
+      resolve({
+        ok: error === null,
+        timedOut: error?.killed === true,
+        out: `${stdout}${stderr}`.trim(),
+      }),
     ),
   );
 
@@ -245,6 +249,8 @@ const herdrArgs = (paneRef, verb, rest) => {
 
 const BLOCKED_NOTE =
   "Claude Code is waiting on a question or an approval in its terminal; answer it there first.";
+/** Herdr did not answer in time: the text may already be in the pane, so it is never typed again. */
+export const UNSURE_NOTE = "Herdr did not answer in time.";
 
 // ---------------------------------------------------------------------------------------------
 // The message queue. A message that cannot be delivered now is kept, in order, in a small file per
@@ -310,6 +316,10 @@ export const deliveredNote = (shown) => `Delivered: ${preview(shown)}`;
 
 /** The words are never lost: a message that cannot be delivered comes back, quoted. */
 export const lostNote = (reason, shown) => `Not delivered: ${reason} Your message was: "${shown}"`;
+
+/** A send Herdr never answered: it may have arrived, so it is not sent again. */
+export const maybeNote = (shown) =>
+  `Maybe delivered: Herdr did not answer in time, so it may already be in the session; it is not sent again in case it is. Your message was: "${shown}"`;
 
 /**
  * One pass over one session's queue, oldest first. Stops at the first message that cannot go yet, so
@@ -440,6 +450,11 @@ async function drainLocked(dir, sessionId, deps) {
     }
     if (failure === BLOCKED_NOTE) return;
     const tries = head.tries + 1;
+    if (failure === UNSURE_NOTE) {
+      settleHead(dir, sessionId, head, null);
+      deps.say(sessionId, maybeNote(head.shown));
+      continue;
+    }
     if (tries >= QUEUE_TRIES) {
       settleHead(dir, sessionId, head, null);
       deps.say(sessionId, lostNote(failure, head.shown));
@@ -541,10 +556,16 @@ async function typeInto(paneRef, text) {
     }
     return null;
   }
-  return /agent_blocked/.test(sent.out)
-    ? BLOCKED_NOTE
-    : `Herdr did not take the message: ${sent.out.slice(0, 200)}`;
+  return sendFailure(sent);
 }
+
+/** Why a `herdr agent prompt` that did not succeed failed: a timeout is unsure, never a refusal. */
+export const sendFailure = (sent) =>
+  sent.timedOut
+    ? UNSURE_NOTE
+    : /agent_blocked/.test(sent.out)
+      ? BLOCKED_NOTE
+      : `Herdr did not take the message: ${sent.out.slice(0, 200)}`;
 
 /** A request to bring a stopped session back without sending anything: just "resume". */
 export const isResumeRequest = (text) => /^\s*resume( it| this session)?\s*\.?\s*$/i.test(text);
@@ -854,6 +875,10 @@ async function prompt(params) {
         say(sessionId, answered);
         return { stopReason: "end_turn" };
       }
+    }
+    if (failure === UNSURE_NOTE) {
+      say(sessionId, maybeNote(shown));
+      return { stopReason: "end_turn" };
     }
     if (failure !== null) {
       const count = enqueue(QUEUE_DIR, sessionId, { text, shown, at: new Date().toISOString() });
