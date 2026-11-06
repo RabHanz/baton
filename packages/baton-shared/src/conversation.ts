@@ -41,7 +41,6 @@ export const RECENT_TURNS = 6;
 export const REPLY_CHARS = 4_000;
 export const EARLIER_TURNS = 3;
 const EARLIER_CHARS = 500;
-const ROUTER_CHARS = 600;
 
 export const tokens = (text: string): ReadonlyArray<string> =>
   text
@@ -167,18 +166,6 @@ export const conversationBlock = (input: {
     );
   }
   return parts.join("\n\n");
-};
-
-/** What the router sees: shorter, but a whole thought. */
-export const routerLines = (recent: ReadonlyArray<ConversationTurn>): ReadonlyArray<string> => {
-  const target = currentTarget(recent);
-  return [
-    ...recent.flatMap((t) => [
-      `He said: ${clip(t.said, ROUTER_CHARS)}`,
-      `You answered: ${clip(t.reply, ROUTER_CHARS)}`,
-    ]),
-    ...(target === null ? [] : [`(the current target, what "it" means: ${target.label})`]),
-  ];
 };
 
 /** The request with the conversation in front of it. */

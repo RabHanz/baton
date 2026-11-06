@@ -7,7 +7,7 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 
-import { entryRoute, fallbackDecision, instantDecision } from "@t3tools/baton-shared/brain";
+import { instantDecision } from "@t3tools/baton-shared/brain";
 import { BATON_TOOLS, REMOTE_ONLY_TOOLS, judgeToolCall } from "@t3tools/baton-shared/operator";
 
 import { buildBatonTools, type ToolHost } from "../agent/batonTools.ts";
@@ -16,26 +16,19 @@ const baton = NodePath.resolve(import.meta.dirname, "..");
 const source = (...parts: string[]) => NodeFS.readFileSync(NodePath.join(baton, ...parts), "utf8");
 
 describe("entry points: voice, typed Ask, hotkey and tray all arrive as a sentence", () => {
-  // [sentence, a lesson or drive is running, expected first hop with the one assistant on, and with it off]
+  // [sentence, a lesson or drive is running, the mode it names, or null for the one assistant]
   const rows = [
-    ["teach: change the font size", false, "router", "router"],
-    ["drive: change the font size", false, "router", "router"],
-    ["look: what is this", false, "router", "router"],
-    ["stop", true, "router", "router"],
-    ["next", true, "router", "router"],
-    ["teach me how to change the font size", false, "assistant", "router"],
-    ["where is the export button", false, "assistant", "router"],
-    ["do it for me", false, "assistant", "router"],
+    ["teach: change the font size", false, "teach"],
+    ["drive: change the font size", false, "drive"],
+    ["look: what is this", false, "look"],
+    ["stop", true, "control"],
+    ["next", true, "control"],
+    ["teach me how to change the font size", false, null],
+    ["where is the export button", false, null],
+    ["do it for me", false, null],
   ] as const;
-  it.each(rows)("%s", (said, active, withAssistant, without) => {
-    expect(entryRoute(said, active, true)).toBe(withAssistant);
-    expect(entryRoute(said, active, false)).toBe(without);
-  });
-
-  it("the older router still reaches every mode when the assistant is off or fails", () => {
-    expect(fallbackDecision("teach me how to use this", false).route).toBe("teach");
-    expect(fallbackDecision("where is the export button on this screen", false).route).toBe("look");
-    expect(instantDecision("drive: open the file", false)?.route).toBe("drive");
+  it.each(rows)("%s", (said, active, mode) => {
+    expect(instantDecision(said, active)?.route ?? null).toBe(mode);
   });
 });
 

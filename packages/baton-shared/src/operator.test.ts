@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { decide, guardDecision, parseBrainReply } from "./brain.ts";
+import { guardDecision } from "./brain.ts";
 import { describeToolCall, judgeToolCall, keyIsNavigation, type ToolCall } from "./operator.ts";
 
 const on = { actWithoutAsking: true, tainted: false };
@@ -85,22 +85,7 @@ describe("a tool call", () => {
 });
 
 describe("the operate route", () => {
-  it("is a route the model can pick", () => {
-    expect(parseBrainReply('{"route":"operate","text":"explain this folder"}')).toMatchObject({
-      route: "operate",
-    });
-  });
-
-  it("keeps his own words, and sees the high-risk list", async () => {
-    const host = {
-      ask: async () => '{"route":"operate","text":"tidied words"}',
-      grammarPlaces: async () => false,
-    };
-    const context = { running: null, direct: false, recent: [] };
-    expect(await decide("explain this folder", context, host)).toMatchObject({
-      route: "operate",
-      text: "explain this folder",
-    });
+  it("sees the high-risk list", () => {
     const risky = guardDecision(
       { route: "operate", text: "deploy this to production", source: "model" },
       "deploy this to production",

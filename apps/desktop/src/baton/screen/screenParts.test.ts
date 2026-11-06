@@ -180,30 +180,20 @@ describe("withBrainRoutes", () => {
   };
   const bus = emptyContextBus;
   const router = withBrainRoutes(inner, {
-    said: async (text, { direct }) =>
-      text === "capital of Peru"
-        ? { kind: "handled" }
-        : text === "nuke it"
-          ? { kind: "refused", reply: "no" }
-          : { kind: "act", text: direct ? "not this" : `plain ${text}` },
+    said: async (text) =>
+      text === "nuke it" ? { kind: "refused", reply: "no" } : { kind: "handled" },
   });
   const route = (effect: unknown) => router.route(effect as never, { bus, now: 0 });
 
-  it("lets the brain handle or refuse, and sends only act to the intent path", async () => {
+  it("lets the brain handle or refuse, and sends nothing to the old intent path", async () => {
     await expect(
       route({ kind: "command", text: "capital of Peru", inheritedTarget: null }),
     ).resolves.toMatchObject({ reply: "", source: "screen" });
     await expect(
       route({ kind: "command", text: "nuke it", inheritedTarget: null }),
     ).resolves.toMatchObject({ kind: "refused", reason: "high_risk" });
-    await route({ kind: "command", text: "what needs me", inheritedTarget: null });
-    expect(seen).toEqual(["command:plain what needs me"]);
-  });
-
-  it("keeps direct speech word for word", async () => {
-    seen.length = 0;
     await route({ kind: "session_message", text: "run the tests" });
-    expect(seen).toEqual(["session_message:run the tests"]);
+    expect(seen).toEqual([]);
   });
 
   it("never lets dictated text near the brain", async () => {

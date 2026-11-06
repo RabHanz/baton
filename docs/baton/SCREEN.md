@@ -19,7 +19,7 @@ What you say picks the mode:
 | "teach me how to …", "show me how to …", "walk me through …", "guide me", "… step by step", "teach: …" | **Teach**        | One step at a time, each pointed at, with a word on why. Do the step and Tessaya notices (the screen changes and settles), checks it worked, and gives the next. Say "next" to move on yourself, "repeat" to hear it again, "stop" to end.                                                                              |
 | "drive: …", "take over …", "do it for me", "open the downloads folder for me"                          | **Do it for me** | One box lists the steps in plain words: **Go ahead**, **Change a step**, or **Not now**. After Go ahead she does them while you watch her own small cursor (your mouse stays yours), checking each result; anything that deletes, sends, pays, publishes or reaches a command line still asks. Esc or "stop" stops her. |
 
-The table is what people say. One brain decides, on voice and in the ask box alike (D100); `INTENT_TABLE.md` has 48 real sentences through it.
+The table is what people say. The one assistant decides, on voice and in the ask box alike; only the `look:`, `teach:` and `drive:` prefixes skip it.
 
 **How long things stay.** The pointer stays on its target and the card beside it until the narration
 has finished and you have had time to read: at least 3 s after speech, more for long text, with a line

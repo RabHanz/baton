@@ -179,10 +179,7 @@ export const desktopVoiceContext = (input: {
 
 /** The one brain as the voice router sees it (D100). */
 export interface BrainVoiceHook {
-  /**
-   * Decides what was said. "act" hands back the command for the intent path and its guards;
-   * anything else is already under way, or refused with the reply to speak.
-   */
+  /** Decides what was said: already under way, or refused with the reply to speak. */
   readonly said: (
     text: string,
     input: {
@@ -192,16 +189,11 @@ export interface BrainVoiceHook {
       /** The wake word that opened this window, which picks the persona; null for a hotkey. */
       readonly wake?: string | null;
     },
-  ) => Promise<
-    | { readonly kind: "act"; readonly text: string; readonly restated?: boolean }
-    | { readonly kind: "handled" }
-    | { readonly kind: "refused"; readonly reply: string }
-  >;
+  ) => Promise<{ readonly kind: "handled" } | { readonly kind: "refused"; readonly reply: string }>;
 }
 
 /**
- * Everything said outside dictation goes through the brain. Only "act" reaches the intent path,
- * and there every guard still applies: high risk refused, medium risk read back and confirmed.
+ * Everything said outside dictation goes to the one assistant, behind One Trust.
  * Dictation is never in here: `dictate` effects pass straight through. Its only model is the
  * clean-up pass, when he has chosen it (D105).
  */
@@ -219,23 +211,9 @@ export const withBrainRoutes = (inner: VoiceRouter, brain: BrainVoiceHook): Voic
         focused.workSessionId === null ? null : `${focused.workSessionId} (${focused.evidence})`,
       wake: context.wake ?? null,
     });
-    if (decision.kind === "handled") {
-      return { kind: "ran", reply: "", workSessionId: null, source: "screen" };
-    }
-    if (decision.kind === "refused") {
-      return { kind: "refused", reply: decision.reply, reason: "high_risk" };
-    }
-    // Direct speech keeps his own words. A command may take the model's plain restatement, and
-    // then it only reads or waits for his "confirm" (D114).
-    if (effect.kind !== "command") return inner.route(effect, context);
-    return inner.route(
-      {
-        ...effect,
-        text: decision.text,
-        ...(decision.restated === true ? { restated: true } : {}),
-      },
-      context,
-    );
+    return decision.kind === "refused"
+      ? { kind: "refused", reply: decision.reply, reason: "high_risk" }
+      : { kind: "ran", reply: "", workSessionId: null, source: "screen" };
   },
 });
 

@@ -13,7 +13,7 @@ the sources below hold the detail, so read them rather than trusting this summar
 3. `memory/baton-must-be-smart.md`, `memory/director-voice-accent.md`,
    `memory/chrome-bridge-to-laptop.md`.
 4. `docs/baton/STATUS.md`: what actually works, by phase. `docs/baton/DECISIONS.md`: every choice.
-   `docs/baton/VOICE.md`, `SCREEN.md`, `INTENT_TABLE.md`, `DEPLOY.md`, `UPSTREAM.md`.
+   `docs/baton/VOICE.md`, `SCREEN.md`, `DEPLOY.md`, `UPSTREAM.md`.
 5. Older records live in `docs/fabric/` in git history. Clicky research is in
    `docs/baton/research/clicky-2026-10-27/` and `clicky-videos-2026-10-27/`.
 6. His exact past words: `history-search.sh <words>`, and `history-search.sh show <session>`.

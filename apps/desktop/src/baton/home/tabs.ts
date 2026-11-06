@@ -75,7 +75,6 @@ const EXACT: Readonly<Record<string, TabId>> = {
   "s.brain": "assistant",
   "s.brainCheck": "assistant",
   "s.act": "assistant",
-  "s.oneAssistant": "assistant",
   "s.chrome": "assistant",
   "s.social": "assistant",
   "s.account": "assistant",

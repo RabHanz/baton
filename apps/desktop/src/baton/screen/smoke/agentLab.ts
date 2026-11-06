@@ -34,7 +34,6 @@ NodeFS.writeFileSync(
   NodePath.join(stateDir, "baton-screen.json"),
   JSON.stringify({
     captureApproval: "always",
-    oneAssistant: true,
     actWithoutAsking: true,
     claudeBinary: process.env["LAB_CLAUDE"] ?? "claude",
   }),

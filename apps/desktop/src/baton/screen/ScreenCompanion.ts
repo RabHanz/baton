@@ -34,11 +34,9 @@ import * as NodePath from "node:path";
 
 import {
   ASSISTANT_PROMPT_INTRO,
-  BRAIN_ROUTER_PROMPT,
   clockLine,
   OPERATOR_PROMPT,
-  decide,
-  entryRoute,
+  guardDecision,
   instantDecision,
   makeSentenceStream,
   type BrainDecision,
@@ -91,11 +89,7 @@ import { startCodexOperator } from "./codexOperator.ts";
 import { createCompanionWindows, type AnswerOutput } from "./companionWindows.ts";
 import { brainRows, canChoose, type BrainStatus } from "./brainChoice.ts";
 import { detectBrains } from "./brainDetect.ts";
-import {
-  routerLines,
-  textIsFromConversation,
-  type ConversationRoute,
-} from "@t3tools/baton-shared/conversation";
+import { textIsFromConversation, type ConversationRoute } from "@t3tools/baton-shared/conversation";
 import { BATON_TOOL_PREFIX } from "@t3tools/baton-shared/operator";
 import { createMouseConsent, pointerMoved } from "../agent/pointerGuard.ts";
 import { createAgentGate, createTaint } from "../agent/agentGate.ts";
@@ -167,8 +161,6 @@ interface ScreenSettings {
   readonly claudeBinary: string;
   /** Looking, teaching and the older operator. The one assistant runs on each persona's own model, from its pack file. */
   readonly model: string;
-  /** The alias that routes: every sentence, so the fast one. */
-  readonly routerModel: string;
   /** Written only shows everything and plays nothing. */
   readonly output: AnswerOutput;
   /** "system" is the OS voice, for a machine that should fetch nothing. */
@@ -186,8 +178,6 @@ interface ScreenSettings {
   /** Who does the work behind Baton. Both answer to the same gate. */
   readonly operator: "claude" | "codex";
   readonly codexBinary: string;
-  /** One continuous assistant with every tool, instead of the router's stages (D143). Off until measured. */
-  readonly oneAssistant: boolean;
   /** Let the assistant drive his own Chrome through Claude in Chrome (D3). Off until tried on his machine. */
   readonly browserChrome: boolean;
   /** He (or the first-run check) has decided; until then a connected Chrome turns it on once. */
@@ -206,7 +196,6 @@ const DEFAULTS: ScreenSettings = {
   captureApproval: "ask",
   claudeBinary: "claude",
   model: "claude-opus-5-5",
-  routerModel: "haiku",
   output: "spoken",
   voice: "anna",
   volume: 1,
@@ -216,7 +205,6 @@ const DEFAULTS: ScreenSettings = {
   actCursor: true,
   operator: "claude",
   codexBinary: "codex",
-  oneAssistant: true,
   browserChrome: false,
   browserChromeSet: false,
   socialOn: true,
@@ -238,11 +226,6 @@ const settingsFrom = (saved: Partial<ScreenSettings> & { speak?: boolean }): Scr
 const LOOK_MEMORY_MS = 15 * 60_000;
 /** Real work takes a while, and a question to him sits inside the turn. */
 const OPERATOR_TURN_MS = 30 * 60_000;
-const ROUTER_IDLE_MS = 15 * 60_000;
-/** A router this slow has already lost; the word rules answer instead. */
-const ROUTER_TIMEOUT_MS = 20_000;
-/** A warm router keeps its history: this bounds how long one bad turn can colour the next. */
-const ROUTER_MAX_TURNS = 6;
 /** He said stop or the box must open: neither waits for a sidecar that is restarting. */
 const FOCUS_WAIT_MS = 400;
 const KEYBOARD_WAIT_MS = 1_500;
@@ -337,9 +320,9 @@ export interface AssistantActions {
     readonly answer: Promise<"yes" | "no" | "expired">;
     readonly cancel: () => void;
   } | null;
-  /** A command through the intent path and all its guards; the reply to speak. */
-  readonly act: (command: string, restated?: boolean) => Promise<string>;
-  readonly grammarPlaces: (said: string) => Promise<boolean>;
+  /** Unused since the old router was deleted; still supplied by DesktopBatonVoice until that file drops them. */
+  readonly act?: (command: string, restated?: boolean) => Promise<string>;
+  readonly grammarPlaces?: (said: string) => Promise<boolean>;
   /** His live sessions, one per line, with the id each is named by. */
   readonly sessionsList?: () => string;
   /** The project of a focused session ("<id> (<evidence>)"), for memory scoping; null when unknown. */
@@ -427,7 +410,7 @@ export interface ScreenCompanion {
       readonly args: Readonly<Record<string, unknown>>;
     }) => Promise<HandsResult>;
   };
-  /** Decide what was said and carry it out. "act" comes back for the caller's own guards. */
+  /** Decide what was said and carry it out; a refusal comes back for the caller to say. */
   readonly said: (
     text: string,
     input: {
@@ -438,11 +421,7 @@ export interface ScreenCompanion {
       /** The wake word that opened this turn; it picks who answers. */
       readonly wake?: string | null;
     },
-  ) => Promise<
-    | { readonly kind: "act"; readonly text: string; readonly restated?: boolean }
-    | { readonly kind: "handled" }
-    | { readonly kind: "refused"; readonly reply: string }
-  >;
+  ) => Promise<{ readonly kind: "handled" } | { readonly kind: "refused"; readonly reply: string }>;
   readonly setActions: (actions: AssistantActions) => void;
   /** Memory sync between servers (D150): off by default; the Memory tab switches it and runs it now. */
   readonly memorySync: ReturnType<typeof createMemorySync>;
@@ -720,51 +699,11 @@ export const startScreenCompanion = (input: {
     input.onNote?.("refusal", { kind, reason, said });
   };
 
-  const session = (model: string, systemPrompt: string, timeoutMs?: number): VisionSession =>
-    startVisionSession({
-      claudeBinary: settings.claudeBinary,
-      model,
-      systemPrompt,
-      workDir: NodePath.join(input.stateDir, "screen"),
-      env: claudeEnv(),
-      platform: input.platform,
-      ...(timeoutMs === undefined ? {} : { timeoutMs }),
-    });
-
-  // Kept warm between sentences: a cold start costs 2 s more, and it holds no conversation of use.
-  let router: VisionSession | null = null;
-  let routerIdle: ReturnType<typeof setTimeout> | null = null;
-  let routerTurns = 0;
   /** A started answer session, so the first answer skips the process's own start. */
   let spareLook: VisionSession | null = null;
-  const dropRouter = () => {
-    router?.dispose();
-    router = null;
-    routerTurns = 0;
+  const dropSpare = () => {
     spareLook?.dispose();
     spareLook = null;
-  };
-  const warmRouter = () => {
-    // Whatever a page's title talked it into stops at the cap.
-    if (routerTurns >= ROUTER_MAX_TURNS || router?.alive() === false) {
-      router?.dispose();
-      router = null;
-      routerTurns = 0;
-    }
-    router ??= session(settings.routerModel, BRAIN_ROUTER_PROMPT, ROUTER_TIMEOUT_MS);
-    if (routerIdle !== null) clearTimeout(routerIdle);
-    routerIdle = setTimeout(dropRouter, ROUTER_IDLE_MS);
-    return router;
-  };
-  const routerAsk = async (turn: string): Promise<string> => {
-    const current = warmRouter();
-    routerTurns += 1;
-    try {
-      return await current.ask([{ type: "text", text: turn }]);
-    } catch (error) {
-      dropRouter();
-      throw error;
-    }
   };
 
   const visionFor = (mode: ScreenMode): VisionSession =>
@@ -1516,22 +1455,6 @@ export const startScreenCompanion = (input: {
   };
 
   const runningMode = (): string | null => (run !== null && run.mode !== "look" ? run.mode : null);
-
-  const decideSaid = (text: string, direct: boolean): Promise<BrainDecision> =>
-    decide(
-      text,
-      {
-        running: runningMode(),
-        answering: answering > 0 || speech.busy(),
-        direct,
-        recent: routerLines(conversation.recent()),
-        focused: titlesAllowed() ? (focus?.label ?? null) : null,
-      },
-      {
-        ask: routerAsk,
-        grammarPlaces: (said) => actions?.grammarPlaces(said) ?? Promise.resolve(false),
-      },
-    );
 
   const perform = (decision: BrainDecision, started: number, decidedAt: number) => {
     let firstAt: number | null = null;
@@ -2543,36 +2466,7 @@ export const startScreenCompanion = (input: {
         routes: [...record().routes],
         route: "agent",
       });
-      // Nothing said or done yet and not stopped by him: hand the sentence to the older router and say so.
-      // A turn that already used a tool is never run again, since that tool may have clicked or sent.
-      if (
-        error instanceof SessionClosed ||
-        firstTokenAt !== null ||
-        record().tools.length > 0 ||
-        record().results.length > 0
-      ) {
-        return fail(error);
-      }
-      input.onNote?.("agent_fallback", {
-        message: error instanceof Error ? error.message : String(error),
-      });
-      const notice = "The one assistant couldn't answer, so the older router is handling this.";
-      void show("Tessaya", notice);
-      try {
-        const result = await routed(text, started, direct);
-        if (result.kind !== "handled") {
-          const reply =
-            result.kind === "refused"
-              ? result.reply
-              : actions === null
-                ? "Tessaya's sessions aren't reachable from here yet."
-                : await actions.act(result.text, result.restated === true);
-          say(reply);
-          linger("Tessaya", reply);
-        }
-      } catch (inner) {
-        fail(inner);
-      }
+      fail(error);
     } finally {
       answering -= 1;
       mine.done();
@@ -2607,22 +2501,14 @@ export const startScreenCompanion = (input: {
       focus = askFocus ?? (await focusSoon());
     }
     askFocus = null;
-    // Stop and its kin never wait on a model; everything else goes to the one assistant when it is on.
+    // Stop and its kin never wait on a model; everything else goes to the one assistant.
     // His own "teach:", "drive:" and "look:" prefixes name the mode: they are not for the assistant's judgement.
-    if (entryRoute(text, busy, settings.oneAssistant) === "assistant") {
+    const instant = instantDecision(text, busy);
+    if (instant === null) {
       void agentTurn(text, started, direct, session);
       return { kind: "handled" };
     }
-    return routed(text, started, direct);
-  };
-
-  /** The older router: one stage per sentence. The fallback when the one assistant cannot answer, or when he turns it off. */
-  const routed = async (
-    text: string,
-    started: number,
-    direct: boolean,
-  ): ReturnType<ScreenCompanion["said"]> => {
-    const decision = await decideSaid(text, direct);
+    const decision = guardDecision(instant, text);
     const decidedAt = Date.now();
     input.onTrace?.({
       said: text,
@@ -2630,30 +2516,9 @@ export const startScreenCompanion = (input: {
       decision,
       recent: conversation.recent().length,
     });
-    if (decision.route === "act") {
-      input.onTimings?.({
-        route: "act",
-        source: decision.source,
-        decideMs: decidedAt - started,
-        firstSentenceMs: null,
-        totalMs: decidedAt - started,
-      });
-      return {
-        kind: "act",
-        text: decision.text,
-        ...(decision.restated === true ? { restated: true } : {}),
-      };
-    }
     if (decision.route === "refused") {
       conversation.add({ route: "refusal", said: text, reply: decision.text, note: "guard" });
       input.onNote?.("refusal", { kind: "guard", reason: decision.text, said: text });
-      input.onTimings?.({
-        route: "refused",
-        source: decision.source,
-        decideMs: decidedAt - started,
-        firstSentenceMs: null,
-        totalMs: decidedAt - started,
-      });
       return { kind: "refused", reply: decision.text };
     }
     perform(decision, started, decidedAt);
@@ -2664,14 +2529,8 @@ export const startScreenCompanion = (input: {
   const typed = async (text: string) => {
     const result = await said(text, { direct: false, typed: true });
     if (result.kind === "handled") return;
-    const reply =
-      result.kind === "refused"
-        ? result.reply
-        : actions === null
-          ? "Tessaya's sessions aren't reachable from here yet."
-          : await actions.act(result.text, result.restated === true);
-    say(reply);
-    linger("Tessaya", reply);
+    say(result.reply);
+    linger("Tessaya", result.reply);
   };
 
   const askFromPhone = async (text: string) => {
@@ -2835,8 +2694,7 @@ export const startScreenCompanion = (input: {
           );
         });
       }
-      if (settings.oneAssistant) agentOf().warm(leadBrain());
-      warmRouter();
+      agentOf().warm(leadBrain());
       if (run?.mode !== "look" && spareLook?.alive() !== true) {
         spareLook?.dispose();
         spareLook = visionFor("look");
@@ -2985,14 +2843,6 @@ export const startScreenCompanion = (input: {
         more: settings.brainChosen,
       },
       {
-        id: "s.oneAssistant",
-        section: "Working for you",
-        label: "One assistant",
-        hint: "Tessaya keeps one conversation and every tool in view, and decides for itself, instead of sending each sentence to a separate stage.",
-        kind: "toggle",
-        on: settings.oneAssistant,
-      },
-      {
         id: "s.chrome",
         section: "Working for you",
         label: "Use my Chrome",
@@ -3121,13 +2971,10 @@ export const startScreenCompanion = (input: {
         void checkBrains();
       } else if (id === "s.account" && typeof value === "string") {
         dropOperator();
-        dropRouter();
+        dropSpare();
         toldAbout = null;
         save({ assistantAccount: value === "" ? null : value });
         void accounts.refresh();
-      } else if (id === "s.oneAssistant") {
-        dropOperator();
-        save({ oneAssistant: value === true });
       } else if (id === "s.chromeCheck") {
         void refreshChrome();
       } else if (id === "s.chrome") {
@@ -3162,8 +3009,7 @@ export const startScreenCompanion = (input: {
       agent?.dispose();
       void agentMcp?.close();
       end();
-      dropRouter();
-      if (routerIdle !== null) clearTimeout(routerIdle);
+      dropSpare();
       if (askKey !== null) Electron.globalShortcut.unregister(askKey);
       windows.dispose();
       driver?.dispose();

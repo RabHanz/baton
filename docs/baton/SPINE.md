@@ -1,4 +1,6 @@
-# The spine: one assistant, one overlay, one card family, one gate (2026-11-02)
+# The screen spine: one assistant, one overlay, one card family, one gate (2026-11-02)
+
+This page is about the screen side: seeing, pointing, teaching and acting on the laptop. The wider spine (Record, Memory, Trust, Now, Roster) is in `one-spine.html`.
 
 The Director asked what teach mode adds over the screen reading, pointing and spoken cards built earlier, and wanted no duplicates,
 no regressions, and one spine with memory and tools. This is the reconciliation, read from the code. The matrix test is
@@ -36,12 +38,12 @@ no regressions, and one spine with memory and tools. This is the reconciliation,
 
 ## 3. Duplicates found, and the decision
 
-1. **Teach, drive and point were unreachable by natural language with the one assistant on (the default).** The assistant had no tool for them, and his own `teach:` / `drive:` prefixes were swallowed by it as well. Only the fallback router or a setting reached them. **Fixed in this PR**: prefixes and lesson controls route to the modes first (`entryRoute`, tested); `point_at`, `teach_start` and (since CU-9) `plan_show` are tools of the one assistant, so "teach me how to..." and "where is the export button" reach the same machines. The tools return at once and tell the assistant to say nothing more; its closing line no longer replaces a lesson's card (`runningMode()` check).
+1. **Teach, drive and point were unreachable by natural language with the one assistant on.** The assistant had no tool for them, and his own `teach:` / `drive:` prefixes were swallowed by it as well. Only the fallback router or a setting reached them. **Fixed**: prefixes and lesson controls route to the modes first (`instantDecision`, tested); `point_at`, `teach_start` and (since CU-9) `plan_show` are tools of the one assistant, so "teach me how to..." and "where is the export button" reach the same machines. The tools return at once and tell the assistant to say nothing more; its closing line no longer replaces a lesson's card (`runningMode()` check).
 2. **Two step planners**: the scripted teach loop, and the assistant's see-act-check. Teach waits for him and watches the screen settle (a state machine, not a model loop). Drive's open-loop coordinate plan was retired (CU-9, 2026-11-05): "do it for me" is the assistant's own hands loop behind one plan card (`plan_show`), and Drive's window, command-line and clipboard checks run on every hands path as keys are sent.
 3. **Two confirmation systems**: the plan box and the operator gate's ask. Already one: both go through `askHandsFree` -> `windows.ask` (box plus the same question aloud). One wording (Go ahead / Not now). The matrix test fails if a system dialog appears in `screen/` or `agent/`. Outlier: the update prompt in `startBatonDesktop.ts` uses `Electron.dialog`; move to `windows.ask` (next PR).
 4. **Two overlay documents**: `pointerOverlay` (click-through) and `companionWindows` (takes focus, for typing and clicking). Not mergeable (a window cannot be both), so the rule is: these two only, and the test fails on a third `BrowserWindow` in `screen/`. `vocabToast.ts` is a third toast: fold into the card family later.
 5. **Two sets of cues**: the listening cues and the lesson cues. One path (companion reports, pill plays, `v.cues` governs). Test guards against a second audio path in the companion.
-6. **The older router** (`routed`, `decideSaid`, `fallbackDecision`): kept only as the fallback when the assistant fails or is off. **Deprecated; deletion date 2026-12-15**, once `teach_start`, `plan_show`, `point_at` and `operate` as a tool have run for a month without the fallback firing (`agent_fallback` notes in the turn log say how often).
+6. **The older router** (`routed`, `decideSaid`, `fallbackDecision`, the Haiku router session, the `s.oneAssistant` switch and the server's `fabric.brain.decide`): **deleted** (spine step 9a, decision D7). Everything outside his prefixes and lesson controls goes to the one assistant; if it fails before saying or doing anything, he hears the error instead of a second opinion. On a machine with no Claude login that means no assistant at all until the Codex-backed one exists (INT-12, D11).
 
 7. **Dead wiring found by lint**: the `browser_route` and `browser_accessibility_on` tools had no host methods in the companion (the browser-route commit added the imports and state but never the implementation), so both answered "not available here". Wired now (route choice from the real Chrome check, a Go ahead / Not now box before restarting Chrome). Also removed a dead `runTransform` (transforms run through the `jobs` host, `DesktopBatonVoice`).
 
@@ -60,14 +62,14 @@ no regressions, and one spine with memory and tools. This is the reconciliation,
 
 ## 5. Regression matrix
 
-`spine.test.ts` asserts: (a) each entry sentence (voice, typed, hotkey and tray all arrive as a sentence) reaches the same mode with the assistant on and off; (b) the older router still reaches every mode as the fallback; (c) every tool is in the gate's table and seeing, pointing and the two guided modes are allowed only because each asks where it runs, while acting is judged; (d) only two window-making files exist in `screen/`; no system dialog in `screen/` or `agent/`; Go ahead / Not now is the question family; no second audio path. Replay fixtures: the existing `screen/*.test.ts` (operator proof, screen parts, escape, pointer overlay) keep running beside it.
+`spine.test.ts` asserts: (a) each entry sentence (voice, typed, hotkey and tray all arrive as a sentence) reaches the same mode (his prefixes and lesson controls name it; everything else goes to the one assistant); (b) every tool is in the gate's table and seeing, pointing and the two guided modes are allowed only because each asks where it runs, while acting is judged; (c) only two window-making files exist in `screen/`; no system dialog in `screen/` or `agent/`; Go ahead / Not now is the question family; no second audio path. Replay fixtures: the existing `screen/*.test.ts` (operator proof, screen parts, escape, pointer overlay) keep running beside it.
 
 ## 6. Refactor order (small PRs behind the matrix)
 
-1. This PR: the reachability fix, the three tools, `entryRoute`, the matrix, this page.
+1. Done: the reachability fix, the three tools, the matrix, this page.
 2. The update prompt and the vocab toast onto `windows.ask` and the card.
 3. Done: the Windows proof run (`baton-teach-proof.yml`, with the UI Automation sidecar, cue playback logged). Still to do: drive it through the tools path instead of only the prefixes.
-4. Delete the router on the date above if the fallback has not fired.
+4. Done: the router is deleted (item 6).
 
 ## 7. A session started from the app, and the app crashing
 
