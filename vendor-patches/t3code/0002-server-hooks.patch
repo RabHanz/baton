@@ -27,7 +27,7 @@ index 911c1b8de7df58ba468a2c530ae3ae49f834d0ca..4eee02669579c4e1160a4705fc8165a2
    assert.isTrue(
      shouldPrepareLegacyImportHandoff({
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
-index d40ca624a11d2df07fa37da9027772a5b45f7407..9d00a549ff4f36a364b7c2bc2753f53c0de647a2 100644
+index bcec0a13cf20a6572335497ea0482405ca7abf88..107672a1455cb4e68b5331b156aed88ed929c221 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.ts
 @@ -1,3 +1,4 @@
@@ -35,7 +35,7 @@ index d40ca624a11d2df07fa37da9027772a5b45f7407..9d00a549ff4f36a364b7c2bc2753f53c
  import type {
    GuestShareId,
    OrchestrationV2SearchThreadInput,
-@@ -986,9 +987,14 @@ export function shouldPrepareLegacyImportHandoff(input: {
+@@ -987,9 +988,14 @@ export function shouldPrepareLegacyImportHandoff(input: {
    readonly hasCompletedRun: boolean;
    readonly historyOrigin: OrchestrationV2AppThread["historyOrigin"];
    readonly legacyImportItemCount: number;
@@ -51,7 +51,7 @@ index d40ca624a11d2df07fa37da9027772a5b45f7407..9d00a549ff4f36a364b7c2bc2753f53c
    );
  }
  
-@@ -3524,6 +3530,25 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -3538,6 +3544,25 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        }
      }
  
@@ -77,7 +77,7 @@ index d40ca624a11d2df07fa37da9027772a5b45f7407..9d00a549ff4f36a364b7c2bc2753f53c
      const needsProviderState =
        command.type === "thread.runtime-mode.set" ||
        command.type === "thread.model-selection.set" ||
-@@ -5811,7 +5836,28 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -5825,7 +5850,28 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        ]);
        projection = applyToProjection(projection, event);
      }
@@ -107,7 +107,7 @@ index d40ca624a11d2df07fa37da9027772a5b45f7407..9d00a549ff4f36a364b7c2bc2753f53c
      let dispatchMode = resolveMessageDispatchIntent(
        projection,
        command.dispatchMode,
-@@ -6558,6 +6604,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -6572,6 +6618,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          historyOrigin: projection.thread.historyOrigin,
          hasCompletedRun: latestCompletedRun !== undefined,
          legacyImportItemCount: legacyImportItems.length,
@@ -130,7 +130,7 @@ index 54b16d7aa2aef6d888a9b5eecb787bac19eaa0e6..582e726ff2785fce526b9cf4f0f76921
              sameNativeThread &&
              !acceptedAttempts.some((source) => source.nativeThreadId !== undefined)),
 diff --git a/apps/server/src/orchestration-v2/ThreadManagementService.ts b/apps/server/src/orchestration-v2/ThreadManagementService.ts
-index b6c1e27120ae8e4a575a7a1f4dbfa82c3cc280e4..cc820ff1fdc7bb96d1fc46ab35e12a2db8e89bbc 100644
+index 46ea45431055488dec1344429bcc791bb4be1f19..d066123ab5e95cf75ac1fb3396840dc073722f6c 100644
 --- a/apps/server/src/orchestration-v2/ThreadManagementService.ts
 +++ b/apps/server/src/orchestration-v2/ThreadManagementService.ts
 @@ -61,6 +61,7 @@ import * as Orchestrator from "./Orchestrator.ts";
@@ -189,7 +189,7 @@ index 211ad06fc267a4c4730c159db166d25651be3e77..e22f3d6edf48d6e1fad98d7bd5f8e71c
      let importedCount = 0;
      let skippedCount = 0;
 diff --git a/apps/server/src/project/AgentSessionScanner.test.ts b/apps/server/src/project/AgentSessionScanner.test.ts
-index 0844e3cd71834c4bcf7cbb8fbaa87b166e975704..90e0eb7297fa767cbdd57ece31ef2adeec8da212 100644
+index f9c7aaf3fd3d4ad16d611ec7b234d50fbd519b07..06d8350b88aa4120050d358b48dd01ead16a383d 100644
 --- a/apps/server/src/project/AgentSessionScanner.test.ts
 +++ b/apps/server/src/project/AgentSessionScanner.test.ts
 @@ -1125,6 +1125,15 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
@@ -208,7 +208,7 @@ index 0844e3cd71834c4bcf7cbb8fbaa87b166e975704..90e0eb7297fa767cbdd57ece31ef2ade
          yield* writeTranscript({
            filePath: path.join(claudeHomePath, "projects", "-other", "claude-other.jsonl"),
            contents: claudeTranscript(otherWorkspace, "claude-other"),
-@@ -1345,6 +1354,105 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
+@@ -1430,6 +1439,105 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
        }),
      );
  
@@ -315,7 +315,7 @@ index 0844e3cd71834c4bcf7cbb8fbaa87b166e975704..90e0eb7297fa767cbdd57ece31ef2ade
        Effect.gen(function* () {
          const path = yield* Path.Path;
 diff --git a/apps/server/src/project/AgentSessionScanner.ts b/apps/server/src/project/AgentSessionScanner.ts
-index 026bc6abb4d0e3b6b4c6f8cb2e5c55444cd36c91..571328336a6313dd59e59c646cb141062558957d 100644
+index dc67bd9387e04b91fa61d34ea47929c056256796..93263b7b064ba3389f92c2f5935bd6a254ca7cd6 100644
 --- a/apps/server/src/project/AgentSessionScanner.ts
 +++ b/apps/server/src/project/AgentSessionScanner.ts
 @@ -74,6 +74,9 @@ const MAX_IMPORT_HISTORY_BYTES = 32 * 1024 * 1024;
@@ -336,7 +336,7 @@ index 026bc6abb4d0e3b6b4c6f8cb2e5c55444cd36c91..571328336a6313dd59e59c646cb14106
    isSidechain: Schema.optional(Schema.Boolean),
    isMeta: Schema.optional(Schema.Boolean),
    isCompactSummary: Schema.optional(Schema.Boolean),
-@@ -201,6 +205,8 @@ export class AgentSessionScanner extends Context.Service<
+@@ -208,6 +212,8 @@ export class AgentSessionScanner extends Context.Service<
      readonly recentThreads: (
        workspaceRoot: string,
        completedSources?: ReadonlyArray<AgentSessionImportSource>,
@@ -345,7 +345,7 @@ index 026bc6abb4d0e3b6b4c6f8cb2e5c55444cd36c91..571328336a6313dd59e59c646cb14106
      ) => Stream.Stream<AgentSessionRecentThread, AgentSessionScanError>;
    }
  >()("t3/project/AgentSessionScanner") {}
-@@ -304,6 +310,8 @@ interface ClaudeFields {
+@@ -311,6 +317,8 @@ interface ClaudeFields {
    readonly title: string | undefined;
    readonly customTitle: string | null;
    readonly model: string | undefined;
@@ -354,7 +354,7 @@ index 026bc6abb4d0e3b6b4c6f8cb2e5c55444cd36c91..571328336a6313dd59e59c646cb14106
  }
  
  const emptyClaudeFields: ClaudeFields = {
-@@ -311,12 +319,14 @@ const emptyClaudeFields: ClaudeFields = {
+@@ -318,12 +326,14 @@ const emptyClaudeFields: ClaudeFields = {
    title: undefined,
    customTitle: null,
    model: undefined,
@@ -369,15 +369,15 @@ index 026bc6abb4d0e3b6b4c6f8cb2e5c55444cd36c91..571328336a6313dd59e59c646cb14106
      sessionId: record.sessionId?.trim() || fields.sessionId,
      title: record.aiTitle?.trim() || fields.title,
      // Claude flushes the AI title after the user's rename; an empty rename clears it.
-@@ -1006,6 +1016,7 @@ export const make = Effect.gen(function* () {
+@@ -1028,6 +1038,7 @@ export const make = Effect.gen(function* () {
      filePath: string,
      expected: ReturnType<typeof transcriptIdentity>,
      source: AgentSessionSource,
 +    recordLimit: number,
+     prefix?: { readonly endByteOffset: number; readonly historyBytes: number },
    ) {
-     if (expected.size > MAX_IMPORTED_TRANSCRIPT_BYTES) return null;
- 
-@@ -1025,7 +1036,12 @@ export const make = Effect.gen(function* () {
+     const readBytes = prefix?.endByteOffset ?? expected.size;
+@@ -1049,7 +1060,12 @@ export const make = Effect.gen(function* () {
              let bytesRead = 0;
              const reserve = (bytes: number) => {
                recordBytes += bytes;
@@ -391,7 +391,7 @@ index 026bc6abb4d0e3b6b4c6f8cb2e5c55444cd36c91..571328336a6313dd59e59c646cb14106
                  throw new TranscriptJsonLimitError({
                    message: "Transcript selected history exceeds the 32 MiB memory budget",
                  });
-@@ -1038,7 +1054,7 @@ export const make = Effect.gen(function* () {
+@@ -1062,7 +1078,7 @@ export const make = Effect.gen(function* () {
              const finishRecord = () => {
                reader.write(decoder.decode());
                recordCount += 1;
@@ -400,7 +400,7 @@ index 026bc6abb4d0e3b6b4c6f8cb2e5c55444cd36c91..571328336a6313dd59e59c646cb14106
                const value = reader.finish();
                const decoded = decodeTranscriptValue(value);
                if (Option.isNone(decoded) && source === "pi") {
-@@ -1635,7 +1651,10 @@ export const make = Effect.gen(function* () {
+@@ -1659,7 +1675,10 @@ export const make = Effect.gen(function* () {
    const prepareRecentThreads = Effect.fn("AgentSessionScanner.prepareRecentThreads")(function* (
      workspaceRoot: string,
      completedSources: ReadonlyArray<AgentSessionImportSource>,
@@ -411,7 +411,7 @@ index 026bc6abb4d0e3b6b4c6f8cb2e5c55444cd36c91..571328336a6313dd59e59c646cb14106
      const root = path.resolve(expandHomePath(workspaceRoot, homeDir));
      const realRoot = yield* fileSystem.realPath(root).pipe(Effect.orElseSucceed(() => root));
      if (isExcludedProjectPath(root) || isExcludedProjectPath(realRoot)) return Stream.empty;
-@@ -1659,7 +1678,7 @@ export const make = Effect.gen(function* () {
+@@ -1683,7 +1702,7 @@ export const make = Effect.gen(function* () {
        for (const transcript of candidate.transcripts) {
          if (
            transcript.mtimeMs === null ||
@@ -420,7 +420,7 @@ index 026bc6abb4d0e3b6b4c6f8cb2e5c55444cd36c91..571328336a6313dd59e59c646cb14106
            transcript.mtimeMs > nowMs
          ) {
            continue;
-@@ -1672,6 +1691,10 @@ export const make = Effect.gen(function* () {
+@@ -1696,6 +1715,10 @@ export const make = Effect.gen(function* () {
      }
  
      eligibleTranscripts.sort((left, right) => {
@@ -431,7 +431,15 @@ index 026bc6abb4d0e3b6b4c6f8cb2e5c55444cd36c91..571328336a6313dd59e59c646cb14106
        if (left.transcript.mtimeMs !== right.transcript.mtimeMs) {
          return right.transcript.mtimeMs - left.transcript.mtimeMs;
        }
-@@ -1692,7 +1715,11 @@ export const make = Effect.gen(function* () {
+@@ -1750,6 +1773,7 @@ export const make = Effect.gen(function* () {
+           filePath,
+           transcriptIdentity(filePath, stats.value),
+           "codex",
++          MAX_IMPORT_RECORDS,
+           { endByteOffset: base.end_byte_offset, historyBytes },
+         );
+         if (inherited === null) return null;
+@@ -1766,7 +1790,11 @@ export const make = Effect.gen(function* () {
            const completed = completedByFile.get(
              `${candidate.providerInstanceId}\0${transcript.filePath}`,
            );
@@ -444,7 +452,7 @@ index 026bc6abb4d0e3b6b4c6f8cb2e5c55444cd36c91..571328336a6313dd59e59c646cb14106
              return Option.some<AgentSessionRecentThread>({ _tag: "Skipped" });
            }
            const stats = yield* statOption(transcript.filePath);
-@@ -1714,7 +1741,7 @@ export const make = Effect.gen(function* () {
+@@ -1788,7 +1816,7 @@ export const make = Effect.gen(function* () {
              });
            }
            if (
@@ -453,7 +461,7 @@ index 026bc6abb4d0e3b6b4c6f8cb2e5c55444cd36c91..571328336a6313dd59e59c646cb14106
              identity.size > MAX_IMPORTED_TRANSCRIPT_BYTES ||
              identity.size > bytesRemaining
            ) {
-@@ -1722,7 +1749,12 @@ export const make = Effect.gen(function* () {
+@@ -1796,7 +1824,12 @@ export const make = Effect.gen(function* () {
            }
            transcriptsRemaining -= 1;
            bytesRemaining -= identity.size;
@@ -467,8 +475,8 @@ index 026bc6abb4d0e3b6b4c6f8cb2e5c55444cd36c91..571328336a6313dd59e59c646cb14106
            if (snapshot === null) {
              return Option.some<AgentSessionRecentThread>({ _tag: "Skipped" });
            }
-@@ -1748,7 +1780,7 @@ export const make = Effect.gen(function* () {
-             snapshot.records,
+@@ -1832,7 +1865,7 @@ export const make = Effect.gen(function* () {
+               : [...inheritedRecords, ...snapshot.records],
              snapshot.claudeFields,
            );
 -          if (parsedThread === null) {
@@ -476,7 +484,7 @@ index 026bc6abb4d0e3b6b4c6f8cb2e5c55444cd36c91..571328336a6313dd59e59c646cb14106
              return Option.some<AgentSessionRecentThread>({ _tag: "Skipped" });
            }
            let savedTitle: string | undefined;
-@@ -1787,7 +1819,8 @@ export const make = Effect.gen(function* () {
+@@ -1871,7 +1904,8 @@ export const make = Effect.gen(function* () {
    const recentThreads: AgentSessionScanner["Service"]["recentThreads"] = (
      workspaceRoot,
      completedSources = [],
@@ -487,7 +495,7 @@ index 026bc6abb4d0e3b6b4c6f8cb2e5c55444cd36c91..571328336a6313dd59e59c646cb14106
    return AgentSessionScanner.of({ scan, recentThreads });
  });
 diff --git a/apps/server/src/server.ts b/apps/server/src/server.ts
-index 53f53db72cc558f6db8c9deed9c107f1eff6604e..942b7a28ee584b771f43a0f96f0460caa382e146 100644
+index 5c9ab9c433ffc56e8536f7d0b3ce7da440777ad2..778262f9628a2f209289d6054ef24f5671e1d698 100644
 --- a/apps/server/src/server.ts
 +++ b/apps/server/src/server.ts
 @@ -6,6 +6,7 @@ import * as AssetSigner from "./assets/AssetSigner.ts";
@@ -498,7 +506,7 @@ index 53f53db72cc558f6db8c9deed9c107f1eff6604e..942b7a28ee584b771f43a0f96f0460ca
  import * as PullRequestWatchReactor from "./orchestration-v2/PullRequestWatchReactor.ts";
  import * as DelegatedTaskQuestionReactor from "./orchestration-v2/DelegatedTaskQuestionReactor.ts";
  // Effect wraps this raw Node HTTP server after its startup and write-error guards attach.
-@@ -663,7 +664,12 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
+@@ -667,7 +668,12 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
    layerProviderInstallationRefresh,
    ReplayMarkers.layer,
    Layer.effectDiscard(ProjectSettingsOverrideSweep.sweep),
@@ -511,19 +519,19 @@ index 53f53db72cc558f6db8c9deed9c107f1eff6604e..942b7a28ee584b771f43a0f96f0460ca
    Layer.provideMerge(layerOrchestrationApplication),
    Layer.provideMerge(RuntimeLayer.layerEventInfrastructure),
    Layer.provideMerge(Layer.merge(ProjectStore.layer, ThreadSearch.layer)),
-@@ -776,6 +782,7 @@ const layerMakeRoutes = Layer.mergeAll(
+@@ -781,6 +787,7 @@ const layerMakeRoutes = Layer.mergeAll(
      GuestHttp.layer,
      DeviceHubProxy.layer,
      ServerBrowserStream.routeLayer,
 +    BatonServerLayer.routes,
      ServerHttp.layerStaticAndDevRoute,
      Ws.layer,
-   ),
+     speechStreamRouteLayer,
 diff --git a/apps/server/src/ws.ts b/apps/server/src/ws.ts
-index 98c14b4861d5478ccbd3e5b69fefe0ca62460476..82383d39b599c0e6d909816c0bb7ee3085110cb1 100644
+index 035f8b1688d44a9c4ff39ebad30099fffdc3a9d2..73927347a27f8e492cb628f683c22bf8f1ede552 100644
 --- a/apps/server/src/ws.ts
 +++ b/apps/server/src/ws.ts
-@@ -231,6 +231,10 @@ import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
+@@ -232,6 +232,10 @@ import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
  import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
  import { requiredScopeForDeviceList, rpcAuthorizationError } from "./auth/RpcAuthorization.ts";
  import * as RpcAuthorization from "./auth/RpcAuthorization.ts";
@@ -534,7 +542,7 @@ index 98c14b4861d5478ccbd3e5b69fefe0ca62460476..82383d39b599c0e6d909816c0bb7ee30
  import { RpcInstrumentation, rpcInstrumentationLayer } from "./observability/RpcInstrumentation.ts";
  import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
  import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
-@@ -624,13 +628,14 @@ function projectFileFailureContext(
+@@ -661,13 +665,14 @@ function projectFileFailureContext(
  const PROVIDER_STATUS_DEBOUNCE_MS = 200;
  
  // Middleware added later wraps middleware added earlier, so instrumentation wraps authorization.
@@ -551,7 +559,7 @@ index 98c14b4861d5478ccbd3e5b69fefe0ca62460476..82383d39b599c0e6d909816c0bb7ee30
  const SPLIT_WS_RPC_PREFIXES = ["server", "pullRequests", "provider", "orchestration"] as const;
  type SplitWsRpc = Extract<
    ServerWsRpc,
-@@ -640,7 +645,7 @@ const isSplitWsRpc = (rpc: ServerWsRpc): rpc is SplitWsRpc =>
+@@ -677,7 +682,7 @@ const isSplitWsRpc = (rpc: ServerWsRpc): rpc is SplitWsRpc =>
    SPLIT_WS_RPC_PREFIXES.some((prefix) => rpc._tag.startsWith(`${prefix}.`));
  const isOtherWsRpc = (rpc: ServerWsRpc): rpc is Exclude<ServerWsRpc, SplitWsRpc> =>
    !isSplitWsRpc(rpc);
@@ -560,7 +568,7 @@ index 98c14b4861d5478ccbd3e5b69fefe0ca62460476..82383d39b599c0e6d909816c0bb7ee30
  const SplitWsRpcGroup = RpcGroup.make(...serverWsRpcs.filter(isSplitWsRpc));
  const OtherWsRpcGroup = RpcGroup.make(...serverWsRpcs.filter(isOtherWsRpc));
  // Replaying each intervening event costs a shell refetch; past this gap a
-@@ -2004,7 +2009,7 @@ export const layerWsRpc = (
+@@ -2039,7 +2044,7 @@ export const layerWsRpc = (
          return yield* mutateProjectWithClone(projectService, projectCloneTracker, mutation);
        });
  
@@ -569,7 +577,7 @@ index 98c14b4861d5478ccbd3e5b69fefe0ca62460476..82383d39b599c0e6d909816c0bb7ee30
          [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command) =>
            Effect.annotateCurrentSpan({
              "orchestration_v2.command_id": command.commandId,
-@@ -3421,8 +3426,11 @@ export const layerWsRpc = (
+@@ -3480,8 +3485,11 @@ export const layerWsRpc = (
        const otherHandlers: Pick<typeof handlers, Exclude<ServerWsRpc, SplitWsRpc>["_tag"]> =
          handlers;
        return Context.merge(
@@ -583,7 +591,7 @@ index 98c14b4861d5478ccbd3e5b69fefe0ca62460476..82383d39b599c0e6d909816c0bb7ee30
        );
      }),
    );
-@@ -3497,7 +3505,7 @@ export const layer = Layer.unwrap(
+@@ -3556,7 +3564,7 @@ export const layer = Layer.unwrap(
                          })
                          .pipe(Effect.ignore);
                  }),
@@ -606,10 +614,10 @@ index 93e0e36e4fbd44accb21563995304a7490bcd59b..7b712c02989de891fb22e6081bea5bc4
  export type AgentSessionImportInput = typeof AgentSessionImportInput.Type;
  
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index 798e076495a95b9bfb5b71d35fc46e0ecdcb397e..f2f80dc55bef39ac03c7f5e1eab3f28379733c9c 100644
+index 8a4b25589121ce74893c305583f54286cad24d32..b18926c4c71b2fffb2846f04cbd5ca47e4583bc0 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
-@@ -1203,8 +1203,9 @@ export const ServerSettings = Schema.Struct({
+@@ -1244,8 +1244,9 @@ export const ServerSettings = Schema.Struct({
      Schema.withDecodingDefault(Effect.succeed("paragraph" as const)),
    ),
    enableProviderUpdateChecks: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),

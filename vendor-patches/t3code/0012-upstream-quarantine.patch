@@ -2,10 +2,10 @@ Upstream tests quarantined while they fail on upstream's own code at the pin (#4
 Drop a hunk once the next import shows the test passing.
 
 diff --git a/apps/server/src/orchestration-v2/ProjectionRecovery.test.ts b/apps/server/src/orchestration-v2/ProjectionRecovery.test.ts
-index a4914fdee45099e9f46a88c5cd314cac6844013e..43e537bee14dcc8e6f273caebcd70669be4385d2 100644
+index 6b1388f0ccfecb5ffe8ab85cdd1825b2d1470473..eec4ec5315893f42863f6cb6b36eb6b395a9cb53 100644
 --- a/apps/server/src/orchestration-v2/ProjectionRecovery.test.ts
 +++ b/apps/server/src/orchestration-v2/ProjectionRecovery.test.ts
-@@ -1066,85 +1066,89 @@ it.effect("reads the run that owns a background roster, not a queued or resumed
+@@ -1225,85 +1225,89 @@ it.effect("reads the run that owns a background roster, not a queued or resumed
    }).pipe(Effect.provide(layerTest)),
  );
  
@@ -27,7 +27,7 @@ index a4914fdee45099e9f46a88c5cd314cac6844013e..43e537bee14dcc8e6f273caebcd70669
 -      occurredAt: now,
 -      payload: {
 -        id: providerSessionId,
-+// quarantine: #496 fails on upstream 25b53299b7 itself
++// quarantine: #496 fails on upstream's own code at the pin
 +it.effect.skip(
 +  "wakes the run whose subagent lost its shell, past a wake cut before it started",
 +  () =>
@@ -159,21 +159,21 @@ index a4914fdee45099e9f46a88c5cd314cac6844013e..43e537bee14dcc8e6f273caebcd70669
  );
  
 -it.effect("wakes a settled run whose native subagent ran on its own provider thread", () =>
-+// quarantine: #496 fails on upstream 25b53299b7 itself
++// quarantine: #496 fails on upstream's own code at the pin
 +it.effect.skip("wakes a settled run whose native subagent ran on its own provider thread", () =>
    Effect.gen(function* () {
      const projections = yield* ProjectionStore.ProjectionStoreV2;
      const recovery = yield* ProviderRuntimeRecovery.ProviderRuntimeRecoveryService;
 diff --git a/apps/server/src/orchestration-v2/runtimeLayer.test.ts b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
-index 83f77d00730015ee2a8d12791f067d4d41ac213a..b322d0cb0cd598eef93fe38294a8fb87f4d1bb76 100644
+index b90f491dfa94ecb9de310cf63cf67c92e0c47085..231c083785fb8fc42a47b2ae127b90e02de9bcff 100644
 --- a/apps/server/src/orchestration-v2/runtimeLayer.test.ts
 +++ b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
-@@ -6199,7 +6199,8 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
+@@ -6294,7 +6294,8 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
      }),
    );
  
 -  it.effect.each([false, true])(
-+  // quarantine: #496 the unstopped (false) row fails on upstream 25b53299b7 itself
++  // quarantine: #496 the unstopped (false) row fails on upstream's own code at the pin
 +  it.effect.each([true])(
      "restarts a continuation that failed before its prompt, unless stopped (%s)",
      (stopped) =>
