@@ -310,7 +310,7 @@ export const make = Effect.gen(function* () {
     answerPrompt,
     promptAnswer,
     closePrompt,
-    agentsInTurn: (effect) => Semaphore.withPermit(agentPosts, effect),
+    agentsInTurn: Semaphore.withPermit(agentPosts),
   });
 });
 
