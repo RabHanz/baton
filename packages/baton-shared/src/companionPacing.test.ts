@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { AFTER_SPEECH_MS, holdAfterSpeechMs, pageText, readingMs } from "./companionPacing.ts";
+import {
+  AFTER_SPEECH_MS,
+  holdAfterSpeechMs,
+  pageText,
+  queueSpeech,
+  readingMs,
+} from "./companionPacing.ts";
 
 describe("how long things stay up", () => {
   it("never shows anything for less than a glance, and grows with the words", () => {
@@ -26,5 +32,27 @@ describe("how long things stay up", () => {
   it("keeps a single sentence longer than a page whole", () => {
     const long = `${"word ".repeat(40).trim()}.`;
     expect(pageText(long, 50)).toEqual([long]);
+  });
+});
+
+describe("queueSpeech", () => {
+  it("says when each sentence starts sounding, which is when the one before has finished", async () => {
+    const ends: Array<() => void> = [];
+    const started: string[] = [];
+    const speech = queueSpeech(() => new Promise<void>((done) => ends.push(done)));
+    const starts = (text: string) =>
+      new Promise<void>((begun) =>
+        speech.add(text, () => {
+          started.push(text);
+          begun();
+        }),
+      );
+    const one = starts("One.");
+    const two = starts("Two.");
+    await one;
+    expect(started).toEqual(["One."]);
+    ends[0]!();
+    await two;
+    expect(started).toEqual(["One.", "Two."]);
   });
 });

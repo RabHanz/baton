@@ -43,8 +43,10 @@ export const queueSpeech = (speak: (text: string) => Promise<void>) => {
   let last: Promise<void> = Promise.resolve();
   let pending = 0;
   return {
-    add: (text: string): void => {
+    /** `onStart` runs as this sentence begins to sound: when everything before it has finished. */
+    add: (text: string, onStart?: () => void): void => {
       pending += 1;
+      if (onStart !== undefined) void last.then(onStart);
       const said = speak(text)
         .catch(() => undefined)
         .finally(() => (pending -= 1));

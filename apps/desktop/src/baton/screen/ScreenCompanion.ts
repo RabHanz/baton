@@ -454,8 +454,11 @@ export interface ScreenCompanion {
   readonly setTransformHotkeys: (on: boolean) => void;
   /** The tray's Clear the screen, also what a spoken stop does. */
   readonly dismiss: () => void;
-  /** He has woken Baton: starts the sessions a turn will need, which costs no quota. */
-  readonly warm: () => void;
+  /**
+   * He has woken Baton by this name (null: a key): from here the persona it names answers, in its own
+   * voice, dictation and its confirmations too. Also starts the sessions a turn will need, at no quota.
+   */
+  readonly warm: (wake: string | null) => void;
   readonly openAskBox: () => void;
   /** The phone's words, run as a typed ask; the short reply and the card text come back instead of only being shown. */
   readonly askFromPhone: (
@@ -626,11 +629,13 @@ export const startScreenCompanion = (input: {
   let phoneCapture: { readonly spoken: string[]; card: string | null } | null = null;
   let phoneTurn = false;
   let phoneMirror: PhoneMirror | null = null;
-  const say = (text: string) => {
+  /** False when nothing goes to the voice (written answers, nothing to say). */
+  const say = (text: string, onStart?: () => void): boolean => {
     if (phoneCapture !== null && text.trim().length > 0) phoneCapture.spoken.push(text.trim());
-    if (settings.output === "written" || text.trim().length === 0) return;
+    if (settings.output === "written" || text.trim().length === 0) return false;
     spokenFrom ??= Date.now();
-    speech.add(text);
+    speech.add(text, onStart);
+    return true;
   };
   let driver: ReturnType<typeof createInputDriver> | null = null;
   let run: Run | null = null;
@@ -888,18 +893,21 @@ export const startScreenCompanion = (input: {
         await sleep(ms);
         if (!current()) return;
       }
-      await speech.finished();
-      if (!current()) return;
-      const lastPage = pages.at(-1)!;
-      const spokenMs = spokenFrom === null ? 0 : Date.now() - spokenFrom;
-      const hold = holdAfterSpeechMs(lastPage, spokenMs);
-      await overlay.timer(hold);
-      await sleep(hold);
-      if (!current()) return;
-      showing += 1;
-      spokenFrom = null;
-      await overlay.retreat();
+      await retreatAfterSpeech(pages.at(-1)!, current);
     })().catch(() => undefined);
+  };
+  /** Once the voice is done, the last page stays until it has been read, then the card leaves. */
+  const retreatAfterSpeech = async (lastPage: string, current: () => boolean) => {
+    await speech.finished();
+    if (!current()) return;
+    const spokenMs = spokenFrom === null ? 0 : Date.now() - spokenFrom;
+    const hold = holdAfterSpeechMs(lastPage, spokenMs);
+    await overlay.timer(hold);
+    await sleep(hold);
+    if (!current()) return;
+    showing += 1;
+    spokenFrom = null;
+    await overlay.retreat();
   };
 
   /** A title can hold an email subject or a bank's name: it goes where a screenshot may. */
@@ -1274,7 +1282,7 @@ export const startScreenCompanion = (input: {
       const reply = voice.finish(raw);
       converse("operate", goal, reply);
       input.onActivity?.(null);
-      linger("Tessaya", reply);
+      voice.linger(reply);
     } finally {
       answering -= 1;
     }
@@ -1290,35 +1298,53 @@ export const startScreenCompanion = (input: {
       answering -= 1;
     }
   };
-  /** Sentences spoken and shown as they arrive; stopped by a hush like everything else. */
+  /**
+   * Sentences spoken as they arrive, each shown as the voice reaches it (the model writes far ahead of
+   * the voice), so the card always holds what is being said; stopped by a hush like everything else.
+   */
   const streamSpeech = (firstSentence: () => void) => {
     const voiceTurnAt = hushes;
-    const sayHere = (text: string) => {
-      if (voiceTurnAt === hushes) say(text);
-    };
     const stream = makeSentenceStream();
     let spoken = 0;
     let soFar = "";
+    let aloud = false;
+    /** The card these captions own, once the first is up; anything newer on screen ends them. */
+    let card: number | null = null;
+    const caption = (page: string) => {
+      if (voiceTurnAt !== hushes) return;
+      if (card === null) {
+        void show(face.name, page);
+        card = showing;
+      } else if (card === showing) void overlay.card({ kicker: face.name, text: page, hint: "" });
+    };
+    const sayHere = (text: string) => {
+      if (voiceTurnAt !== hushes) return;
+      if (spoken === 0) firstSentence();
+      spoken += 1;
+      soFar = `${soFar} ${text}`.trim();
+      const page = pageText(soFar).at(-1)!;
+      if (say(text, () => caption(page))) aloud = true;
+      else caption(page);
+    };
     return {
       feed: (delta: string) => {
-        for (const sentence of stream.feed(delta)) {
-          if (spoken === 0) firstSentence();
-          spoken += 1;
-          sayHere(sentence);
-          soFar = `${soFar} ${sentence}`.trim();
-          // Text keeps pace with the voice instead of waiting for the end of the answer.
-          void show("Tessaya", soFar);
-        }
+        for (const sentence of stream.feed(delta)) sayHere(sentence);
       },
       /** The end of the turn. `whole` is spoken if nothing streamed. */
       finish: (whole: string): string => {
         const rest = stream.flush();
-        if (rest.length > 0) {
-          if (spoken === 0) firstSentence();
-          sayHere(rest);
-        }
-        if (spoken === 0 && rest.length === 0) sayHere(whole);
+        if (rest.length > 0) sayHere(rest);
+        else if (spoken === 0) sayHere(whole);
         return whole;
+      },
+      /** Leaves the answer up until it has been heard and read. Written only, it turns pages at reading pace. */
+      linger: (whole: string) => {
+        if (!aloud || card === null) return linger(face.name, whole);
+        if (phoneCapture !== null && whole.trim().length > 0) phoneCapture.card = whole.trim();
+        const mine = card;
+        void retreatAfterSpeech(pageText(soFar).at(-1)!, () => mine === showing).catch(
+          () => undefined,
+        );
       },
     };
   };
@@ -1369,7 +1395,7 @@ export const startScreenCompanion = (input: {
     voice.finish(reply.spoken);
     input.onActivity?.(null);
     await pointAt(reply.point, turn.shots);
-    linger("Tessaya", reply.spoken);
+    voice.linger(reply.spoken);
   };
 
   const teachStep = async (note?: string) => {
@@ -2502,7 +2528,7 @@ export const startScreenCompanion = (input: {
       );
       voice.finish(reply);
       input.onActivity?.(null);
-      if (runningMode() === null) linger(who.persona, reply);
+      if (runningMode() === null) voice.linger(reply);
       keepTurn(null);
       input.onNote?.("agent_turn", {
         ok: true,
@@ -2822,7 +2848,12 @@ export const startScreenCompanion = (input: {
     active: () => runningMode() !== null,
     hush,
     dismiss,
-    warm: () => {
+    warm: (wake) => {
+      if (wake !== null)
+        face = personaFor(readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas, {
+          wake,
+          text: "",
+        });
       // First run: a Chrome that is already connected turns this on, once; otherwise it stays off and asks again next time.
       if (!settings.browserChromeSet) {
         void refreshChrome().then((check) => {
