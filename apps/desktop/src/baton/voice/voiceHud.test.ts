@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { hudView, routeFor, utteranceCaption } from "./voiceHud.ts";
+import { hudView, routeFor, trayDotColor, utteranceCaption } from "./voiceHud.ts";
 import { VOICE_STATES } from "./voiceTypes.ts";
 
 describe("HUD", () => {
@@ -30,5 +30,15 @@ describe("HUD", () => {
     expect(utteranceCaption({ text: "a".repeat(200), mode: "dictation" }, 10)).toBe(
       "“aaaaaaaaa…” typed into the focused field",
     );
+  });
+});
+
+describe("the tray's state dot", () => {
+  it("rests in the palette's own accent for the taskbar's ground, and keeps the colours that mean something", () => {
+    expect(trayDotColor("sleeping", "madder", false)).toBe("#8E1F2F");
+    expect(trayDotColor("sleeping", "madder", true)).toBe("#E0707A");
+    expect(trayDotColor("sleeping", "woad", true)).toBe("#5FB3B3");
+    expect(trayDotColor("muted", "madder", true)).toBe(hudView("muted").color);
+    expect(trayDotColor("listening", "damson", false)).toBe(hudView("listening").color);
   });
 });

@@ -403,25 +403,31 @@ function banner(kind, em, title, text, btn, onclick) {
 function dayLabel(iso) { const d = new Date(iso), t = new Date(); const same = (a, b) => a.toDateString() === b.toDateString(); const y = new Date(t); y.setDate(t.getDate() - 1); return same(d, t) ? 'Today' : same(d, y) ? 'Yesterday' : d.toLocaleDateString([], { month: 'long', day: 'numeric' }); }
 function clock(iso) { return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
 
-// The wake sting plays once on one mark: the sidebar's when the window opens without the splash, About's when About opens.
-let stingUntil = 0, stingAt = 'side', stingSrc = '';
+// The wake sting plays once on one mark, in the palette and theme in use: the sidebar's when the window opens without the splash, About's when About opens.
+let stingUntil = 0, stingAt = 'side', stingSrc = '', stingAsk = 0;
 function startSting(where) {
-  // The sting is drawn in Woad only, so another palette rests on its still mark.
-  if (!window.TESSAYA_STING || matchMedia('(prefers-reduced-motion:reduce)').matches || /motion-(reduced|off)|palette-/.test(document.documentElement.className)) return;
-  const bin = atob(document.documentElement.dataset.theme === 'dark' ? TESSAYA_STING.dark : TESSAYA_STING.light), bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  if (stingSrc) URL.revokeObjectURL(stingSrc);
-  stingSrc = URL.createObjectURL(new Blob([bytes], { type: 'image/webp' }));
-  stingAt = where || 'side'; stingUntil = Date.now() + 3600; redrawMark(); setTimeout(redrawMark, 3650);
+  if (!real || stillMotion()) return;
+  // The main process reads the one file for the palette and theme in use; without it, one deep breath.
+  const ask = ++stingAsk;
+  ipc.invoke('baton-home:sting').then(bytes => {
+    if (ask !== stingAsk) return;
+    if (!bytes || !bytes.length) return deepBreath(where || 'side');
+    if (stingSrc) URL.revokeObjectURL(stingSrc);
+    stingSrc = URL.createObjectURL(new Blob([bytes], { type: 'image/webp' }));
+    stingAt = where || 'side'; stingUntil = Date.now() + 3600; redrawMark(); setTimeout(redrawMark, 3650);
+  }).catch(() => {});
 }
 const stillMotion = () => matchMedia('(prefers-reduced-motion:reduce)').matches || /motion-(reduced|off)/.test(document.documentElement.className);
 // A redraw replaces the mark's element: the keyboard focus goes back onto it.
 function redrawMark() { const f = document.activeElement && document.activeElement.id; render(); if (f === 'mark' || f === 'aboutmark') { const n = document.getElementById(f); if (n) n.focus(); } }
-// A mark is a button: a click, Enter or Space plays it now. The sting where it can play, else one deep breath.
+// A mark is a button: a click, Enter or Space plays it now. The sting in the window, one deep breath in a preview.
 let deepUntil = 0, deepAt = 'side';
 function playMark(where) {
   if (stillMotion()) return;
-  if (window.TESSAYA_STING && !/palette-/.test(document.documentElement.className)) { if (Date.now() >= stingUntil) startSting(where); return; }
+  if (real) { if (Date.now() >= stingUntil) startSting(where); return; }
+  deepBreath(where);
+}
+function deepBreath(where) {
   if (Date.now() < deepUntil) return;
   deepAt = where; deepUntil = Date.now() + 1600; redrawMark(); setTimeout(redrawMark, 1650);
 }

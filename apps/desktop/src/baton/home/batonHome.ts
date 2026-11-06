@@ -29,6 +29,8 @@ import {
   type Motion,
 } from "./look.ts";
 import type { Palette } from "./palette.ts";
+import { artDir, readArt, stingFile, taskbarIconFile } from "./artFiles.ts";
+import { showTaskbarIcon } from "../taskbarIcon.ts";
 import { shouldSplash, splashCentre } from "./splash.ts";
 import { startSplash } from "./splashWindow.ts";
 
@@ -386,6 +388,8 @@ const PUSH = "baton-home:state";
 const PUSH_MS = 250;
 const THEME = "baton-home:theme";
 const LEVEL = "baton-home:level";
+const STING = "baton-home:sting";
+const art = artDir(__dirname);
 
 const withTabs = (state: HomeState): HomeState => ({
   ...state,
@@ -409,6 +413,7 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
     return withTabs(input.state());
   });
   Electron.ipcMain.handle(LEVEL, () => input.level?.() ?? 0);
+  Electron.ipcMain.handle(STING, () => readArt(art, stingFile(look().palette, theme())));
   Electron.ipcMain.on(SESSIONS, () => input.openSessions());
   // BATON_TEST_DIR: a PNG of the window's own page at each tab change, from inside the app; otherwise nothing.
   let tabShots = 0;
@@ -495,6 +500,7 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
       }
     }
     open.webContents.send(THEME, theme());
+    showTaskbarIcon(NodePath.join(art, taskbarIconFile(look().palette, theme())));
   };
   Electron.nativeTheme.on("updated", applyTheme);
   /** The classes on the page's root, and the window's material: live, no reload. */
@@ -622,7 +628,7 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
       const splash = wanted
         ? startSplash(
             splashCentre(Electron.screen.getDisplayMatching(created.getBounds()).workArea),
-            theme(),
+            readArt(art, stingFile(look().palette, theme())),
           )
         : null;
       splashed = splash !== null;

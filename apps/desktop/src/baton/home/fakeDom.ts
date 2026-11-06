@@ -280,7 +280,6 @@ export const openWindowPage = async (script: string, state: unknown) => {
   Object.assign(context, {
     window: context,
     __BATON_STATE__: state,
-    TESSAYA_STING: { dark: "", light: "" },
   });
   // The script's own start-up promise has no catch; its failure is a failure of the page.
   const onRejection = (reason: unknown) => void errors.push(`page failed: ${String(reason)}`);

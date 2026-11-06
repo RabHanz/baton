@@ -346,7 +346,7 @@ import {
 import { mouseHookConfig } from "../bindings/inputConfig.ts";
 import { VOICE_HOTKEYS } from "./voiceActivation.ts";
 import { ensureModel, modelPresent, PARAKEET_FAST_MODEL, PARAKEET_MODEL } from "./voiceModels.ts";
-import { hudView, utteranceCaption } from "./voiceHud.ts";
+import { hudView, trayDotColor, utteranceCaption } from "./voiceHud.ts";
 import type { AssistantActions, PhoneMirror } from "../screen/ScreenCompanion.ts";
 import { focusedFolder } from "../screen/focusedFolder.ts";
 import { createVoicePill, type VoicePill } from "./voicePill.ts";
@@ -1613,7 +1613,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const on = (id: string) =>
       input.extras?.controls().some((c) => c.id === id && c.kind === "toggle" && c.on) ?? false;
     return {
-      color: hudView(state).color,
+      color: trayDotColor(
+        state,
+        settings.palette,
+        Electron.nativeTheme.shouldUseDarkColorsForSystemIntegratedUI,
+      ),
       caps: [settings.enabled, on("s.capture"), on("s.act")],
       muted: state === "muted",
       badge: input.updates?.ready() ?? false,

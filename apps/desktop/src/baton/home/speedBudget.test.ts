@@ -17,7 +17,7 @@ describe("the window's speed budget", () => {
     const cssWithoutFonts = APP_CSS.replace(/url\(data:[^)]*\)/g, "url()");
     expect(APP_SCRIPT.length).toBeLessThan(116_000);
     expect(cssWithoutFonts.length).toBeLessThan(42_500);
-    expect(HOME_DOCUMENT.length).toBeLessThan(740_000);
+    expect(HOME_DOCUMENT.length).toBeLessThan(420_000);
   });
 
   it("draws the first page and any tab with little work", async () => {
