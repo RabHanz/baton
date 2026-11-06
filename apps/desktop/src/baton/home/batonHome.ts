@@ -16,7 +16,7 @@ import * as NodePath from "node:path";
 import { markCompanionWindow } from "../lastAppWindow.ts";
 import { markPhase } from "../lifecycle/mainStall.ts";
 import { homeDocumentFor } from "./homeDocument.ts";
-import { THEME_GROUND, resolveTheme, type Appearance } from "./theme.ts";
+import { THEME_GROUND, resolveTheme, themeSourceFor, type Appearance } from "./theme.ts";
 import { tabOf, type TabId } from "./tabs.ts";
 import {
   applyLookScript,
@@ -24,6 +24,7 @@ import {
   effectiveMotion,
   lookClasses,
   materialFor,
+  seeThrough,
   type Glass,
   type Motion,
 } from "./look.ts";
@@ -446,7 +447,7 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
   const material = () => materialFor(process.platform, NodeOS.release(), look().glass);
   const overlayFor = (t: "light" | "dark") => ({
     // With a material behind it the strip stays clear, so the glass shows through to the window controls.
-    color: material().backgroundMaterial === "mica" ? "#00000000" : THEME_GROUND[t],
+    color: seeThrough(material()) ? "#00000000" : THEME_GROUND[t],
     symbolColor: t === "dark" ? "#e9e6df" : "#1c1b18",
     height: 50,
   });
@@ -474,10 +475,11 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
   const applyTheme = () => {
     const open = live();
     if (open === null) return;
+    // Set only on a change: each set fires nativeTheme "updated", which calls this again.
+    const source = themeSourceFor(input.appearance());
+    if (Electron.nativeTheme.themeSource !== source) Electron.nativeTheme.themeSource = source;
     open.setBackgroundColor(
-      process.platform === "win32" && material().backgroundMaterial === "mica"
-        ? "#00000000"
-        : THEME_GROUND[theme()],
+      process.platform === "win32" && seeThrough(material()) ? "#00000000" : THEME_GROUND[theme()],
     );
     // The window controls follow the page, both ways, live.
     if (process.platform !== "darwin" && bars.get(open) !== theme()) {
@@ -497,7 +499,7 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
     const open = live();
     if (open === null) return;
     const now = look();
-    const script = `${applyLookScript(lookClasses(now.motion, now.glass, now.palette))};document.documentElement.classList.toggle("mica",${material().backgroundMaterial === "mica"})`;
+    const script = `${applyLookScript(lookClasses(now.motion, now.glass, now.palette))};document.documentElement.classList.toggle("material",${seeThrough(material())})`;
     if (force || looked.get(open) !== script) {
       looked.set(open, script);
       void open.webContents.executeJavaScript(script).catch(() => undefined);
@@ -509,9 +511,7 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
       applied.set(open, key);
       try {
         open.setBackgroundMaterial(material().backgroundMaterial ?? "none");
-        open.setBackgroundColor(
-          material().backgroundMaterial === "mica" ? "#00000000" : THEME_GROUND[theme()],
-        );
+        open.setBackgroundColor(seeThrough(material()) ? "#00000000" : THEME_GROUND[theme()]);
         open.setTitleBarOverlay(overlayFor(theme()));
       } catch {
         // Windows 10 and older builds keep a plain background.
@@ -576,8 +576,7 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
         minWidth: 860,
         minHeight: 580,
         title: "Tessaya",
-        backgroundColor:
-          material().backgroundMaterial === "mica" ? "#00000000" : THEME_GROUND[theme()],
+        backgroundColor: seeThrough(material()) ? "#00000000" : THEME_GROUND[theme()],
         ...material(),
         autoHideMenuBar: true,
         // Our own title strip, so the window controls take the page's theme, not Windows'.
