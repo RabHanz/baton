@@ -9,6 +9,7 @@ import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
+import { redactText } from "@t3tools/baton-shared/diagnostics";
 import {
   matchSkills,
   nightlyGroups,
@@ -331,15 +332,31 @@ const KEEP_RECENT_MS = 2 * 86_400_000;
 /** The groups the nightly pass learns from; the rest wait for the next night. */
 export const NIGHTLY_LEARN = 2;
 
-/** Keeps a turn on this machine for the nightly pass (its recorded answers never leave it); turns past two days go. */
-export const keepRecentTurn = (dir: string, kept: KeptTurn, now: number): void => {
-  const recent = recentDir(dir);
-  NodeFS.mkdirSync(recent, { recursive: true });
-  NodeFS.writeFileSync(NodePath.join(recent, `${kept.turn}.json`), JSON.stringify(kept));
-  for (const name of NodeFS.readdirSync(recent)) {
-    if (Number(name.replace(/\.json$/, "")) < now - KEEP_RECENT_MS)
-      NodeFS.rmSync(NodePath.join(recent, name), { force: true });
+/** Deletes kept turns older than two days. */
+export const pruneRecentTurns = (dir: string, now: number): void => {
+  let names: string[] = [];
+  try {
+    names = NodeFS.readdirSync(recentDir(dir));
+  } catch {
+    return;
   }
+  for (const name of names) {
+    if (Number(name.replace(/\.json$/, "")) < now - KEEP_RECENT_MS)
+      NodeFS.rmSync(NodePath.join(recentDir(dir), name), { force: true });
+  }
+};
+
+/** Keeps a turn for the nightly pass on this machine, obvious secrets in its tool output taken out. */
+export const keepRecentTurn = (dir: string, kept: KeptTurn, now: number): void => {
+  NodeFS.mkdirSync(recentDir(dir), { recursive: true });
+  const answers = Object.fromEntries(
+    Object.entries(kept.answers).map(([tool, text]) => [tool, redactText(text)]),
+  );
+  NodeFS.writeFileSync(
+    NodePath.join(recentDir(dir), `${kept.turn}.json`),
+    JSON.stringify({ ...kept, answers }),
+  );
+  pruneRecentTurns(dir, now);
 };
 
 const readRecent = (dir: string): ReadonlyArray<KeptTurn> => {
@@ -373,6 +390,7 @@ export const learnNightly = async (input: {
   ) => (c: RecordedCase, extra?: string) => Promise<ReadonlyArray<string>>;
   readonly now: Date;
 }): Promise<{ readonly text: string; readonly replays: number }> => {
+  pruneRecentTurns(input.dir, input.now.getTime());
   const groups = nightlyGroups(readRecent(input.dir), input.traced);
   if (groups.length === 0) return { text: "Nothing in the last day to learn from.", replays: 0 };
   let replays = 0;

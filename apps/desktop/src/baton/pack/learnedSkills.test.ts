@@ -12,6 +12,7 @@ import {
   learnFromTurn,
   keepRecentTurn,
   learnNightly,
+  pruneRecentTurns,
   readSkills,
   skillsForTurn,
   waitingSkillsLine,
@@ -172,6 +173,38 @@ describe("learning at night", () => {
     expect(new Set(models)).toEqual(new Set(["sonnet"]));
     expect(readSkills(dir)).toEqual([]);
     expect((await nightly()).text).toBe("Nothing in the last day to learn from.");
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("keeps a turn's tool output with obvious secrets taken out, and lets nothing past two days be read", async () => {
+    const dir = tmp();
+    const brain = { model: "sonnet", effort: "medium" };
+    const old = now.getTime() - 3 * 86_400_000;
+    keepRecentTurn(
+      dir,
+      {
+        ...turn,
+        answers: { screen_capture: "token sk-abcdefghijklmnopqrstuvwx here" },
+        turn: old,
+        brain,
+      },
+      old,
+    );
+    const file = NodePath.join(dir, ".recent", `${old}.json`);
+    expect(NodeFS.readFileSync(file, "utf8")).not.toContain("sk-abcdefghijklmnopqrstuvwx");
+    // Read at night with nothing newer kept: the stale turn is cleared, not learned from.
+    const result = await learnNightly({
+      dir,
+      traced: new Set([old]),
+      ask: async () => SKILL,
+      replay: () => async () => [],
+      now,
+    });
+    expect(result.text).toBe("Nothing in the last day to learn from.");
+    expect(NodeFS.existsSync(file)).toBe(false);
+    keepRecentTurn(dir, { ...turn, turn: old, brain }, old);
+    pruneRecentTurns(dir, now.getTime());
+    expect(NodeFS.existsSync(file)).toBe(false);
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 });

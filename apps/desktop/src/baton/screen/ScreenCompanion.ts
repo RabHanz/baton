@@ -7,6 +7,7 @@
 import { createModelAsk } from "../writing/modelAsk.ts";
 import { appOf, tracedTurns } from "@t3tools/baton-shared/skillLearning";
 import { replayTurn } from "../agent/replay.ts";
+import { createStandingStore } from "../presence/standingJobs.ts";
 import {
   decideSkill,
   learnedAction,
@@ -14,6 +15,7 @@ import {
   keepRecentTurn,
   learnFromTurn,
   learnNightly as learnNightlyFrom,
+  pruneRecentTurns,
   readStates,
   skillsDirOf,
   skillsForTurn,
@@ -921,6 +923,14 @@ export const startScreenCompanion = (input: {
   /** What the learning loop is doing, shown on its button while it runs. */
   let learning: string | null = null;
   const skillsDir = () => skillsDirOf(NodePath.join(input.stateDir, PACK_FOLDER));
+  const nightlyOn = () =>
+    createStandingStore(input.stateDir, () => ({ briefOn: false, briefGivenOn: null })).load().on
+      .nightly_learning === true;
+  try {
+    pruneRecentTurns(skillsDir(), Date.now());
+  } catch {
+    // Nothing kept yet.
+  }
   /** The model and effort the answering persona's file names. */
   let faceModel: Brain = modelOf(DEFAULT_OS_PACK, "executive");
   const leadBrain = () =>
@@ -2447,9 +2457,9 @@ export const startScreenCompanion = (input: {
         allowed: face.tools ?? buildBatonTools(toolHost).map((t) => t.name),
         brain: faceModel,
       };
-      // Kept two days on this machine for the nightly pass; the Record's trace names it by `started`.
+      // Kept two days on this machine for the nightly pass, only while it is on; the trace names it by `started`.
       try {
-        keepRecentTurn(skillsDir(), { ...lastTurn, turn: started }, Date.now());
+        if (nightlyOn()) keepRecentTurn(skillsDir(), { ...lastTurn, turn: started }, Date.now());
       } catch {
         // A turn not kept is only one the nightly pass will not see.
       }
