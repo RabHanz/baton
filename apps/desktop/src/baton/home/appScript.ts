@@ -399,14 +399,35 @@ function dayLabel(iso) { const d = new Date(iso), t = new Date(); const same = (
 function clock(iso) { return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
 
 // The wake sting plays once on one mark: the sidebar's when the window opens without the splash, About's when About opens.
-let stingUntil = 0, stingAt = 'side';
+let stingUntil = 0, stingAt = 'side', stingSrc = '';
 function startSting(where) {
   // The sting is drawn in Woad only, so another palette rests on its still mark.
   if (!window.TESSAYA_STING || matchMedia('(prefers-reduced-motion:reduce)').matches || /motion-(reduced|off)|palette-/.test(document.documentElement.className)) return;
-  stingAt = where || 'side'; stingUntil = Date.now() + 3600; render(); setTimeout(render, 3650);
+  const bin = atob(document.documentElement.dataset.theme === 'dark' ? TESSAYA_STING.dark : TESSAYA_STING.light), bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  if (stingSrc) URL.revokeObjectURL(stingSrc);
+  stingSrc = URL.createObjectURL(new Blob([bytes], { type: 'image/webp' }));
+  stingAt = where || 'side'; stingUntil = Date.now() + 3600; redrawMark(); setTimeout(redrawMark, 3650);
+}
+const stillMotion = () => matchMedia('(prefers-reduced-motion:reduce)').matches || /motion-(reduced|off)/.test(document.documentElement.className);
+// A redraw replaces the mark's element: the keyboard focus goes back onto it.
+function redrawMark() { const f = document.activeElement && document.activeElement.id; render(); if (f === 'mark' || f === 'aboutmark') { const n = document.getElementById(f); if (n) n.focus(); } }
+// A mark is a button: a click, Enter or Space plays it now. The sting where it can play, else one deep breath.
+let deepUntil = 0, deepAt = 'side';
+function playMark(where) {
+  if (stillMotion()) return;
+  if (window.TESSAYA_STING && !/palette-/.test(document.documentElement.className)) { if (Date.now() >= stingUntil) startSting(where); return; }
+  if (Date.now() < deepUntil) return;
+  deepAt = where; deepUntil = Date.now() + 1600; redrawMark(); setTimeout(redrawMark, 1650);
+}
+// With motion off a mark does nothing, so it is not offered as a button. A deep breath survives a redraw: it resumes where it was.
+function markButton(el, where) {
+  if (Date.now() < deepUntil && where === deepAt) { el.classList.add('deep'); el.style.animationDelay = (Date.now() - deepUntil + 1600) * -1 + 'ms'; }
+  if (stillMotion()) return;
+  el.setAttribute('role', 'button'); el.tabIndex = 0; el.setAttribute('aria-label', 'Play the Tessaya mark'); el.onclick = () => playMark(where); el.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); playMark(where); } };
 }
 function markHtml(where) {
-  if (Date.now() < stingUntil && where === stingAt && window.TESSAYA_STING) { const dark = document.documentElement.dataset.theme === 'dark'; return '<img alt="" style="width:100%;height:100%;display:block" src="data:image/webp;base64,' + (dark ? TESSAYA_STING.dark : TESSAYA_STING.light) + '">'; }
+  if (Date.now() < stingUntil && where === stingAt && stingSrc) return '<img alt="" style="width:140.9%;height:140.9%;margin:-20.45%;display:block;max-width:none" src="' + stingSrc + '">';
   return S.status.brandMark || S.status.mark;
 }
 function sayWords(words) { return words.length ? 'Say ' + words.slice(0, 2).join(' or ') + ' to talk.' : 'The wake word is off. Say Wake now, or hold your dictation key.'; }
@@ -778,7 +799,7 @@ function modalPage(b) {
   else if (modal === 'setup') setupPage(b);
   else if (modal === 'account') { b.appendChild($('h1', null, 'Account')); const g = $('div', 'group'); for (const c of rows(['s.account', 's.accountEmail'])) g.appendChild(row(c)); b.appendChild(g); const n = $('p', 'hint', 'Tessaya uses your own subscription through the claude and codex programs. It never uses an API key.'); n.style.marginTop = '12px'; b.appendChild(n); }
   else if (modal === 'updates') { b.appendChild($('h1', null, 'Updates')); const g = $('div', 'group'); for (const c of rows(['u.act'])) g.appendChild(row(c)); const ab = x.about || {}; for (const [l, v] of [['Installed version', ab.version], ['Updates come from', ab.source]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); b.appendChild($('p', 'hint', 'Tessaya downloads an update in the background and tells you before it restarts.')).style.marginTop = '12px'; }
-  else { const am = $('div', 'aboutmark'); am.innerHTML = markHtml('about'); b.appendChild(am); if (!aboutSeen) { aboutSeen = true; setTimeout(() => startSting('about'), 50); } b.appendChild($('h1', null, 'About')); const a = x.about || {}; const g = $('div', 'group'); for (const [l, v] of [['Version', a.version], ['Installed from', a.source], ['Licence', a.licence], ['Third-party notices', a.notices]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); const rr = $('button', 'btn', L('wizard.rerun')); rr.style.marginTop = '14px'; rr.onclick = () => { setupStep = 0; modal = 'setup'; render(); }; b.appendChild(rr); }
+  else { const am = $('div', 'aboutmark'); am.id = 'aboutmark'; markButton(am, 'about'); am.innerHTML = markHtml('about'); b.appendChild(am); if (!aboutSeen) { aboutSeen = true; setTimeout(() => startSting('about'), 50); } b.appendChild($('h1', null, 'About')); const a = x.about || {}; const g = $('div', 'group'); for (const [l, v] of [['Version', a.version], ['Installed from', a.source], ['Licence', a.licence], ['Third-party notices', a.notices]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); const rr = $('button', 'btn', L('wizard.rerun')); rr.style.marginTop = '14px'; rr.onclick = () => { setupStep = 0; modal = 'setup'; render(); }; b.appendChild(rr); }
 }
 let setupStep = 0, setupAuto = false, meterTimer = null;
 function stopMeter() { if (meterTimer) { clearInterval(meterTimer); meterTimer = null; } }
@@ -949,7 +970,7 @@ function render(state) {
   const app = document.getElementById('app'); app.className = collapsed ? 'collapsed' : ''; app.setAttribute('data-g', GROUP_OF[cur] || 'now');
   const need = (S.extra && S.extra.stats && S.extra.stats.needYou) || 0; const up = find('u.act');
   setRegion(document.getElementById('side'), side => {
-  const brand = $('div', 'brand'); brand.id = 'brand'; const mk = $('span'); mk.id = 'mark'; mk.innerHTML = markHtml('side'); const bt = $('span', 'bt'); bt.append($('b', null, 'Tessaya'), $('span', 'plan', 'v' + (((S.extra || {}).about || {}).version || ''))); brand.append(mk, bt); side.appendChild(brand);
+  const brand = $('div', 'brand'); brand.id = 'brand'; const mk = $('span'); mk.id = 'mark'; markButton(mk, 'side'); mk.innerHTML = markHtml('side'); const bt = $('span', 'bt'); bt.append($('b', null, 'Tessaya'), $('span', 'plan', 'v' + (((S.extra || {}).about || {}).version || ''))); brand.append(mk, bt); side.appendChild(brand);
   const nav = $('nav'); nav.setAttribute('aria-label', 'Tessaya pages'); nav.id = 'navlist';
   const names = Object.fromEntries(TABS);
   for (const [gname, ids] of GROUPS) {

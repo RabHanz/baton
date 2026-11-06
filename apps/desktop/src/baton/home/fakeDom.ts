@@ -260,6 +260,10 @@ export const openWindowPage = async (script: string, state: unknown) => {
       setItem: (k: string, v: string) => void store.set(k, v),
     },
     matchMedia: () => ({ matches: false, addEventListener() {} }),
+    // What the page uses to replay the sting from its own bytes.
+    atob: (b64: string) => Buffer.from(b64, "base64").toString("binary"),
+    Blob,
+    URL: { createObjectURL: () => "blob:fake", revokeObjectURL: () => undefined },
     addEventListener() {},
     requestAnimationFrame: () => 0,
     cancelAnimationFrame() {},
