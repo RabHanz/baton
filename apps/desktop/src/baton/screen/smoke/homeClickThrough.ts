@@ -80,7 +80,7 @@ setTimeout(() => Electron.app.exit(3), 15 * 60_000).unref();
 interface Row {
   readonly group: string;
   readonly control: string;
-  readonly result: "ok" | "no effect" | "not found" | "off screen";
+  readonly result: "ok" | "no effect" | "not found" | "off screen" | "past the work area";
   readonly effect: string;
 }
 
@@ -105,6 +105,14 @@ void Electron.app.whenReady().then(async () => {
     controls: base.controls,
     ...(base.extra === undefined ? {} : { extra: base.extra }),
   };
+  // The laptop's remembered size goes where Home reads it, so the window is placed the way Home places it on the device;
+  // the runner's 768-tall screen is shorter than that, which is what catches a window running under the taskbar.
+  NodeFS.writeFileSync(
+    NodePath.join(out, "baton-window.json"),
+    JSON.stringify(
+      laptop ? { x: 0, y: 0, width: 1138, height: 767 } : { x: 0, y: 0, width: 1024, height: 740 },
+    ),
+  );
   createBatonHome({
     stateDir: out,
     state: () => state as never,
@@ -117,9 +125,6 @@ void Electron.app.whenReady().then(async () => {
     (w) => !w.isDestroyed() && w.getTitle() === "Tessaya",
   );
   if (win === undefined) throw new Error("the Home window did not open");
-  win.setBounds(
-    laptop ? { x: 0, y: 0, width: 1138, height: 767 } : { x: 0, y: 0, width: 1024, height: 740 },
-  );
   win.show();
   win.focus();
   await sleep(1500);
@@ -157,8 +162,22 @@ void Electron.app.whenReady().then(async () => {
     return (await find(selector, i))[i];
   };
   const rows: Row[] = [];
-  const facts = `windows ${process.getSystemVersion()}, scale ${Electron.screen.getPrimaryDisplay().scaleFactor}, root classes "${String(await js("document.documentElement.className"))}", windows open ${Electron.BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed()).length}, opacity ${win.getOpacity()}`;
+  const facts = `windows ${process.getSystemVersion()}, scale ${Electron.screen.getPrimaryDisplay().scaleFactor}, root classes "${String(await js("document.documentElement.className"))}", windows open ${Electron.BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed()).length}, opacity ${win.getOpacity()}, window ${JSON.stringify(win.getBounds())} in ${JSON.stringify(Electron.screen.getPrimaryDisplay().workArea)}`;
   console.log(facts);
+  const [wb, wa] = [win.getBounds(), Electron.screen.getDisplayMatching(win.getBounds()).workArea];
+  // A window running under the taskbar loses every press on its bottom rows to the taskbar.
+  if (
+    wb.x < wa.x ||
+    wb.y < wa.y ||
+    wb.x + wb.width > wa.x + wa.width ||
+    wb.y + wb.height > wa.y + wa.height
+  )
+    rows.push({
+      group: "window",
+      control: "Home",
+      result: "past the work area",
+      effect: JSON.stringify({ wb, wa }),
+    });
   const press = async (group: string, c: Found) => {
     if (!c.ok) return rows.push({ group, control: c.name, result: "off screen", effect: "" });
     const before = await sig();

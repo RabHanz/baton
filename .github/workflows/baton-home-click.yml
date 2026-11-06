@@ -62,7 +62,7 @@ jobs:
           timeout 900 "$(node -p 'require("electron")')" node_modules/.cache/baton-smoke/homeClick.cjs 2>&1 | tee "$PROOF_OUT/run.log"
           cat "$PROOF_OUT/results.md" >> "$GITHUB_STEP_SUMMARY"
           # A control that does nothing, or a page error, fails the run.
-          grep -q "| no effect \|| not found \|Page errors" "$PROOF_OUT/results.md" && exit 1
+          grep -q "| no effect \|| not found \|| past the work area \|Page errors" "$PROOF_OUT/results.md" && exit 1
           exit 0
       - uses: actions/upload-artifact@v4
         if: always()
