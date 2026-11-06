@@ -20,8 +20,12 @@ describe("streamingScorer", () => {
       },
     });
     for (let i = 0; i < 20; i += 1) s.feed(new Int16Array(320));
+    // Nothing scored yet: whatever it says now is about older audio.
+    expect(s.scored()).toEqual({ speech: 0, quiet: 0 });
     release();
     await s.drain();
+    // The name's chunk is speech; the three after it are quiet.
+    expect(s.scored()).toEqual({ speech: 1280, quiet: 3 * 1280 });
     expect(s.take()).toBe(1);
     expect(s.firedAgo()).toBe(20 * 320 - 2 * 1280);
   });

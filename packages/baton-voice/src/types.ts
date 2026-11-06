@@ -60,6 +60,11 @@ export interface VadProvider {
   readonly isSpeech: (frame: Int16Array) => boolean;
   readonly reset: () => void;
   readonly drain?: () => Promise<void>;
+  /**
+   * What it has actually scored: speech samples so far, and quiet samples since the last speech. `isSpeech` repeats its
+   * last answer for frames it has not scored yet (a burst after a stall); these only move when it has.
+   */
+  readonly scored?: () => { readonly speech: number; readonly quiet: number };
 }
 
 export interface SttProvider {

@@ -152,6 +152,8 @@ const WAKE_LOOKBACK_MS = 1_600;
 const WAKE_TAIL_MS = 200;
 /** Audio kept behind the newest frame, so a wake scored late (a busy computer just after launch) still finds the name and what followed. */
 const RECENT_MS = 30_000;
+/** However long the speech after held words takes to recognise, they are let go after this. */
+const JOIN_WAIT_MAX_MS = 15_000;
 const STOP_MIN_SPEECH_MS = 120;
 const STOP_END_SILENCE_MS = 350;
 /** Over the speakers his voice never falls silent to the VAD, so a window this long is cut. */
@@ -292,6 +294,8 @@ export const createVoiceCore = (input: {
   }
   let held: Held | null = null;
   let transcribing = 0;
+  /** Where each segment still being recognised began, so held words wait for speech that may join them. */
+  const recognising = new Set<number>();
   let current: { readonly text: string; readonly endAt: number } = { text: "", endAt: 0 };
   const waitMs = () => input.waitMs?.() ?? WAIT_DEFAULT_MS;
 
@@ -452,12 +456,14 @@ export const createVoiceCore = (input: {
       woken: fire !== null,
     };
     transcribing += 1;
+    recognising.add(turn.startAt);
     const heard = (
       waitFor === null
         ? input.stt.transcribe(pcm)
         : waitFor.then((ok) => (ok ? input.stt.transcribe(pcm) : ""))
     ).finally(() => {
       transcribing -= 1;
+      recognising.delete(turn.startAt);
     });
     // Read the moment recognition returns, not when the queue behind a reply frees: a dismissal
     // ends everything at once, and speech that resumes soon after joins the turn before it.
@@ -508,6 +514,9 @@ export const createVoiceCore = (input: {
       lastTranscript = said;
       emit({ type: "transcript", text: said, at: now() });
       current = { text: said, endAt: turn.endAt };
+      // Begun while the window was open: a slow recogniser (right after launch) must not let it close under these words.
+      if (machine.deadline !== null && turn.startAt <= machine.deadline)
+        await dispatch({ type: "keep_open", at: now() });
       await dispatch({ type: "utterance", text: said, at: now() });
     });
     show();
@@ -542,7 +551,7 @@ export const createVoiceCore = (input: {
       const mine: Held = {
         text,
         endAt,
-        releaseAt: endAt + commitMs(waitMs(), text),
+        releaseAt: endAt + commitMs(waitMs(), stripWake(text, timings.wakeWords)),
         settle: (kept) => {
           if (held === mine) held = null;
           resolve(kept);
@@ -656,6 +665,8 @@ export const createVoiceCore = (input: {
   const heardItselfAt = (at: number) =>
     !headphones() && at >= spokeFrom && (speaking || at < echoUntil);
   let bargeRun = 0;
+  /** The detector's scored speech, as of the last frame. */
+  let scoredSpeech = 0;
   let ducked = false;
   let cueUntil = 0;
 
@@ -675,6 +686,7 @@ export const createVoiceCore = (input: {
         : [...preRoll];
       segment = kept;
       segmentSamples = late ? kept.reduce((n, f) => n + f.length, 0) : preRollSamples;
+      scoredSpeech = input.vad.scored?.().speech ?? 0;
       // The detector did not run while asleep, so what came after the name counts as speech until it says
       // otherwise; recognition decides whether it was words.
       speechSamples = late
@@ -794,7 +806,14 @@ export const createVoiceCore = (input: {
       const at = now();
       // Still speaking, or recognition still running on more of it: not yet.
       const busy = segment !== null || transcribing > 0;
-      if (at >= held.releaseAt && (!busy || at >= held.releaseAt + 3_000)) held.settle(true);
+      const endAt = held.endAt;
+      const joins = (start: number) => start - endAt <= JOIN_WITHIN_MS;
+      // Speech that began inside the pause will join these words once recognised, however slowly.
+      const coming =
+        (segment !== null && joins(at - (segmentSamples * 1000) / VOICE_SAMPLE_RATE)) ||
+        [...recognising].some(joins);
+      const cap = coming ? JOIN_WAIT_MAX_MS : 3_000;
+      if (at >= held.releaseAt && (!busy || at >= held.releaseAt + cap)) held.settle(true);
     }
 
     // His voice over hers: through the echo guard over speakers, or plain speech detection on headphones.
@@ -829,6 +848,11 @@ export const createVoiceCore = (input: {
 
     if (listening() && !hearingItself()) {
       const speech = input.vad.isSpeech(frame);
+      // Counted from what the detector has scored, not its last answer: frames it has not reached (a burst after a
+      // stall) are neither speech nor silence yet.
+      const scored = input.vad.scored?.();
+      const freshSpeech = scored === undefined ? 0 : scored.speech - scoredSpeech;
+      if (scored !== undefined) scoredSpeech = scored.speech;
       if (segment === null && speech) {
         segment = [...preRoll];
         segmentSamples = preRollSamples;
@@ -836,7 +860,10 @@ export const createVoiceCore = (input: {
       if (segment !== null) {
         segment.push(frame);
         segmentSamples += frame.length;
-        if (speech) {
+        if (scored !== undefined) {
+          if (samples >= creditFrom) speechSamples += freshSpeech;
+          silenceSamples = Math.min(scored.quiet, segmentSamples);
+        } else if (speech) {
           if (samples >= creditFrom) speechSamples += frame.length;
           silenceSamples = 0;
         } else {

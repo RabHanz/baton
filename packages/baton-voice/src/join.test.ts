@@ -8,7 +8,12 @@ const FRAME = 320;
 const frames = (seconds: number) => Math.round((seconds * 16_000) / FRAME);
 
 /** Scripted speech: `say` pushes loud frames, `quiet` pushes silence; recognition returns the next line. */
-const rig = (lines: ReadonlyArray<string>, reply?: Promise<void>) => {
+const rig = (
+  lines: ReadonlyArray<string>,
+  reply?: Promise<void>,
+  /** Recognition of line `n` waits on this: a busy recogniser. */
+  slow?: (n: number) => Promise<void>,
+) => {
   let speech = false;
   let next = 0;
   const routed: string[] = [];
@@ -17,7 +22,14 @@ const rig = (lines: ReadonlyArray<string>, reply?: Promise<void>) => {
     waitMs: () => 1_500,
     wake: { name: "fake", reset: () => {}, process: () => null },
     vad: { name: "fake", reset: () => {}, isSpeech: () => speech },
-    stt: { name: "fake", transcribe: async () => lines[next++] ?? "" },
+    stt: {
+      name: "fake",
+      transcribe: async () => {
+        const n = next++;
+        await slow?.(n);
+        return lines[n] ?? "";
+      },
+    },
     router: {
       route: async (effect): Promise<RouteOutcome> => {
         if (effect.kind !== "command") return { kind: "none" };
@@ -54,6 +66,32 @@ describe("one sentence with a breath in it", () => {
     await r.settle();
     await r.core.idle();
     expect(r.routed).toEqual(["There's still many Experience problems."]);
+  });
+
+  it("waits for the rest when it is still being recognised as the pause runs out", async () => {
+    let recognised: () => void = () => {};
+    const second = new Promise<void>((resolve) => (recognised = resolve));
+    // 0.1.59 split "Freya, look, what needs me today?" here: the recogniser cut it as "Look. What?".
+    const r = rig(["Tell me the weather.", "What needs me today?"], undefined, (n) =>
+      n === 1 ? second : Promise.resolve(),
+    );
+    r.core.activate("wake");
+    await r.core.idle();
+    r.push(0.6, true);
+    r.push(0.7, false);
+    await r.settle();
+    r.push(1.4, true);
+    r.push(0.8, false);
+    await r.settle();
+    // Past the old cap of three seconds after the commit point, still recognising.
+    r.push(4, false);
+    await r.settle();
+    recognised();
+    await r.settle();
+    r.push(3, false);
+    await r.settle();
+    await r.core.idle();
+    expect(r.routed).toEqual(["Tell me the weather. What needs me today?"]);
   });
 
   it("answers a finished question without waiting out the long pause", async () => {

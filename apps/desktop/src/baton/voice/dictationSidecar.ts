@@ -252,6 +252,13 @@ const lastLine = (text: string): string | null => {
 export const startDictationSidecar = (input: {
   readonly binary: string;
   readonly onEvent: (event: DictationEvent) => void;
+  /** Each clip's recognition, for the turn log: time in the model against time waiting for it. */
+  readonly onRecognised?: (timing: {
+    readonly audioMs: number;
+    readonly inferMs: number;
+    readonly loadMs: number;
+    readonly roundTripMs: number;
+  }) => void;
 }): DictationSidecar => {
   let child: NodeChildProcess.ChildProcessWithoutNullStreams | null = null;
   let disposed = false;
@@ -263,6 +270,7 @@ export const startDictationSidecar = (input: {
     timer: ReturnType<typeof setTimeout>;
     /** Waiting on the model: each "loading" line gives it more time. */
     readonly onLoad: boolean;
+    readonly sentAt: number;
   };
   const pending = new Map<number, Pending>();
   let deviceWaiters: Array<(devices: ReadonlyArray<SidecarDevice>) => void> = [];
@@ -289,6 +297,7 @@ export const startDictationSidecar = (input: {
         reject,
         timer: arm(id, onLoad ? LOAD_SILENCE_MS + CALL_TIMEOUT_MS : CALL_TIMEOUT_MS),
         onLoad,
+        sentAt: Date.now(),
       });
       send({ ...message, id });
     });
@@ -373,6 +382,14 @@ export const startDictationSidecar = (input: {
       }
       if (event["ev"] === "text" && event["dictated"] !== true) {
         const error = typeof event["error"] === "string" ? event["error"] : undefined;
+        const sentAt = pending.get(event["id"] as number)?.sentAt;
+        if (error === undefined && sentAt !== undefined)
+          input.onRecognised?.({
+            audioMs: Number(event["audioMs"] ?? 0),
+            inferMs: Number(event["inferMs"] ?? 0),
+            loadMs: Number(event["loadMs"] ?? 0),
+            roundTripMs: Date.now() - sentAt,
+          });
         return settle(
           event["id"] as number,
           error === undefined ? { value: event["text"] } : { error },

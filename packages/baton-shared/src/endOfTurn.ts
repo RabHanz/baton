@@ -17,11 +17,17 @@ export const clampWait = (ms: number): number =>
 
 const words = (text: string): number => text.trim().split(/\s+/).filter(Boolean).length;
 
-/** The words stop mid-thought: a joining word, a comma, or a short fragment with no full stop. */
+/**
+ * "Look," or "so," and a pause: what he means comes next, however the recogniser punctuated it ("Look. What?").
+ * Not "okay" or "right": those are whole replies.
+ */
+const LEAD_ONLY = /^(?:look|so|well|listen|anyway|um+|uh+)\b[\s,.!?…]*(?:\S+[\s.!?…]*)?$/i;
+
+/** The words stop mid-thought: a joining word, a comma, a lone opener, or a short fragment with no full stop. */
 export const isUnfinished = (text: string): boolean => {
   const t = text.trim();
   if (t.length === 0) return false;
-  if (/[,;:—-]$/.test(t)) return true;
+  if (/[,;:—-]$/.test(t) || LEAD_ONLY.test(t)) return true;
   const bare = t.replace(/[.!?…"')\]]+$/, "");
   if (OPEN_END.test(bare) && !/[.!?]$/.test(t)) return true;
   return !/[.!?…]$/.test(t) && words(t) <= 6;

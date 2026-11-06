@@ -18,9 +18,23 @@ describe("end of turn", () => {
       "and",
       "so,",
       "I think that",
+      "Look. What?",
+      "Well.",
+      "So, what",
     ])
       expect(isUnfinished(t)).toBe(true);
-    for (const t of ["What time is it?", "Where is Peru?", "Textbox on screen."])
+    for (const t of [
+      "What time is it?",
+      "Where is Peru?",
+      "Textbox on screen.",
+      "Look at the screen.",
+      "So what needs me today?",
+      "Okay.",
+      "Right.",
+      "Okay, yes.",
+      "Right, send.",
+      "Okay thanks.",
+    ])
       expect(isUnfinished(t)).toBe(false);
   });
 
