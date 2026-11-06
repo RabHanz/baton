@@ -82,4 +82,33 @@ describe("the Now area", () => {
     });
     expect(nowAction("now.int:j1")).toEqual({ kind: "continue", id: "j1" });
   });
+
+  it("shows each standing job's last run with its status, and offers to ask why only for a failed one", () => {
+    const rows = nowControls(
+      {
+        ...EMPTY_NOW,
+        loaded: true,
+        runs: [
+          {
+            title: "Every night, learn",
+            at: 0,
+            status: "timeout",
+            text: "Failed: Timed out after 10 min.",
+          },
+          {
+            title: "Every morning, build my brief",
+            at: 0,
+            status: "ok",
+            text: "Built the morning brief.",
+          },
+        ],
+      },
+      0,
+    );
+    const failed = rows.find((r) => r.id === "now.why:0");
+    expect(failed?.kind === "action" && failed.button).toBe("Ask why");
+    expect(failed?.hint).toContain("Timed out");
+    expect(rows.find((r) => r.id === "now.run:1")?.kind).toBe("check");
+    expect(nowAction("now.why:0")).toEqual({ kind: "why", index: 0 });
+  });
 });

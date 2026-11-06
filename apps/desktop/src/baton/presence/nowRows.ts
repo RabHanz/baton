@@ -23,6 +23,13 @@ export interface NowData {
   readonly muted: ReadonlyArray<{ readonly topic: string; readonly title: string }>;
   readonly weaves: ReadonlyArray<WeaveRecord>;
   readonly capabilities: ReadonlyArray<Capability>;
+  /** Each standing job's latest run, newest first. */
+  readonly runs?: ReadonlyArray<{
+    readonly title: string;
+    readonly at: number;
+    readonly status: "ok" | "error" | "timeout" | "cancelled";
+    readonly text: string;
+  }>;
 }
 
 export const EMPTY_NOW: NowData = {
@@ -54,6 +61,13 @@ const LEARNED = "Learned today";
 const HELD = "Held back, and why";
 const WEAVE = "Between sessions";
 const WORKS = "What works right now";
+const RUNS = "Standing jobs, last runs";
+const STATUS_WORDS = {
+  ok: "OK",
+  error: "Error",
+  timeout: "Timed out",
+  cancelled: "Cancelled",
+} as const;
 
 const note = (id: string, section: string, label: string, detail: string): HomeControl => ({
   id,
@@ -189,6 +203,27 @@ export const nowControls = (data: NowData, now: number): ReadonlyArray<HomeContr
           })),
         ]),
     ...data.declined.map((d, i) => note(`now.held:${i}`, HELD, d.title, WHY[d.why] ?? d.why)),
+    ...(data.runs ?? []).map((r, i): HomeControl => {
+      const when = new Date(r.at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+      const line = `${STATUS_WORDS[r.status]}, ${when}. ${r.text}`;
+      return r.status === "error" || r.status === "timeout"
+        ? {
+            id: `now.why:${i}`,
+            section: RUNS,
+            label: r.title,
+            hint: line,
+            kind: "action",
+            button: "Ask why",
+          }
+        : {
+            id: `now.run:${i}`,
+            section: RUNS,
+            label: r.title,
+            kind: "check",
+            status: "ok",
+            detail: line,
+          };
+    }),
     ...data.muted.map((m): HomeControl => ({
       id: `now.allow:${m.topic}`,
       section: HELD,
@@ -205,6 +240,8 @@ export const nowAction = (id: string) => {
   if (c !== null) return { kind: "commitment", id: c[1]!, drop: c[2] !== undefined } as const;
   const i = /^now\.int:(.+)$/.exec(id);
   if (i !== null) return { kind: "continue", id: i[1]! } as const;
+  const w = /^now\.why:(\d+)$/.exec(id);
+  if (w !== null) return { kind: "why", index: Number(w[1]) } as const;
   const a = /^now\.allow:(.+)$/.exec(id);
   return a === null ? null : ({ kind: "allow", topic: a[1]! } as const);
 };

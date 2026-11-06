@@ -471,6 +471,8 @@ export interface ScreenCompanion {
   /** A turn or dictation began from this wake word: its persona answers from here, in its own voice. */
   readonly addressed: (wake: string | null) => void;
   readonly openAskBox: () => void;
+  /** A question about something that is not his words (a run's log): an ordinary turn, the text marked as not his. */
+  readonly askAbout: (text: string) => void;
   /** The phone's words, run as a typed ask; the short reply and the card text come back instead of only being shown. */
   readonly askFromPhone: (
     text: string,
@@ -3118,6 +3120,7 @@ export const startScreenCompanion = (input: {
       }
     },
     openAskBox,
+    askAbout: (text) => void typed(text, true).catch(fail),
     askFromPhone,
     setPhoneMirror: (mirror) => {
       phoneMirror = mirror;

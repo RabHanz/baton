@@ -227,8 +227,10 @@ import { helpControls } from "../help/helpRows.ts";
 import {
   BUILT_INS,
   createStandingStore,
+  latestRuns,
   missedRunOf,
   runStandingJobs,
+  statusOf,
   type BuiltInId,
   type StandingJobDef,
 } from "../presence/standingJobs.ts";
@@ -4197,6 +4199,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     nowData = {
       loaded: true,
       brief: standingStore.load().brief?.text ?? null,
+      runs: latestRuns(standingStore.load()).map((r) => ({
+        title: BUILT_INS.find((j) => j.id === r.id)?.title ?? r.id,
+        at: r.at,
+        status: statusOf(r),
+        text: r.text,
+      })),
       interrupted: interruptedNow,
       needs: ranked,
       unreadable,
@@ -4379,6 +4387,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           on: standingStore.load().on[j.id] === true,
           count: standingStore.load().counts[j.id] ?? 0,
           ...(j.trigger.kind === "time" ? { missed: missedRunOf(standingStore.load(), j.id) } : {}),
+          ...(j.trigger.kind === "event"
+            ? { quiet: standingStore.load().quiet?.[j.id] === true }
+            : {}),
         })),
         // A rule and a schedule hand work out, which only the lead does: they are the lead's.
         ...rulesCache.map(({ rule }) => ({
@@ -5560,6 +5571,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       } else if (act?.kind === "missed") {
         const job = BUILT_INS.find((j) => j.id === act.id);
         if (job?.trigger.kind === "time") standingStore.setMissed(job.id, act.missed);
+      } else if (act?.kind === "quiet") {
+        const job = BUILT_INS.find((j) => j.id === act.id);
+        if (job?.trigger.kind === "event") standingStore.setQuiet(job.id, act.on);
       } else if (act?.kind === "rule") {
         void input
           .direct?.(`fabric.orchestration.rule.${act.on ? "enable" : "disable"}`, { id: act.id })
@@ -5604,7 +5618,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           // Already closed elsewhere; the refresh shows the truth.
         }
       } else if (act?.kind === "allow") initiative.allow(act.topic);
-      else if (act?.kind === "continue") {
+      else if (act?.kind === "why") {
+        const run = latestRuns(standingStore.load())[act.index];
+        const job = BUILT_INS.find((j) => j.id === run?.id);
+        if (run !== undefined && job !== undefined)
+          input.extras?.askAbout(
+            `Read only: change nothing and start nothing. My standing job "${job.title}" ended ${statusOf(run)} at ${new Date(run.at).toLocaleString()}. Its log: "${run.text}". Why did it fail, and what would fix it?`,
+          );
+      } else if (act?.kind === "continue") {
         interruptedNow = interruptedNow.filter((m) => m.id !== act.id);
         recovery.writeMarks(interruptedNow);
         void requestKept({

@@ -139,6 +139,8 @@ export interface StandingRow {
   readonly count: number;
   /** A timed built-in job: what happens when its hour passed while Tessaya was off. */
   readonly missed?: "once" | "skip";
+  /** A built-in event job: stays quiet unless what it would report changed. */
+  readonly quiet?: boolean;
 }
 
 const ranLine = (n: number) => `Ran ${n === 1 ? "once" : `${n} times`}.`;
@@ -336,6 +338,18 @@ export const trustControls = (data: TrustData, now: number): ReadonlyArray<HomeC
               ],
             },
           ]),
+      ...(j.quiet === undefined
+        ? []
+        : [
+            {
+              id: `trust.quiet:${j.id}`,
+              section: PLAYS,
+              label: "Quiet unless it changed",
+              hint: "When what it would report is the same as last time, it keeps the run and says nothing.",
+              kind: "toggle" as const,
+              on: j.quiet,
+            },
+          ]),
     ]),
   );
   rows.push({
@@ -383,7 +397,8 @@ export type TrustAction =
       readonly on: boolean;
     }
   | { readonly kind: "unschedule"; readonly jobId: string }
-  | { readonly kind: "missed"; readonly id: string; readonly missed: "once" | "skip" };
+  | { readonly kind: "missed"; readonly id: string; readonly missed: "once" | "skip" }
+  | { readonly kind: "quiet"; readonly id: string; readonly on: boolean };
 
 export const trustAction = (id: string, value: unknown): TrustAction | null => {
   if (id === "trust.filter") {
@@ -397,6 +412,8 @@ export const trustAction = (id: string, value: unknown): TrustAction | null => {
     return value === "once" || value === "skip"
       ? { kind: "missed", id: mr[1]!, missed: value }
       : null;
+  const qu = /^trust\.quiet:(.+)$/.exec(id);
+  if (qu !== null) return { kind: "quiet", id: qu[1]!, on: value === true };
   const un = /^trust\.schedule:(.+)$/.exec(id);
   if (un !== null) return { kind: "unschedule", jobId: un[1]! };
   const m = /^trust\.revoke:(screen|chrome|social|vault|act|remote)$/.exec(id);

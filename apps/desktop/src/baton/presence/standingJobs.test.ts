@@ -4,14 +4,16 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import type { BatonJob, WatchFinding } from "@t3tools/baton-contracts";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
   createStandingStore,
   EMPTY_STANDING,
+  latestRuns,
   migrateStanding,
   missedRunOf,
   runStandingJobs,
+  statusOf,
   type StandingInput,
   type StandingOps,
   type StandingState,
@@ -252,5 +254,43 @@ describe("standing jobs", () => {
     await runStandingJobs(input({ hour: 5 }), ops);
     await runStandingJobs(input({ quiet: true }), ops);
     expect(log.briefs).toBe(0);
+  });
+
+  it("records each run's status: ok, error, timed out, or cancelled when One Trust held it", async () => {
+    const { ops } = fakes();
+    const failing: StandingOps = {
+      ...ops,
+      learn: async () => Promise.reject(new Error("no model")),
+    };
+    const errored = await runStandingJobs(input({ hour: 3 }), failing);
+    expect(errored.did.find((d) => d.id === "nightly_learning")?.status).toBe("error");
+    const held = await runStandingJobs(input({ hour: 3, refusal: () => "asks first" }), ops);
+    expect(held.did.every((d) => d.status === "cancelled")).toBe(true);
+    vi.useFakeTimers();
+    const stuck: StandingOps = { ...ops, learn: () => new Promise(() => undefined) };
+    const pass = runStandingJobs(input({ hour: 3, runTimeoutMs: 60_000 }), stuck);
+    await vi.advanceTimersByTimeAsync(60_000);
+    const timed = await pass;
+    vi.useRealTimers();
+    const run = timed.did.find((d) => d.id === "nightly_learning")!;
+    expect(statusOf(run)).toBe("timeout");
+    expect(run.text).toContain("Timed out");
+    // Runs saved before statuses existed read from their outcome.
+    expect(statusOf({ id: "ci_look", key: "k", at: 0, outcome: "failed", text: "" })).toBe("error");
+    expect(latestRuns(timed.state)[0]?.id).toBe(timed.state.runs.at(-1)?.id);
+  });
+
+  it("keeps an event job quiet when what it would report has not changed since its last run", async () => {
+    const { log, ops } = fakes();
+    const quiet: StandingState = { ...allOn, quiet: { ci_look: true } };
+    const first = await runStandingJobs(input({ state: quiet, ci: [ci(1)] }), ops);
+    expect(log.looked).toHaveLength(1);
+    // The same failure again (a new run of the same workflow): kept, said nothing, started nothing.
+    const again = await runStandingJobs(
+      input({ state: first.state, ci: [{ ...ci(2), createdAt: "2026-11-03T08:30:00Z" }] }),
+      ops,
+    );
+    expect(log.looked).toHaveLength(1);
+    expect(again.did.at(-1)?.text).toMatch(/^Unchanged: /);
   });
 });
