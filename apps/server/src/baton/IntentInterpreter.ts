@@ -202,6 +202,7 @@ export const make = Effect.gen(function* () {
         model: INTENT_MODEL_SLUG,
         outputSchema: Schema.Struct({ route: Schema.String, text: Schema.String }),
       });
+      // @effect-diagnostics-next-line globalJsonInEffect:off - a decoded reply, always serialisable.
       return JSON.stringify(reply);
     });
 

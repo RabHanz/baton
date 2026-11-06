@@ -15,6 +15,7 @@
  * the usage probe's own cache-backed call. Upgrade to the `limited` transition
  * when provider runtime events carry the limit.
  */
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import { ProviderDriverKind } from "@t3tools/baton-contracts";
 import {
   activeAccount,
@@ -66,7 +67,8 @@ export const rotationTick = (input: {
   });
 
 export const make = Effect.gen(function* () {
-  const policy: BatonOnLimitPolicy = process.env[BATON_ON_LIMIT_ENV] === "auto" ? "auto" : "ask";
+  const policy: BatonOnLimitPolicy =
+    (yield* HostProcess.Environment)[BATON_ON_LIMIT_ENV] === "auto" ? "auto" : "ask";
   if (policy !== "auto") return;
   const pool = yield* AccountPoolService;
   let lastAutoRotationAt: string | null = null;

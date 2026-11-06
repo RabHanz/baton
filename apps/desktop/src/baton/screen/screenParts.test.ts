@@ -2,6 +2,7 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
+import { emptyContextBus } from "@t3tools/baton-shared/contextBus";
 import type { VoiceRouter } from "@t3tools/baton-voice";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -177,7 +178,7 @@ describe("withBrainRoutes", () => {
       return { kind: "ran", reply: "from baton", workSessionId: null, source: "intent" };
     },
   };
-  const bus = {} as never;
+  const bus = emptyContextBus;
   const router = withBrainRoutes(inner, {
     said: async (text, { direct }) =>
       text === "capital of Peru"

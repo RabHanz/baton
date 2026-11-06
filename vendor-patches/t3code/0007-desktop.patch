@@ -4,10 +4,10 @@ One call in DesktopApp after the IPC handlers, one call at the end of preload.ts
 apps/desktop/src/baton/. Baton's bridge is window.batonDesktopBridge, beside upstream's.
 
 diff --git a/apps/desktop/src/app/DesktopApp.ts b/apps/desktop/src/app/DesktopApp.ts
-index 3442a54d60c4ac7d36fed3b8aa19fa29e3d6a82c..05f828fa3e80cf4ba01a42ce6ca2c6148b9fc527 100644
+index 151c227e47ff430171212f52044c5f1842f7ae20..9a240112f9e044285881c3c886e879e46d5ec1dc 100644
 --- a/apps/desktop/src/app/DesktopApp.ts
 +++ b/apps/desktop/src/app/DesktopApp.ts
-@@ -37,6 +37,7 @@ import * as DesktopSnapShot from "../snapShot/DesktopSnapShot.ts";
+@@ -38,6 +38,7 @@ import * as DesktopSnapShot from "../snapShot/DesktopSnapShot.ts";
  import * as DesktopWslBackend from "../wsl/DesktopWslBackend.ts";
  import * as DesktopRendererHistory from "../telemetry/DesktopRendererHistory.ts";
  import * as HostProcess from "@t3tools/shared/HostProcess";
@@ -15,11 +15,14 @@ index 3442a54d60c4ac7d36fed3b8aa19fa29e3d6a82c..05f828fa3e80cf4ba01a42ce6ca2c614
  
  const DEFAULT_DESKTOP_BACKEND_PORT = 3773;
  const MAX_TCP_PORT = 65_535;
-@@ -179,6 +180,7 @@ const bootstrap = Effect.gen(function* () {
+@@ -185,6 +186,10 @@ const bootstrap = Effect.gen(function* () {
      clerkFrontendApiHostname: DesktopClerk.desktopClerkFrontendApiHostname,
    });
    yield* installDesktopIpcHandlers();
-+  yield* startBatonDesktop; // Baton (vendor-patches/t3code/0007-desktop.patch)
++  // Baton (vendor-patches/t3code/0007-desktop.patch): a Baton failure never stops T3 starting.
++  yield* startBatonDesktop.pipe(
++    Effect.catchCause((cause) => Effect.logError("Baton desktop did not start", cause)),
++  );
    yield* logBootstrapInfo("bootstrap ipc handlers registered");
    // Before any window: the preload merges these items before the app reads storage.
    yield* (yield* DesktopLegacyLocalStorage.DesktopLegacyLocalStorage).load(
@@ -170,7 +173,7 @@ index 53e18aaf8c29bb3666e185c5163d2309f97af9fa..fe8cb7021567586b2040ff292bde0cca
    };
  }
 diff --git a/apps/desktop/src/preload.ts b/apps/desktop/src/preload.ts
-index da56807186ac59aaf080e447fe3d763b3601c506..5870f3122dbd7cbf2f4e063d7658e91c7da88eac 100644
+index 72245779b9c7e9fd77cad3e82233a991c4a6ac36..445a34c912ddc7641662f54c1e1a7fa072725f05 100644
 --- a/apps/desktop/src/preload.ts
 +++ b/apps/desktop/src/preload.ts
 @@ -11,6 +11,7 @@ import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
@@ -181,7 +184,7 @@ index da56807186ac59aaf080e447fe3d763b3601c506..5870f3122dbd7cbf2f4e063d7658e91c
  
  const SNAP_SHOT_EVENT_TYPES = new Set([
    "requested",
-@@ -435,3 +436,5 @@ contextBridge.exposeInMainWorld("desktopBridge", {
+@@ -437,3 +438,5 @@ contextBridge.exposeInMainWorld("desktopBridge", {
      },
    },
  } satisfies DesktopBridge);
@@ -200,10 +203,10 @@ index 4f8949823e354618ba1eaf12694de9561cac99f7..36551babb71f446e6a7a07d03d999c7d
      fromPartition: vi.fn(() => ({
        getUserAgent: vi.fn(() => "Mozilla/5.0 Electron/41.5.0 t3code/1.2.3"),
 diff --git a/apps/desktop/src/window/DesktopWindow.ts b/apps/desktop/src/window/DesktopWindow.ts
-index 5e02f4cfd8bbec32909c57bb4696ed223d361b94..62269c64a4cbcd8f36bfdb080d35351e1a308916 100644
+index b2f643e55fb979561c2e67c547744518a61a32e7..51737df05a24815313dd3c77e09cacd292523a30 100644
 --- a/apps/desktop/src/window/DesktopWindow.ts
 +++ b/apps/desktop/src/window/DesktopWindow.ts
-@@ -12,6 +12,7 @@ import * as Electron from "electron";
+@@ -13,6 +13,7 @@ import * as Electron from "electron";
  import { type DesktopSnapShotEvent, DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts";
  
  import * as DesktopAssets from "../app/DesktopAssets.ts";
@@ -211,7 +214,7 @@ index 5e02f4cfd8bbec32909c57bb4696ed223d361b94..62269c64a4cbcd8f36bfdb080d35351e
  import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
  import { makeComponentLogger } from "../app/DesktopObservability.ts";
  import * as DesktopState from "../app/DesktopState.ts";
-@@ -387,6 +388,17 @@ export const make = Effect.gen(function* () {
+@@ -397,6 +398,17 @@ export const make = Effect.gen(function* () {
        yield* logWindowWarning("saved main window bounds could not be restored; using defaults");
      }
      if (yield* Ref.get(desktopState.quitting)) return Option.none();
@@ -229,7 +232,7 @@ index 5e02f4cfd8bbec32909c57bb4696ed223d361b94..62269c64a4cbcd8f36bfdb080d35351e
      const window = yield* electronWindow.create({
        ...initialBounds,
        minWidth: 840,
-@@ -398,17 +410,7 @@ export const make = Effect.gen(function* () {
+@@ -408,17 +420,7 @@ export const make = Effect.gen(function* () {
        ...iconOption,
        title: environment.displayName,
        ...getWindowTitleBarOptions(shouldUseDarkColors, environment.platform),
@@ -248,7 +251,7 @@ index 5e02f4cfd8bbec32909c57bb4696ed223d361b94..62269c64a4cbcd8f36bfdb080d35351e
      });
      if (yield* Ref.get(desktopState.quitting)) {
        yield* electronWindow.destroyAll;
-@@ -512,26 +514,6 @@ export const make = Effect.gen(function* () {
+@@ -522,26 +524,6 @@ export const make = Effect.gen(function* () {
        yield* electronWindow.destroyAll;
        return Option.none();
      }
@@ -275,7 +278,7 @@ index 5e02f4cfd8bbec32909c57bb4696ed223d361b94..62269c64a4cbcd8f36bfdb080d35351e
  
      const contextMenuContents = new WeakSet<Electron.WebContents>();
      const installContextMenu = (
-@@ -608,33 +590,65 @@ export const make = Effect.gen(function* () {
+@@ -619,33 +601,65 @@ export const make = Effect.gen(function* () {
          installContextMenu(popup, popup.webContents);
        });
      };

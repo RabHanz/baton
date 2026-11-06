@@ -1,5 +1,6 @@
 // @effect-diagnostics globalDate:off nodeBuiltinImport:off tryCatchInEffectGen:off preferSchemaOverJson:off globalDateInEffect:off
 /** The session catalog as a service, so the RPC door, agents and MCP all reach the same methods. */
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import type {
   BatonCatalogSession,
   BatonCatalogState,
@@ -166,7 +167,8 @@ export const layer = Layer.effect(
       ProviderInstanceRegistryModule.ProviderInstanceRegistry,
     );
     // No Herdr here (Windows): a missing piece must say so, not fall through to a Herdr program that is not there.
-    const noHerdr = NodePath.sep === "\\" || process.env["BATON_NO_HERDR"] === "1";
+    const noHerdr =
+      NodePath.sep === "\\" || (yield* HostProcess.Environment)["BATON_NO_HERDR"] === "1";
     const OWN_FOLDER =
       "That folder belongs to Tessaya's own data, not to a project, so no session is started there.";
     const MISSING =
@@ -361,6 +363,7 @@ export const layer = Layer.effect(
     try {
       autoState = {
         ...emptyAutoResumeState,
+        // @effect-diagnostics-next-line globalJsonInEffect:off - its own state file; the caller treats a bad one as empty.
         ...(JSON.parse(NodeFS.readFileSync(stateFile, "utf8")) as Partial<AutoResumeState>),
       };
     } catch {

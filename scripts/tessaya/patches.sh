@@ -157,7 +157,7 @@ cmd_rebase() {
 
   echo "==> Upstream paths to $(git rev-parse --short "$new")"
   git checkout -q "$new" -- .
-  git diff --no-renames --name-only --diff-filter=D "$pin" "$new" | xargs -r git rm -q --ignore-unmatch --
+  git diff --no-renames --name-only --diff-filter=D "$pin" "$new" | xargs -r -d '\n' git rm -q --ignore-unmatch --
 
   echo "==> Re-applying the series"
   local p failed=()

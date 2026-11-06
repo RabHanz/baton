@@ -5,6 +5,7 @@
  * computer's own login, and keeps the waiting requests in a small file beside the server's state.
  * The rules live in `@t3tools/baton-shared/cloud`; this is only the door.
  */
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as NodePath from "node:path";
 
 import {
@@ -50,7 +51,7 @@ export const layer = Layer.effect(
     const providers = buildLocalProviders(
       nodeExec,
       fileStores(NodePath.join(NodePath.dirname(config.dbPath), "cloud")),
-      settingsFromEnv(process.env["BATON_CLOUD_CONFIG"]),
+      settingsFromEnv((yield* HostProcess.Environment)["BATON_CLOUD_CONFIG"]),
     );
     const record = yield* Effect.serviceOption(BatonRecordService);
     return BatonCloudService.of({

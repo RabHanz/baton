@@ -4,10 +4,10 @@ The route view renders panes/BatonPanes around its ChatView; unfocused panes sta
 focus and shortcuts through BackgroundThreadContext. The rest is in components/panes.
 
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index 6fd54db6bd52a8cd2fb03f928de72235be3c4db7..5ad02efeca7a023399af9ad218d5892ba8063255 100644
+index 4408bee38ad018d0099064161b6c7c3cfa5d0a19..e340e4f63a4fb094ed9f7dcb2278da4f62de45f8 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
-@@ -1801,7 +1801,7 @@ export default function ChatView(props: ChatViewProps) {
+@@ -1802,7 +1802,7 @@ export default function ChatView(props: ChatViewProps) {
    });
  
    const focusComposer = () => {
@@ -16,7 +16,7 @@ index 6fd54db6bd52a8cd2fb03f928de72235be3c4db7..5ad02efeca7a023399af9ad218d5892b
    };
    const focusComposerStable = useStableCallback(focusComposer);
    const canInterruptRunningThread =
-@@ -2654,8 +2654,9 @@ export default function ChatView(props: ChatViewProps) {
+@@ -2668,8 +2668,9 @@ export default function ChatView(props: ChatViewProps) {
    // composer effect above.
    // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- focuses the open drawer terminal when entering a thread
    useEffect(() => {
@@ -28,7 +28,7 @@ index 6fd54db6bd52a8cd2fb03f928de72235be3c4db7..5ad02efeca7a023399af9ad218d5892b
  
    const getShortcutContext = (eventTarget: EventTarget | null = document.activeElement) => ({
      terminalFocus: getTerminalFocusOwner() !== null,
-@@ -2745,12 +2746,13 @@ export default function ChatView(props: ChatViewProps) {
+@@ -2759,12 +2760,13 @@ export default function ChatView(props: ChatViewProps) {
    useEffect(() => {
      if (embedded) return;
      return window.desktopBridge?.onMenuAction((action) => {
@@ -44,7 +44,7 @@ index 6fd54db6bd52a8cd2fb03f928de72235be3c4db7..5ad02efeca7a023399af9ad218d5892b
    // A delegated task is a remote thread's subagent.
    const isSubagentThread =
      activeThread?.lineage.relationshipToParent === "subagent" || delegatedFrom !== null;
-@@ -3290,7 +3292,7 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3305,7 +3307,7 @@ export default function ChatView(props: ChatViewProps) {
            state={deviceState}
          />
        )}
@@ -53,7 +53,7 @@ index 6fd54db6bd52a8cd2fb03f928de72235be3c4db7..5ad02efeca7a023399af9ad218d5892b
        <div
          className={cn(
            "flex min-h-0 min-w-0 flex-col overflow-x-hidden",
-@@ -3323,7 +3325,9 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3338,7 +3340,9 @@ export default function ChatView(props: ChatViewProps) {
                  className="pointer-events-none fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] h-[var(--workspace-topbar-height)] w-28 [-webkit-app-region:no-drag]"
                />
              ) : null}
@@ -65,11 +65,11 @@ index 6fd54db6bd52a8cd2fb03f928de72235be3c4db7..5ad02efeca7a023399af9ad218d5892b
              <ChatHeader
                activeThreadEnvironmentId={activeThread.environmentId}
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index deede26763fdd685b0dc17b598ef5e9387459a5a..c0ec1ca29d0ec016f7bb5fd25a3d23dba3203850 100644
+index 1ed3065a92c0d09b07ca67d9399df73d366f3358..148f26d25ce20b9debf0d4c6a1ce0fd571ca57d1 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
-@@ -2,6 +2,14 @@ import { liveShellEnvironmentIdsAtom } from "../state/shell";
- import { attachSidebarTree, SIDEBAR_TREE_PROPS } from "../lib/sidebarTree";
+@@ -1,6 +1,14 @@
+ import { attachSidebarTree } from "../lib/sidebarTree";
  import { type EnvironmentId, type ScopedProjectRef } from "@t3tools/contracts";
  import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection";
 +import { BatonSidebarSection } from "./sidebar/BatonSidebarSection";
@@ -83,7 +83,7 @@ index deede26763fdd685b0dc17b598ef5e9387459a5a..c0ec1ca29d0ec016f7bb5fd25a3d23db
  import { ThreadContextDragGhost } from "./chat/ThreadContextDragGhost";
  import {
    dropThreadContext,
-@@ -1574,6 +1582,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1554,6 +1562,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      const isMac = isMacPlatform(navigator.platform);
      const isModClick = isMac ? event.metaKey : event.ctrlKey;
      const threadKey = scopedThreadKey(threadRef);
@@ -95,7 +95,7 @@ index deede26763fdd685b0dc17b598ef5e9387459a5a..c0ec1ca29d0ec016f7bb5fd25a3d23db
      if (isModClick) {
        event.preventDefault();
        toggleThreadSelection(threadKey);
-@@ -2619,7 +2632,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2599,7 +2612,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
              ),
            ) ?? null;
          const clicked = await settlePromise(() =>
@@ -108,7 +108,7 @@ index deede26763fdd685b0dc17b598ef5e9387459a5a..c0ec1ca29d0ec016f7bb5fd25a3d23db
              buildThreadActionMenuItems({
                canOperate: readEnvironmentScope(
                  threadRef.environmentId,
-@@ -2658,6 +2675,16 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2638,6 +2655,16 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
            ),
          );
          if (clicked._tag === "Failure" || clicked.value === null) return;
@@ -125,7 +125,7 @@ index deede26763fdd685b0dc17b598ef5e9387459a5a..c0ec1ca29d0ec016f7bb5fd25a3d23db
          if (threadActionRequiresOperate(clicked.value) && !checkThreadOperations([thread])) return;
          if (clicked.value?.startsWith("snooze:")) {
            const preset =
-@@ -3204,6 +3231,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3201,6 +3228,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
            </SidebarGroup>
          }
        >

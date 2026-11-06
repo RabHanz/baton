@@ -291,12 +291,31 @@ function workEntryIndicatesToolFailureFromOutput(
   return output.length > 0 && toolOutputIndicatesFailure(output);
 }
 
+// Rows are re-derived on every timeline update but entries are reused while
+// their item is unchanged, so these per-entry checks are computed once.
+const entryChecks = new WeakMap<
+  WorkLogPresentationEntry,
+  { failure?: boolean; displayFailure?: boolean; action?: ToolGroupAction }
+>();
+
+function checksFor(entry: WorkLogPresentationEntry) {
+  let checks = entryChecks.get(entry);
+  if (!checks) {
+    checks = {};
+    entryChecks.set(entry, checks);
+  }
+  return checks;
+}
+
 export function workEntryIndicatesToolFailure(entry: WorkLogPresentationEntry): boolean {
-  return workEntryIndicatesToolFailureFromOutput(entry, true);
+  return (checksFor(entry).failure ??= workEntryIndicatesToolFailureFromOutput(entry, true));
 }
 
 export function workEntryDisplayIndicatesToolFailure(entry: WorkLogPresentationEntry): boolean {
-  return workEntryIndicatesToolFailureFromOutput(entry, false);
+  return (checksFor(entry).displayFailure ??= workEntryIndicatesToolFailureFromOutput(
+    entry,
+    false,
+  ));
 }
 
 function workLogEntryIsLocalCodeSearch(entry: WorkLogPresentationEntry): boolean {
@@ -308,6 +327,10 @@ function workLogEntryIsLocalCodeSearch(entry: WorkLogPresentationEntry): boolean
 }
 
 export function toolGroupAction(entry: WorkLogPresentationEntry): ToolGroupAction {
+  return (checksFor(entry).action ??= computeToolGroupAction(entry));
+}
+
+function computeToolGroupAction(entry: WorkLogPresentationEntry): ToolGroupAction {
   if (entry.itemType === "thread_created") return "thread-create";
   const presentation = resolveWorkEntryToolPresentation(entry);
   if (presentation?.action !== undefined) return presentation.action;
@@ -632,9 +655,7 @@ export function toolGroupSummaryKind(
 
 /** `full` keeps the whole thought (the live one stays open); otherwise only its title or first sentence. */
 export function liveThoughtLine(markdown: string, full = false): string {
-  const heading = full
-    ? undefined
-    : /^\s*\*\*([^*\r\n]+)\*\*[ \t]*\r?(?:\n|$)/.exec(markdown)?.[1];
+  const heading = full ? undefined : /^\s*\*\*([^*\r\n]+)\*\*[ \t]*\r?(?:\n|$)/.exec(markdown)?.[1];
   const text = (heading ?? markdown)
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/^[ \t]*(?:#{1,6}|[-*+]|\d+\.)[ \t]+/gm, "")

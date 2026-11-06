@@ -11,6 +11,7 @@ describe("first-run guide", () => {
       "key",
       "try",
       "pill",
+      "cloud",
       "privacy",
     ]);
   });

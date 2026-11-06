@@ -85,6 +85,7 @@ export const retireHandoff = Effect.fn("RetireHandoff.retire")(function* (
   const alreadyArchived = twin.archived === true;
   // The undo list names only what this call changed.
   const undoFile = ports.writeUndo(
+    // @effect-diagnostics-next-line globalJsonInEffect:off - plain data written to the undo file.
     JSON.stringify({
       archived: alreadyArchived ? [] : [input.twinThreadId],
       mainThread: input.threadId,
