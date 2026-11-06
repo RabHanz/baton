@@ -26,7 +26,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::sync::Arc;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use enigo::Enigo;
 #[cfg(not(target_os = "linux"))]
@@ -94,6 +94,9 @@ struct Config {
     /// Two quick taps of the hold key keep the microphone open until the next press.
     #[serde(default)]
     latch: bool,
+    /// He chose cloud recognition: a recording is kept as a WAV and handed back, not run through the local model.
+    #[serde(default)]
+    external: bool,
 }
 
 enum Msg {
@@ -113,6 +116,8 @@ struct Done {
     /// From key release to text; None for a clip that was never live.
     release_ms: Option<u64>,
     pieces: u64,
+    /// The recording as a WAV for the desktop to recognise (cloud); the text is then empty.
+    wav: Option<String>,
 }
 
 struct Job {
@@ -225,7 +230,7 @@ enum Work {
     Clip(Job),
     /// Load the model now, so the first real phrase does not wait behind it.
     Load { id: Option<u64>, model: PathBuf },
-    Begin { model: PathBuf, language: Option<String> },
+    Begin { model: PathBuf, language: Option<String>, external: bool },
     Audio(Vec<f32>),
     End { target: Option<isize>, released: Instant },
     Abort,
@@ -300,11 +305,14 @@ struct Live {
     infer_ms: u64,
     pieces: u64,
     failed: Option<String>,
+    /// Kept whole for the desktop's recogniser; nothing is decoded here.
+    external: bool,
 }
 
 impl Live {
     fn new(language: Option<String>, load_ms: u64, failed: Option<String>) -> Self {
         Self {
+            external: false,
             chunker: Chunker::new(ChunkParams::from_env()),
             heard: Vec::new(),
             language,
@@ -329,6 +337,18 @@ impl Live {
 
     fn finish(mut self, session: Option<&mut Session>, released: Instant) -> Result<Done, String> {
         let audio_ms = self.heard.len() as u64 / 16;
+        if self.external {
+            let wav = write_wav(&self.heard)?;
+            return Ok(Done {
+                text: String::new(),
+                audio_ms,
+                infer_ms: 0,
+                load_ms: 0,
+                release_ms: Some(released.elapsed().as_millis() as u64),
+                pieces: 0,
+                wav: Some(wav),
+            });
+        }
         let session = session.ok_or_else(|| self.failed.clone().unwrap_or_else(|| "no model".to_string()))?;
         if self.failed.is_none() {
             if let Some(piece) = self.chunker.finish() {
@@ -347,8 +367,27 @@ impl Live {
             load_ms: self.load_ms,
             release_ms: Some(released.elapsed().as_millis() as u64),
             pieces: self.pieces,
+            wav: None,
         })
     }
+}
+
+/// A recording as 16 kHz mono 16-bit WAV in the temp folder; the desktop deletes it once it has the words.
+fn write_wav(pcm: &[f32]) -> Result<String, String> {
+    let path = std::env::temp_dir().join(format!(
+        "tessaya-dictation-{}-{}.wav",
+        std::process::id(),
+        SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_nanos())
+    ));
+    let spec = hound::WavSpec { channels: 1, sample_rate: 16_000, bits_per_sample: 16, sample_format: hound::SampleFormat::Int };
+    let mut writer = hound::WavWriter::create(&path, spec).map_err(|e| format!("{}: {e}", path.display()))?;
+    for &sample in pcm {
+        writer
+            .write_sample((sample.clamp(-1.0, 1.0) * 32767.0) as i16)
+            .map_err(|e| format!("{}: {e}", path.display()))?;
+    }
+    writer.finalize().map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(path.to_string_lossy().into_owned())
 }
 
 fn ensure_loaded(loaded: &mut Option<(PathBuf, Session)>, model: &Path) -> Result<u64, String> {
@@ -404,6 +443,7 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>) {
                         load_ms,
                         release_ms: None,
                         pieces: 1,
+                        wav: None,
                     })
                 });
                 let _ = out.send(Msg::Finished { id: job.id, dictated: job.dictated, target: job.target, result });
@@ -415,7 +455,10 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>) {
                 };
                 emit(line);
             }
-            Ok(Work::Begin { model, language }) => {
+            Ok(Work::Begin { external: true, language, .. }) => {
+                live = Some(Live { external: true, ..Live::new(language, 0, None) });
+            }
+            Ok(Work::Begin { model, language, external: false }) => {
                 live = Some(match ensure_loaded(&mut loaded, &model) {
                     Ok(load_ms) => Live::new(language, load_ms, None),
                     Err(e) => {
@@ -427,7 +470,7 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>) {
             Ok(Work::Audio(pcm)) => {
                 let Some(current) = live.as_mut() else { continue };
                 current.heard.extend_from_slice(&pcm);
-                if current.failed.is_none() {
+                if current.failed.is_none() && !current.external {
                     if let (Some(piece), Some((_, session))) = (current.chunker.push(&pcm), loaded.as_mut()) {
                         current.decode(session, piece);
                     }
@@ -859,7 +902,7 @@ fn serve() {
             emit(json!({"ev": "error", "message": "no model configured"}));
             return;
         };
-        let _ = job_tx.send(Work::Begin { model, language: config.language.clone() });
+        let _ = job_tx.send(Work::Begin { model, language: config.language.clone(), external: config.external });
         let samples = Arc::new(AtomicUsize::new(0));
         let opened = match fake_mic() {
             Some(path) => {
@@ -1143,7 +1186,7 @@ fn serve() {
                         "ev": "text", "id": id, "text": done.text, "audioMs": done.audio_ms,
                         "inferMs": done.infer_ms, "loadMs": done.load_ms, "pasteError": pasted_error,
                         "dictated": dictated, "pasted": paste, "target": target,
-                        "releaseMs": done.release_ms, "pieces": done.pieces,
+                        "releaseMs": done.release_ms, "pieces": done.pieces, "wav": done.wav,
                     }));
                 }
                 Err(message) => emit(json!({"ev": "text", "id": id, "error": message, "dictated": dictated})),
@@ -1314,6 +1357,19 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_cloud_recording_comes_back_as_a_wav_with_no_text() {
+        let mut live = Live { external: true, ..Live::new(None, 0, None) };
+        live.heard = vec![0.0, 0.5, -0.5, 1.0];
+        let done = live.finish(None, Instant::now()).unwrap();
+        assert_eq!(done.text, "");
+        let wav = done.wav.unwrap();
+        let back = read_wav(Path::new(&wav)).unwrap();
+        std::fs::remove_file(&wav).unwrap();
+        assert_eq!(back.len(), 4);
+        assert!((back[1] - 0.5).abs() < 0.001 && (back[3] - 1.0).abs() < 0.001);
+    }
 
     #[test]
     fn threads_are_half_the_cores_but_never_more_than_the_cores() {

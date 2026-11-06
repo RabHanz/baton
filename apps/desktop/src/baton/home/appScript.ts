@@ -271,7 +271,7 @@ function memoryBar(c) {
 function listRow(c) {
   const w = $('div', 'rowwrap stack'); const t = $('div', 'row'); const x = $('div', 'text'); x.appendChild($('div', 'label', c.label)); if (c.hint) x.appendChild($('div', 'hint', c.hint)); t.appendChild(x); w.appendChild(t);
   for (const it of c.items) { const r = $('div', 'row'); r.appendChild($('div', 'label', it)); const b = $('button', 'btn quiet', 'Remove'); b.setAttribute('aria-label', 'Remove ' + it); b.onclick = () => set(c.id + ':rm', it); r.appendChild(b); w.appendChild(r); }
-  const add = $('div', 'row'); const inp = $('input', 'search'); inp.type = 'text'; inp.placeholder = c.placeholder; inp.setAttribute('aria-label', c.label);
+  const add = $('div', 'row'); const inp = $('input', 'search'); inp.type = c.secret ? 'password' : 'text'; inp.autocomplete = 'off'; inp.placeholder = c.placeholder; inp.setAttribute('aria-label', c.label);
   inp.id = 'in-' + c.id; inp.value = drafts.get(c.id) || ''; inp.oninput = () => drafts.set(c.id, inp.value);
   const ab = $('button', 'btn', c.addLabel || 'Add'); const go = () => { const v = inp.value.trim(); if (v) { drafts.delete(c.id); set(c.id + ':add', v); } };
   ab.onclick = go; inp.onkeydown = e => { if (e.key === 'Enter') go(); }; add.append(inp, ab); w.appendChild(add); return w;

@@ -413,6 +413,18 @@ import { loginItemOn, setLoginItem } from "./loginItem.ts";
 import { DICTATION_SETTLE_MS, dictationAtLaunch, holdFramesUntil, startWarmUp } from "./warmUp.ts";
 import { makeTestAudioInput, type TestAudioEvent } from "./testAudio.ts";
 import { startVoiceLoop, type VoiceLoop } from "./voiceLoop.ts";
+import {
+  CLOUD_STT_PROVIDERS,
+  PROVIDER_LABEL,
+  RECOMMENDED,
+  cloudTranscribe,
+  listCloudModels,
+  transcribeWithFallback,
+  type CloudModel,
+  type CloudSttProvider,
+} from "@t3tools/baton-shared/cloudStt";
+import { createCloudKeys } from "./cloudKeys.ts";
+import { CLOUD_TEST_CLIP_WEBM_BASE64 } from "./cloudTestClip.ts";
 import type { AudioInputDevice, AudioInputProvider, VoiceState } from "./voiceTypes.ts";
 
 // Windows types into whatever has focus; there is no narrower target to name.
@@ -532,6 +544,11 @@ interface VoiceSettings {
   readonly paste: PasteMethod;
   /** The languages he speaks; empty detects any. */
   readonly languages: ReadonlyArray<string>;
+  /** Who turns his speech into words: this computer (default), or a cloud provider on his own key. */
+  readonly recognition: "local" | "cloud";
+  readonly cloudProvider: CloudSttProvider;
+  /** The provider's model; null is its recommended one. */
+  readonly cloudModel: string | null;
   /** "claude" adds his own Claude for what code cannot settle; see dictationRewriter.ts. */
   readonly dictationCleanup: CleanupLevel;
   /** He picked it himself; a value this branch saved for him does not count (D114). */
@@ -607,6 +624,9 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   toggleKey: "Ctrl+Alt+Shift+Space",
   paste: "ctrl_v",
   languages: ["en"],
+  recognition: "local",
+  cloudProvider: "openai",
+  cloudModel: null,
   // Local until D31 is ruled on: "claude" sends flagged dictation to Anthropic (D105).
   dictationCleanup: "local",
   cleanupModel: "haiku",
@@ -670,6 +690,14 @@ export const readSettings = (path: string): VoiceSettings => {
       glass: parseGlass(saved["glass"]),
       hideFromCapture: saved["hideFromCapture"] === true,
       languages: languagesFromSaved(saved),
+      recognition: saved["recognition"] === "cloud" ? "cloud" : "local",
+      cloudProvider:
+        CLOUD_STT_PROVIDERS.find((p) => p === saved["cloudProvider"]) ??
+        DEFAULT_SETTINGS.cloudProvider,
+      cloudModel:
+        typeof saved["cloudModel"] === "string" && saved["cloudModel"] !== ""
+          ? saved["cloudModel"]
+          : null,
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -1431,7 +1459,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           pcm.set(p, at);
           at += p.length;
         }
-        const heard = (await makeSidecarStt(sidecar).transcribe(pcm)).trim();
+        const heard = (
+          await makeSidecarStt(sidecar, undefined, undefined, recognise).transcribe(pcm)
+        ).trim();
         if (heard === "") throw new Error("nothing recognised");
         let cleaned: string | null = null;
         let model: string | null = null;
@@ -2415,6 +2445,231 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       .find((row) => row.def.id === action)
       ?.inputs.flatMap((i) => (i.type === "key" ? [i.accelerator] : [])) ?? [];
   let bindingsNote: string | null = null;
+  /** The provider's own HTTPS API on his key; plain fetch, as the adapters are pure and take any fetch. */
+  // @effect-diagnostics-next-line globalFetch:off
+  const cloudFetch = (url: string, init: RequestInit) => fetch(url, init);
+  const cloudKeys = createCloudKeys(
+    NodePath.join(input.stateDir, "voice", "cloud-keys.json"),
+    // Linux's basic_text backend is a fixed key, not encryption: no key is kept there (as memory sync).
+    () =>
+      Electron.safeStorage.isEncryptionAvailable() &&
+      (input.platform !== "linux" ||
+        Electron.safeStorage.getSelectedStorageBackend() !== "basic_text")
+        ? {
+            protect: (plain) => Electron.safeStorage.encryptString(plain).toString("base64"),
+            unprotect: (wrapped) =>
+              Electron.safeStorage.decryptString(Buffer.from(wrapped, "base64")),
+          }
+        : null,
+  );
+  const cloudModelOf = (provider: CloudSttProvider) =>
+    (settings.cloudProvider === provider ? settings.cloudModel : null) ??
+    RECOMMENDED[provider].model;
+  /** His cloud recogniser, or null: audio leaves this computer only when he chose Cloud and a key is kept. */
+  const cloudChoice = () => {
+    if (settings.recognition !== "cloud") return null;
+    const key = cloudKeys.get(settings.cloudProvider);
+    return key === null
+      ? null
+      : { provider: settings.cloudProvider, model: cloudModelOf(settings.cloudProvider), key };
+  };
+  /** One clip: the cloud within its budget, else this computer, with one quiet note. Never loses the words. */
+  const recognise = async (
+    wav: Uint8Array,
+    audioMs: number,
+    local: () => Promise<string>,
+  ): Promise<string> => {
+    const cloud = cloudChoice();
+    if (cloud === null) return local();
+    const started = Date.now();
+    const { text, via } = await transcribeWithFallback({
+      cloud: (signal) =>
+        cloudTranscribe({
+          ...cloud,
+          wav,
+          language: recogniserHint(settings.languages),
+          fetch: cloudFetch,
+          signal,
+        }),
+      local,
+      audioMs,
+      onFallback: (why) => {
+        step("cloud-fallback", { provider: cloud.provider, why });
+        note = `${PROVIDER_LABEL[cloud.provider]} did not answer in time, so this computer heard that one.`;
+        render();
+      },
+    });
+    step("cloud-recognised", { provider: cloud.provider, via, audioMs, ms: Date.now() - started });
+    return text;
+  };
+  /** Each provider's models, fetched on his key when the Dictation settings are shown, at most every ten minutes. */
+  const cloudModels: Partial<
+    Record<
+      CloudSttProvider,
+      { readonly at: number; readonly models?: ReadonlyArray<CloudModel>; readonly error?: string }
+    >
+  > = {};
+  const loadingModels = new Set<CloudSttProvider>();
+  const loadCloudModels = (provider: CloudSttProvider, force = false) => {
+    const cached = cloudModels[provider];
+    if (
+      loadingModels.has(provider) ||
+      (!force && cached !== undefined && Date.now() - cached.at < 10 * 60_000)
+    )
+      return;
+    const key = cloudKeys.get(provider);
+    if (key === null) return;
+    loadingModels.add(provider);
+    void listCloudModels(provider, key, cloudFetch)
+      .then(
+        (models) => (cloudModels[provider] = { at: Date.now(), models }),
+        (error: unknown) =>
+          (cloudModels[provider] = {
+            at: Date.now(),
+            error: error instanceof Error ? error.message : String(error),
+          }),
+      )
+      .finally(() => {
+        loadingModels.delete(provider);
+        render();
+      });
+  };
+  let cloudTestResult: string | null = null;
+  let cloudTesting = false;
+  /** The Test button: the sample clip on his chosen provider and model, with what came back and how long it took. */
+  const testCloud = async () => {
+    const provider = settings.cloudProvider;
+    const key = cloudKeys.get(provider);
+    if (key === null || cloudTesting) return;
+    cloudTesting = true;
+    render();
+    const model = cloudModelOf(provider);
+    try {
+      const pcm = await encoder.decode(Buffer.from(CLOUD_TEST_CLIP_WEBM_BASE64, "base64"));
+      const started = Date.now();
+      const heard = await cloudTranscribe({
+        provider,
+        key,
+        model,
+        wav: encodeWav(pcm),
+        language: recogniserHint(settings.languages),
+        fetch: cloudFetch,
+        signal: AbortSignal.timeout(30_000),
+      });
+      cloudTestResult = `${model} answered in ${((Date.now() - started) / 1000).toFixed(1)} s: "${heard.slice(0, 120)}"`;
+    } catch (error) {
+      cloudTestResult = `${model} failed: ${error instanceof Error ? error.message : String(error)}`;
+    } finally {
+      cloudTesting = false;
+      render();
+    }
+  };
+  /** Recognition on this computer or in the cloud, and, for Cloud, the provider, his key, the model and a test. */
+  const cloudRows = (): ReadonlyArray<HomeControl> => {
+    const provider = settings.cloudProvider;
+    const label = PROVIDER_LABEL[provider];
+    const hasKey = cloudKeys.has(provider);
+    const recognition: HomeControl = {
+      id: "v.recognition",
+      section: "Dictation",
+      label: "Recognition",
+      hint:
+        settings.recognition === "cloud"
+          ? `Your dictation and what you say to Tessaya are sent to ${label} on your own key. If it does not answer in a few seconds, this computer hears it instead. Wake word checks always stay on this computer.`
+          : "Nothing you say leaves this computer.",
+      kind: "choice",
+      value: settings.recognition,
+      options: [
+        { value: "local", label: "On this computer (default)" },
+        {
+          value: "cloud",
+          label: "Cloud",
+          note: "Your audio goes to the provider you pick, on your own key.",
+        },
+      ],
+      disabled: binary === null,
+    };
+    if (settings.recognition !== "cloud") return [recognition];
+    // Shown again whenever the page is drawn: a stale or missing list is fetched in the background.
+    loadCloudModels(provider);
+    const listed = cloudModels[provider];
+    const model = cloudModelOf(provider);
+    const models = listed?.models ?? [];
+    return [
+      recognition,
+      {
+        id: "v.cloudProvider",
+        section: "Dictation",
+        label: "Cloud provider",
+        kind: "choice",
+        value: provider,
+        options: CLOUD_STT_PROVIDERS.map((p) => ({
+          value: p,
+          label: PROVIDER_LABEL[p],
+          note: cloudKeys.has(p) ? "Key saved" : "No key yet",
+        })),
+      },
+      {
+        id: "v.cloudKey",
+        section: "Dictation",
+        label: `${label} key`,
+        hint: hasKey
+          ? "Encrypted by your computer's account and kept on it; never in settings or logs."
+          : "Paste your own API key. Until one is saved, this computer does the recognition.",
+        kind: "list",
+        secret: true,
+        items: hasKey ? ["Saved, encrypted on this computer"] : [],
+        placeholder: "Paste your API key",
+        addLabel: hasKey ? "Replace" : "Save",
+      },
+      {
+        id: "v.cloudModel",
+        section: "Dictation",
+        label: "Cloud model",
+        hint: !hasKey
+          ? "The list loads once a key is saved."
+          : listed?.error !== undefined
+            ? `Could not load ${label}'s models: ${listed.error}`
+            : listed === undefined
+              ? `Loading ${label}'s models…`
+              : `Recommended: ${RECOMMENDED[provider].model}. ${RECOMMENDED[provider].why}`,
+        kind: "choice",
+        value: model,
+        options: (models.some((m) => m.id === model)
+          ? models
+          : [{ id: model, label: model, recommended: false }, ...models]
+        ).map((m) => ({
+          value: m.id,
+          label: m.label,
+          ...(m.recommended ? { note: RECOMMENDED[provider].why } : {}),
+        })),
+        disabled: !hasKey,
+      },
+      {
+        id: "v.cloudTest",
+        section: "Dictation",
+        label: "Test cloud recognition",
+        hint:
+          cloudTestResult ??
+          "Sends a 7-second sample clip (not your voice) and shows what came back and how long it took.",
+        kind: "action",
+        button: cloudTesting ? "Testing…" : "Test",
+        disabled: !hasKey || cloudTesting,
+      },
+    ];
+  };
+  /** A hold-key recording the sidecar handed back for cloud recognition; the file is gone once it is heard. */
+  const recogniseWav = async (wav: string, audioMs: number): Promise<string> => {
+    try {
+      const bytes = await NodeFS.promises.readFile(wav);
+      return await recognise(bytes, audioMs, () =>
+        sidecar === null ? Promise.reject(new Error("no speech helper")) : sidecar.transcribe(wav),
+      );
+    } finally {
+      await NodeFS.promises.rm(wav, { force: true });
+    }
+  };
+
   const configureDictation = () => {
     if (sidecar === null) return;
     const device = choice.kind === "pinned" ? choice.device.label : null;
@@ -2427,6 +2682,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       channel: device === null ? null : channelFor(device),
       paste: settings.paste,
       language: recogniserHint(settings.languages),
+      external: cloudChoice() !== null,
       cleanup: true,
       latch: settings.doubleTap,
       mouse: NodePath.join(input.stateDir, "voice", "input-bindings.json"),
@@ -2582,6 +2838,17 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       pill.on({ type: "trouble", message: event.message });
     } else if (event.ev === "unread") {
       keepText("Nothing took the paste. On your clipboard", event.text);
+    } else if (event.ev === "text" && typeof event.wav === "string") {
+      const wav = event.wav;
+      void recogniseWav(wav, event.audioMs ?? 0).then(
+        (text) => onDictation({ ...event, wav: null, text }),
+        (error: unknown) =>
+          onDictation({
+            ...event,
+            wav: null,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+      );
     } else if (event.ev === "text") {
       note = event.error ?? event.pasteError ?? note;
       const text = event.text ?? "";
@@ -2945,6 +3212,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             message: `Heard ${languageName(code)}, not one of your languages`,
           });
         },
+        recognise,
       ),
       onEvent: onCoreEvent,
       waitMs: () => clampWait(settings.waitMs),
@@ -4355,6 +4623,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         ],
         more: true,
       },
+      ...cloudRows(),
       {
         id: "v.language",
         section: "Dictation",
@@ -5065,7 +5334,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         void transcribeFile(file, {
           readFile: (p) => NodeFS.promises.readFile(p),
           toWav: ffmpegToWav,
-          transcribe: (pcm) => makeSidecarStt(sidecar!).transcribe(pcm),
+          transcribe: (pcm) =>
+            makeSidecarStt(sidecar!, undefined, undefined, recognise).transcribe(pcm),
           progress: (done, total) => {
             if (total > 1)
               input.extras?.notice(
@@ -5360,8 +5630,38 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           : settings.languages.filter((c) => c !== code),
       });
       configureDictation();
-    } else if (id === "v.speechModel" && (value === "v3" || value === "fast"))
-      setSpeechModel(value);
+    } else if (id === "v.recognition" && (value === "local" || value === "cloud")) {
+      save({ recognition: value });
+      configureDictation();
+      if (value === "cloud") loadCloudModels(settings.cloudProvider, true);
+    } else if (id === "v.cloudProvider" && typeof value === "string") {
+      const provider = CLOUD_STT_PROVIDERS.find((p) => p === value);
+      if (provider === undefined) return;
+      save({ cloudProvider: provider, cloudModel: null });
+      cloudTestResult = null;
+      configureDictation();
+      loadCloudModels(provider, true);
+    } else if (id === "v.cloudModel" && typeof value === "string" && value !== "") {
+      save({ cloudModel: value });
+      cloudTestResult = null;
+    } else if (id === "v.cloudKey:add" && typeof value === "string") {
+      try {
+        cloudKeys.set(settings.cloudProvider, value);
+        note = null;
+      } catch (error) {
+        note = error instanceof Error ? error.message : String(error);
+      }
+      cloudTestResult = null;
+      configureDictation();
+      loadCloudModels(settings.cloudProvider, true);
+      render();
+    } else if (id === "v.cloudKey:rm") {
+      cloudKeys.clear(settings.cloudProvider);
+      delete cloudModels[settings.cloudProvider];
+      configureDictation();
+      render();
+    } else if (id === "v.cloudTest") void testCloud();
+    else if (id === "v.speechModel" && (value === "v3" || value === "fast")) setSpeechModel(value);
     else if (id === "v.appMode" && typeof value === "string" && focusedApp.exe.length > 0) {
       const exe = focusedApp.exe.toLowerCase();
       const { [exe]: _old, ...others } = settings.appModes;
