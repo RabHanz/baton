@@ -1,5 +1,6 @@
 import {
   AuthBatonCloudApproveScope,
+  AuthBatonHandsHostScope,
   AuthFilesystemReadScope,
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
@@ -7,7 +8,10 @@ import {
   BATON_CLOUD_WS_METHODS,
   BATON_JOB_WS_METHODS,
   BATON_MEMORY_WS_METHODS,
+  BATON_RECORD_WS_METHODS,
+  BatonRecordAppendInput,
 } from "@t3tools/baton-contracts";
+import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -63,5 +67,29 @@ describe("the desktop's direct door while T3's window is closed", () => {
     expect(missingBatonScope(BATON_JOB_WS_METHODS.jobAgree, [AuthOrchestrationReadScope])).toBe(
       AuthOrchestrationOperateScope,
     );
+  });
+});
+
+const decodeAppend = Schema.decodeUnknownOption(BatonRecordAppendInput);
+
+describe("who may write the Record", () => {
+  it("is only the desktop app's own session, and each kind carries only its own outcomes", () => {
+    const append = BATON_RECORD_WS_METHODS.append;
+    expect(missingBatonScope(append, AuthStandardClientScopes)).toBe(AuthBatonHandsHostScope);
+    expect(missingBatonScope(append, [...AuthStandardClientScopes, AuthBatonHandsHostScope])).toBe(
+      null,
+    );
+    const decodes = (row: Record<string, unknown>) =>
+      decodeAppend({
+        actor: "Tessaya",
+        subject: "s",
+        detail: "",
+        ...row,
+      })._tag === "Some";
+    expect(decodes({ kind: "assistant_turn", outcome: "answered" })).toBe(true);
+    expect(decodes({ kind: "approval", outcome: "declined" })).toBe(true);
+    expect(decodes({ kind: "standing_job", outcome: "held" })).toBe(true);
+    expect(decodes({ kind: "assistant_turn", outcome: "approved" })).toBe(false);
+    expect(decodes({ kind: "approval", outcome: "ran" })).toBe(false);
   });
 });
