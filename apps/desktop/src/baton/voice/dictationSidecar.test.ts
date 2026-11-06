@@ -7,7 +7,6 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   focusedFrom,
-  notEnglish,
   resolveDictationBinary,
   restartDelayMs,
   startDictationSidecar,
@@ -17,24 +16,6 @@ import {
 describe("restartDelayMs", () => {
   it("backs off to a minute and no further", () => {
     expect([1, 2, 3, 7, 50].map(restartDelayMs)).toEqual([1_000, 2_000, 4_000, 60_000, 60_000]);
-  });
-});
-
-describe("notEnglish", () => {
-  it("sets aside the Dutch and Swedish a British voice comes back as, never English", () => {
-    expect(["Ik weet.", "Det säger.", "Ich weiß nicht."].map(notEnglish)).toEqual([
-      true,
-      true,
-      true,
-    ]);
-    const english = [
-      "To say yeah.",
-      "Dictate.",
-      "Hello.",
-      "Meet me at the café at noon.",
-      "Is it ok?",
-    ];
-    expect(english.map(notEnglish)).toEqual([false, false, false, false, false]);
   });
 });
 

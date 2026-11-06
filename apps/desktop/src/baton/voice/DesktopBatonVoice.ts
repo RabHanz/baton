@@ -117,9 +117,11 @@ import {
 } from "@t3tools/baton-shared/dictionaryIO";
 import {
   LANGUAGE_HINT,
-  languageOptions,
-  languageToSave,
-  shownLanguage,
+  languageCode,
+  languageName,
+  languagesFromSaved,
+  outsideLanguages,
+  recogniserHint,
 } from "@t3tools/baton-shared/dictationLanguages";
 import { ACCEPTED_EXTENSIONS, baseName, transcriptTitle } from "@t3tools/baton-shared/audioFile";
 import { ffmpegToWav, transcribeFile } from "../writing/fileTranscribe.ts";
@@ -519,8 +521,8 @@ interface VoiceSettings {
   /** Cloud tasks: off until he turns them on. */
   readonly cloud?: Partial<CloudSettings>;
   readonly paste: PasteMethod;
-  /** null lets Parakeet detect the language. */
-  readonly language: string | null;
+  /** The languages he speaks; empty detects any. */
+  readonly languages: ReadonlyArray<string>;
   /** "claude" adds his own Claude for what code cannot settle; see dictationRewriter.ts. */
   readonly dictationCleanup: CleanupLevel;
   /** He picked it himself; a value this branch saved for him does not count (D114). */
@@ -593,7 +595,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   holdKey: "Ctrl+Alt+Space",
   toggleKey: "Ctrl+Alt+Shift+Space",
   paste: "ctrl_v",
-  language: "en",
+  languages: ["en"],
   // Local until D31 is ruled on: "claude" sends flagged dictation to Anthropic (D105).
   dictationCleanup: "local",
   cleanupModel: "haiku",
@@ -653,6 +655,7 @@ export const readSettings = (path: string): VoiceSettings => {
       motion: parseMotion(saved["motion"]),
       glass: parseGlass(saved["glass"]),
       hideFromCapture: saved["hideFromCapture"] === true,
+      languages: languagesFromSaved(saved),
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -2348,7 +2351,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       device,
       channel: device === null ? null : channelFor(device),
       paste: settings.paste,
-      language: settings.language,
+      language: recogniserHint(settings.languages),
       cleanup: true,
       latch: settings.doubleTap,
       mouse: NodePath.join(input.stateDir, "voice", "input-bindings.json"),
@@ -2414,6 +2417,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       releaseRecordingEscape?.();
       releaseRecordingEscape = null;
     }
+  };
+  /** Wispr Flow's wrong-language notice: what it was heard as, and where his languages are set. */
+  const heardOutside = (code: string) => {
+    note = `Heard ${languageName(code)}, which is not one of your languages. Change them under Dictation: Languages you speak.`;
+    render();
   };
   /** Words that have no home yet: on the pill for a while, and in the tray until the next ones. */
   const keepText = (why: string, text: string) => {
@@ -2502,6 +2510,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     } else if (event.ev === "text") {
       note = event.error ?? event.pasteError ?? note;
       const text = event.text ?? "";
+      const outside = outsideLanguages(text, settings.languages);
+      if (event.dictated === true && event.error === undefined && outside !== null) {
+        keepText(`Heard as ${languageName(outside)}, so not pasted`, text);
+        return void heardOutside(outside);
+      }
       if (event.dictated === true && event.error === undefined)
         return void deliver(text, event.target);
       if (text.length > 0) lastDictation = text;
@@ -2833,7 +2846,17 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             })),
           }
         : settings,
-      stt: makeSidecarStt(sidecar, () => settings.language),
+      stt: makeSidecarStt(
+        sidecar,
+        () => settings.languages,
+        (code) => {
+          heardOutside(code);
+          pill.on({
+            type: "failed",
+            message: `Heard ${languageName(code)}, not one of your languages`,
+          });
+        },
+      ),
       onEvent: onCoreEvent,
       waitMs: () => clampWait(settings.waitMs),
       listening: () => ({
@@ -2850,7 +2873,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         // Unsure is a wake: the check only ever removes wakes it is sure were not the name.
         if (!settings.verifyWake || word === null || sidecar === null) return true;
         try {
-          const heard = await makeSidecarStt(sidecar, () => settings.language).transcribe(pcm);
+          const heard = await makeSidecarStt(sidecar, () => settings.languages).transcribe(pcm);
           const ok = wakeWordHeard(heard, word);
           if (!ok) input.onNote?.("wake_check", { word, heard });
           return ok;
@@ -4197,11 +4220,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       {
         id: "v.language",
         section: "Dictation",
-        label: "Language you speak",
+        label: "Languages you speak",
         hint: LANGUAGE_HINT,
-        kind: "choice",
-        value: shownLanguage(settings.speechModel, settings.language),
-        options: languageOptions(settings.speechModel),
+        kind: "list",
+        items: settings.languages.map(languageName),
+        placeholder:
+          settings.languages.length === 0
+            ? "Detecting any language. Add one to keep to it"
+            : "Add a language, such as French",
+        addLabel: "Add",
       },
       {
         id: "v.doubleTap",
@@ -5182,12 +5209,18 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       configureDictation();
     } else if (id === "v.cleanup" && (value === "claude" || value === "local" || value === "off")) {
       save({ dictationCleanupChosen: true, dictationCleanup: value });
-    } else if (id === "v.language" && typeof value === "string") {
-      const chosen = languageToSave(settings.speechModel, value);
-      if (chosen !== undefined) {
-        save({ language: chosen });
-        configureDictation();
+    } else if ((id === "v.language:add" || id === "v.language:rm") && typeof value === "string") {
+      const code = languageCode(id.endsWith(":add") ? settings.speechModel : "v3", value);
+      if (code === undefined) {
+        note = `${value.trim()} is not a language this speech model knows.`;
+        return render();
       }
+      save({
+        languages: id.endsWith(":add")
+          ? [...new Set([...settings.languages, code])]
+          : settings.languages.filter((c) => c !== code),
+      });
+      configureDictation();
     } else if (id === "v.speechModel" && (value === "v3" || value === "fast"))
       setSpeechModel(value);
     else if (id === "v.appMode" && typeof value === "string" && focusedApp.exe.length > 0) {
@@ -5439,7 +5472,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
 
   const setSpeechModel = (speechModel: VoiceSettings["speechModel"]) => {
-    save({ speechModel, ...(speechModel === "fast" ? { language: "en" } : {}) });
+    save({ speechModel, ...(speechModel === "fast" ? { languages: ["en"] } : {}) });
     if (parakeetPath !== null || settings.enabled) requestDictation();
     else render();
   };
