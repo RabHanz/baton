@@ -731,7 +731,7 @@ async function prompt(params) {
   const sessionId = params.sessionId;
   if (typeof sessionId === "string" && sessionId.startsWith(UNBOUND)) {
     // Unbound: never guessed, even with one session running in the folder. Kept beside the queues and shown here,
-    // so Reattach (which asks first) binds the thread and Retry sends it. Attachments go to the folder's inbox.
+    // so Reattach (which asks first) binds the thread and the mirror then sends it. Attachments go to the folder's inbox.
     const folder = newSessionCwd.get(sessionId);
     const words =
       folder === undefined
