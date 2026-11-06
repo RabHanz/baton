@@ -226,6 +226,7 @@ import { helpControls } from "../help/helpRows.ts";
 import {
   BUILT_INS,
   createStandingStore,
+  missedRunOf,
   runStandingJobs,
   type BuiltInId,
   type StandingJobDef,
@@ -4049,6 +4050,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           owner: ownerOf(j).name,
           on: standingStore.load().on[j.id] === true,
           count: standingStore.load().counts[j.id] ?? 0,
+          ...(j.trigger.kind === "time" ? { missed: missedRunOf(standingStore.load(), j.id) } : {}),
         })),
         // A rule and a schedule hand work out, which only the lead does: they are the lead's.
         ...rulesCache.map(({ rule }) => ({
@@ -5225,6 +5227,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       else if (act?.kind === "standing") {
         if (BUILT_INS.some((j) => j.id === act.id))
           standingStore.setOn(act.id as BuiltInId, act.on);
+      } else if (act?.kind === "missed") {
+        const job = BUILT_INS.find((j) => j.id === act.id);
+        if (job?.trigger.kind === "time") standingStore.setMissed(job.id, act.missed);
       } else if (act?.kind === "rule") {
         void input
           .direct?.(`fabric.orchestration.rule.${act.on ? "enable" : "disable"}`, { id: act.id })

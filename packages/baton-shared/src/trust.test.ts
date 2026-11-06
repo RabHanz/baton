@@ -8,7 +8,13 @@ import {
   type ToolVerdict,
 } from "./operator.ts";
 import { DEFAULT_OS_PACK, mergePack } from "./osPack.ts";
-import { decideTrust, standingVerdict, type TrustVerdict } from "./trust.ts";
+import {
+  decideTrust,
+  standingVerdict,
+  unattendedApprovals,
+  type SessionApprovals,
+  type TrustVerdict,
+} from "./trust.ts";
 
 const CONTEXTS: ReadonlyArray<JudgeContext> = [
   { actWithoutAsking: false, tainted: false },
@@ -114,6 +120,36 @@ describe("One Trust", () => {
       verdict: "deny",
       why: `job_refine is not one of ${lead.name}'s tools.`,
     });
+  });
+
+  it("a standing or background run inherits none of the session's approvals, whatever they are", () => {
+    const none: SessionApprovals = {
+      actWithoutAsking: false,
+      plan: null,
+      captureAllowedUntil: 0,
+      captureAlways: false,
+      keysAllowedUntil: 0,
+    };
+    const later = Date.now() + 3_600_000;
+    // Every combination of what he may have granted in person this session.
+    for (const actWithoutAsking of [false, true])
+      for (const plan of [null, ['Type "hello" into the chat']])
+        for (const captureAllowedUntil of [0, later])
+          for (const captureAlways of [false, true])
+            for (const keysAllowedUntil of [0, later])
+              expect(
+                unattendedApprovals({
+                  actWithoutAsking,
+                  plan,
+                  captureAllowedUntil,
+                  captureAlways,
+                  keysAllowedUntil,
+                }),
+              ).toEqual(none);
+    // So hands and eyes never run unattended, though his own turn with those grants might.
+    const lead = DEFAULT_OS_PACK.personas.find((p) => p.lead)!;
+    for (const tool of ["type_text", "press_keys", "click_element", "screen_capture"])
+      expect(standingVerdict(tool, lead).verdict, tool).not.toBe("allow");
   });
 
   it("a project's own lead hands out only that project's work, and never to the cloud", () => {

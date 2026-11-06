@@ -10,6 +10,7 @@ import {
   createStandingStore,
   EMPTY_STANDING,
   migrateStanding,
+  missedRunOf,
   runStandingJobs,
   type StandingInput,
   type StandingOps,
@@ -207,6 +208,26 @@ describe("standing jobs", () => {
     );
     await runStandingJobs(input({ state: night.state, hour: 3 }), ops);
     expect(log.learned).toBe(1);
+  });
+
+  it("makes up a timed job missed while it was off once the same day, or skips it, as set per job", async () => {
+    const once = fakes();
+    // Off at six, back at nine: the default runs it once, and not again that day.
+    const back = await runStandingJobs(input({ hour: 9 }), once.ops);
+    await runStandingJobs(input({ state: back.state, hour: 10 }), once.ops);
+    expect(once.log.briefs).toBe(1);
+    const skip = fakes();
+    const skipping: StandingState = {
+      ...allOn,
+      missed: { morning_brief: "skip", nightly_learning: "skip" },
+    };
+    await runStandingJobs(input({ state: skipping, hour: 9 }), skip.ops);
+    expect(skip.log.briefs).toBe(0);
+    expect(skip.log.learned).toBe(0);
+    // At its own hour a skipping job still runs.
+    await runStandingJobs(input({ state: skipping, hour: 6 }), skip.ops);
+    expect(skip.log.briefs).toBe(1);
+    expect(missedRunOf(allOn, "morning_brief")).toBe("once");
   });
 
   it("builds no brief before six, nor in quiet hours", async () => {

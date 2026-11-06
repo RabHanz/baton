@@ -169,13 +169,62 @@ export const decideTrust = (ask: TrustAsk): TrustVerdict => {
     : { verdict: "deny", why: `${outside} is not one of ${agent.name}'s tools.` };
 };
 
+/** What he granted in person, for his own turns: act without asking, an approved plan, the screen and keys windows. */
+export interface SessionApprovals {
+  readonly actWithoutAsking: boolean;
+  readonly plan: ReadonlyArray<string> | null;
+  /** "Allow for an hour" on the screen: until when, epoch ms. */
+  readonly captureAllowedUntil: number;
+  /** "Always allow screen capture". */
+  readonly captureAlways: boolean;
+  /** Keys he let a lesson or drive press: until when, epoch ms. */
+  readonly keysAllowedUntil: number;
+}
+
+/**
+ * What a standing or background run holds, whatever the session holds: none of it. Nobody is there to have meant it,
+ * so every grant is his turn's alone; a run that would need one waits for his yes.
+ */
+export const unattendedApprovals = (_session: SessionApprovals): SessionApprovals => ({
+  actWithoutAsking: false,
+  plan: null,
+  captureAllowedUntil: 0,
+  captureAlways: false,
+  keysAllowedUntil: 0,
+});
+
 /**
  * A standing job (a rule, a playbook, a schedule) runs by itself only where its one tool is allowed for its
- * owner with nobody there to ask: reading and reporting. Anything that would ask waits for his yes.
+ * owner with nobody there to ask: reading and reporting. Anything that would ask, and anything that works the screen
+ * or the keyboard, waits for his yes.
  */
-export const standingVerdict = (tool: string, agent: TrustAgent): TrustVerdict =>
-  decideTrust({
-    call: { tool: `${BATON_TOOL_PREFIX}${tool}`, input: {} },
-    context: { actWithoutAsking: false, tainted: false },
-    agent,
+const UNATTENDED_NEVER: ReadonlySet<string> = new Set([
+  "type_text",
+  "press_keys",
+  "click",
+  "click_element",
+  "scroll",
+  "drag",
+  "act_batch",
+  "screen_capture",
+  "window_capture",
+]);
+
+export const standingVerdict = (tool: string, agent: TrustAgent): TrustVerdict => {
+  // The screen and the keyboard are his: with nobody watching, they always wait for him.
+  if (UNATTENDED_NEVER.has(tool))
+    return { verdict: "ask", why: `Nobody is there to watch ${tool} use the screen.` };
+  const held = unattendedApprovals({
+    actWithoutAsking: false,
+    plan: null,
+    captureAllowedUntil: 0,
+    captureAlways: false,
+    keysAllowedUntil: 0,
   });
+  return decideTrust({
+    call: { tool: `${BATON_TOOL_PREFIX}${tool}`, input: {} },
+    context: { actWithoutAsking: held.actWithoutAsking, tainted: false },
+    agent,
+    plan: held.plan,
+  });
+};

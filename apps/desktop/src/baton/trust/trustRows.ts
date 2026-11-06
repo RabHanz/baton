@@ -137,6 +137,8 @@ export interface StandingRow {
   readonly on: boolean | null;
   /** Runs so far; for a schedule, its worker's turns so far. */
   readonly count: number;
+  /** A timed built-in job: what happens when its hour passed while Tessaya was off. */
+  readonly missed?: "once" | "skip";
 }
 
 const ranLine = (n: number) => `Ran ${n === 1 ? "once" : `${n} times`}.`;
@@ -170,6 +172,28 @@ export const ago = (iso: string | undefined, now: number): string => {
       : m < 2880
         ? `last used ${Math.round(m / 60)} h ago`
         : `last used ${Math.round(m / 1440)} days ago`;
+};
+
+const standingRow = (j: StandingRow): HomeControl => {
+  const counted = j.kind === "schedule" ? `Used ${j.count} turns so far.` : ranLine(j.count);
+  const hint = `${j.what} ${j.owner}'s standing job. ${counted}`.trim();
+  return j.on === null
+    ? {
+        id: `trust.schedule:${j.id}`,
+        section: PLAYS,
+        label: j.title,
+        hint,
+        kind: "action",
+        button: "Take off",
+      }
+    : {
+        id: `trust.${j.kind === "rule" ? "rule" : "standing"}:${j.id}`,
+        section: PLAYS,
+        label: j.title,
+        hint: `${hint}${j.kind === "built_in" ? " Never sends, posts or spends." : ""}`,
+        kind: "toggle",
+        on: j.on,
+      };
 };
 
 export const trustControls = (data: TrustData, now: number): ReadonlyArray<HomeControl> => {
@@ -291,27 +315,28 @@ export const trustControls = (data: TrustData, now: number): ReadonlyArray<HomeC
         }))),
   );
   rows.push(
-    ...data.standing.map((j): HomeControl => {
-      const counted = j.kind === "schedule" ? `Used ${j.count} turns so far.` : ranLine(j.count);
-      const hint = `${j.what} ${j.owner}'s standing job. ${counted}`.trim();
-      return j.on === null
-        ? {
-            id: `trust.schedule:${j.id}`,
-            section: PLAYS,
-            label: j.title,
-            hint,
-            kind: "action",
-            button: "Take off",
-          }
-        : {
-            id: `trust.${j.kind === "rule" ? "rule" : "standing"}:${j.id}`,
-            section: PLAYS,
-            label: j.title,
-            hint: `${hint}${j.kind === "built_in" ? " Never sends, posts or spends." : ""}`,
-            kind: "toggle",
-            on: j.on,
-          };
-    }),
+    ...data.standing.flatMap((j): ReadonlyArray<HomeControl> => [
+      standingRow(j),
+      ...(j.missed === undefined
+        ? []
+        : [
+            {
+              id: `trust.missed:${j.id}`,
+              section: PLAYS,
+              label: "If Tessaya was off at that hour",
+              hint:
+                j.missed === "once"
+                  ? "It runs once when she is back, the same day."
+                  : "It skips that day.",
+              kind: "choice" as const,
+              value: j.missed,
+              options: [
+                { value: "once", label: "Run once when back" },
+                { value: "skip", label: "Skip that day" },
+              ],
+            },
+          ]),
+    ]),
   );
   rows.push({
     id: "trust.filter",
@@ -357,7 +382,8 @@ export type TrustAction =
       readonly id: string;
       readonly on: boolean;
     }
-  | { readonly kind: "unschedule"; readonly jobId: string };
+  | { readonly kind: "unschedule"; readonly jobId: string }
+  | { readonly kind: "missed"; readonly id: string; readonly missed: "once" | "skip" };
 
 export const trustAction = (id: string, value: unknown): TrustAction | null => {
   if (id === "trust.filter") {
@@ -366,6 +392,11 @@ export const trustAction = (id: string, value: unknown): TrustAction | null => {
   }
   const sj = /^trust\.(standing|rule):(.+)$/.exec(id);
   if (sj !== null) return { kind: sj[1] as "standing" | "rule", id: sj[2]!, on: value === true };
+  const mr = /^trust\.missed:(.+)$/.exec(id);
+  if (mr !== null)
+    return value === "once" || value === "skip"
+      ? { kind: "missed", id: mr[1]!, missed: value }
+      : null;
   const un = /^trust\.schedule:(.+)$/.exec(id);
   if (un !== null) return { kind: "unschedule", jobId: un[1]! };
   const m = /^trust\.revoke:(screen|chrome|social|vault|act|remote)$/.exec(id);

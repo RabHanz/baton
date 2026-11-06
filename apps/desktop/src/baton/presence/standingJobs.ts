@@ -87,8 +87,16 @@ export interface StandingRun {
   readonly text: string;
 }
 
+/**
+ * A timed job whose hour passed while Tessaya was off or asleep: "once" runs it when she is back the same day, "skip"
+ * leaves that day out. A missed day before today is never made up either way.
+ */
+export type MissedRun = "once" | "skip";
+
 export interface StandingState {
   readonly on: Readonly<Partial<Record<BuiltInId, boolean>>>;
+  /** Per timed job; "once" when not set. */
+  readonly missed?: Readonly<Partial<Record<BuiltInId, MissedRun>>>;
   readonly runs: ReadonlyArray<StandingRun>;
   readonly brief: { readonly day: string; readonly text: string } | null;
   /** Runs ever, by job (the run list keeps only the latest). */
@@ -129,6 +137,13 @@ export interface StandingInput {
 
 const WAIT_MINUTES = 60;
 
+export const missedRunOf = (state: StandingState, id: BuiltInId): MissedRun =>
+  state.missed?.[id] ?? "once";
+
+/** A timed job's hour has come: at its hour, or later the same day when a missed run is made up once. */
+const timeHasCome = (state: StandingState, id: BuiltInId, hour: number, at: number): boolean =>
+  hour === at || (hour > at && missedRunOf(state, id) === "once");
+
 /** One pass. A failing op is logged as a run that failed, and never stops the others. */
 export const runStandingJobs = async (
   input: StandingInput,
@@ -164,14 +179,19 @@ export const runStandingJobs = async (
   for (const t of triggersFromCi(input.ci, input.now)) {
     await attempt("ci_look", t.id, async () => `${t.title}: ${await ops.look(t)}`);
   }
-  if (input.hour >= BRIEF_HOUR && input.quiet !== true && state.brief?.day !== input.day) {
+  if (
+    timeHasCome(state, "morning_brief", input.hour, BRIEF_HOUR) &&
+    input.quiet !== true &&
+    state.brief?.day !== input.day
+  ) {
     await attempt("morning_brief", input.day, async () => {
       const text = await ops.brief();
       state = { ...state, brief: { day: input.day, text } };
       return "Built the morning brief.";
     });
   }
-  if (input.hour >= LEARN_HOUR) await attempt("nightly_learning", input.day, ops.learn);
+  if (timeHasCome(state, "nightly_learning", input.hour, LEARN_HOUR))
+    await attempt("nightly_learning", input.day, ops.learn);
   for (const f of input.findings) {
     if (f.kind !== "unanswered" || f.minutes < WAIT_MINUTES || input.quiet === true) continue;
     await attempt("waiting_remind", `wait:${f.workSessionId}`, async () => {
@@ -269,11 +289,18 @@ export const createStandingStore = (
   };
   return {
     load,
-    /** A pass's runs, keeping the switches as they are now: he may have flipped one while it ran. */
-    saveRun: (state: StandingState): void => save({ ...state, on: load().on }),
+    /** A pass's runs, keeping the switches and missed-run choices as they are now: he may have changed one while it ran. */
+    saveRun: (state: StandingState): void => {
+      const now = load();
+      save({ ...state, on: now.on, ...(now.missed === undefined ? {} : { missed: now.missed }) });
+    },
     setOn: (id: BuiltInId, on: boolean): void => {
       const state = load();
       save({ ...state, on: { ...state.on, [id]: on } });
+    },
+    setMissed: (id: BuiltInId, missed: MissedRun): void => {
+      const state = load();
+      save({ ...state, missed: { ...state.missed, [id]: missed } });
     },
   };
 };
