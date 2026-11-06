@@ -7,6 +7,7 @@ const make = (
     take?: unknown;
     run?: (text: string, source: "phone" | "device") => Promise<{ spoken: string; card: string }>;
     poll?: Array<number | null>;
+    every?: (ms: number, run: () => void) => () => void;
   } = {},
 ) => {
   const calls: Array<[string, Record<string, unknown>]> = [];
@@ -21,6 +22,7 @@ const make = (
     run: over.run ?? (async () => ({ spoken: "Two jobs.", card: "Two jobs are running." })),
     wait: async () => undefined,
     newId: () => "p1",
+    ...(over.every === undefined ? {} : { every: over.every }),
   });
   return { relay, calls };
 };
@@ -36,7 +38,9 @@ describe("the desktop's phone relay", () => {
   });
 
   it("runs a taken ask as a typed ask and sends back the reply and the card", async () => {
-    const { relay, calls } = make({ take: { id: "c-1", text: "what is running" } });
+    const { relay, calls } = make({
+      take: { id: "c-1", text: "what is running", source: "phone" },
+    });
     expect(await relay.tick()).toBe("answered");
     expect(calls.at(-1)).toEqual([
       "answer",
@@ -47,17 +51,43 @@ describe("the desktop's phone relay", () => {
   it("runs only the server's phone words as his; a device's or an unmarked ask is a device's", async () => {
     const sources: string[] = [];
     for (const source of ["phone", "device", undefined]) {
-      await make({
+      const { relay } = make({
         take: { id: "c-3", text: "x", source },
         run: async (_text, from) => (sources.push(from), { spoken: "", card: "" }),
-      }).relay.tick();
+      });
+      await relay.tick();
+      await relay.settled();
     }
     expect(sources).toEqual(["phone", "device", "device"]);
   });
 
+  it("starts a device's ask without holding his next phone ask behind it, and renews its lease while it runs", async () => {
+    const finishes: Array<() => void> = [];
+    let renewTick = () => {};
+    const { relay, calls } = make({
+      take: { id: "d-1", text: "check every job", source: "device" },
+      run: () =>
+        new Promise(
+          (resolve) => void finishes.push(() => resolve({ spoken: "Done.", card: "Done." })),
+        ),
+      every: (_ms, run) => ((renewTick = run), () => (renewTick = () => {})),
+    });
+    expect(await relay.tick()).toBe("started");
+    // The relay is free for the next ask while the device's runs.
+    expect(await relay.tick()).toBe("started");
+    renewTick();
+    expect(calls.some(([op, args]) => op === "renew" && args["id"] === "d-1")).toBe(true);
+    // At most three held at once: the fourth waits on the server.
+    expect(await relay.tick()).toBe("started");
+    expect(await relay.tick()).toBe("busy");
+    for (const finish of finishes) finish();
+    await relay.settled();
+    expect(calls.some(([op]) => op === "answer")).toBe(true);
+  });
+
   it("reports a failed turn instead of leaving the ask hanging", async () => {
     const { relay, calls } = make({
-      take: { id: "c-2", text: "x" },
+      take: { id: "c-2", text: "x", source: "phone" },
       run: async () => Promise.reject(new Error("boom")),
     });
     expect(await relay.tick()).toBe("failed");

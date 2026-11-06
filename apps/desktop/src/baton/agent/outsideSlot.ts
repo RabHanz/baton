@@ -1,0 +1,123 @@
+// @effect-diagnostics globalTimers:off
+/**
+ * Everything a paired device's or an agent's turn runs with, fixed when the slot is built. Nothing here reads which
+ * turn is current, so his sentence arriving mid-turn cannot lend this turn his trust, his memory view or his plan.
+ */
+import { detectSecret } from "@t3tools/baton-shared/memory";
+
+import { createDesktopMemory } from "../memory/memoryClient.ts";
+import type { MemoryCall } from "../memory/memoryClient.ts";
+import type { NotesStore } from "../memory/memoryNotes.ts";
+import { createAgentGate, createTaint } from "./agentGate.ts";
+import type { BatonTool } from "./batonMcp.ts";
+import type { ToolHost } from "./batonTools.ts";
+
+const STOPPED = "Stopped: the Director started talking to Tessaya. Do nothing more.";
+/** Typed this many characters at a time, so a stop lands between chunks rather than after the whole text. */
+const TYPE_CHUNK = 24;
+
+type GateInput = Parameters<typeof createAgentGate>[0];
+
+export const createOutsideSlot = (input: {
+  /** His tool host; memory and the vault are replaced here. */
+  readonly host: ToolHost;
+  readonly memoryCall: MemoryCall;
+  readonly notes: NotesStore;
+  readonly focusedWindow: GateInput["focusedWindow"];
+  /** Asks him, labelled as a paired device's request. */
+  readonly confirm: GateInput["confirm"];
+  readonly record: GateInput["record"];
+  readonly jobProjects?: GateInput["jobProjects"];
+  readonly chrome?: GateInput["chrome"];
+}) => {
+  const taint = createTaint();
+  // Once he speaks the turn is over: nothing it started may go on acting.
+  let closed = false;
+  const inFlight = new Set<Promise<unknown>>();
+  const track = <A>(work: Promise<A>): Promise<A> => {
+    inFlight.add(work);
+    void work.then(
+      () => inFlight.delete(work),
+      () => inFlight.delete(work),
+    );
+    return work;
+  };
+  // No persona: the walled view, whoever is speaking to him at the time.
+  const memory = createDesktopMemory({
+    call: input.memoryCall,
+    notes: input.notes,
+    agent: () => undefined,
+  });
+  // No plan grant, no typing grant and no "act without asking": every allow but Tessaya's own reads becomes an ask.
+  const judge = createAgentGate({
+    actWithoutAsking: () => false,
+    taint,
+    textIsHis: () => false,
+    outside: () => true,
+    focusedWindow: input.focusedWindow,
+    confirm: input.confirm,
+    record: input.record,
+    ...(input.jobProjects === undefined ? {} : { jobProjects: input.jobProjects }),
+    ...(input.chrome === undefined ? {} : { chrome: input.chrome }),
+  });
+  const gate: typeof judge = async (call) => {
+    if (closed) return { allow: false, reason: STOPPED };
+    const verdict = await track(judge(call));
+    return closed ? { allow: false, reason: STOPPED } : verdict;
+  };
+  const { vault: _noVault, ...rest } = input.host;
+  const host: ToolHost = {
+    ...rest,
+    // Memory only, never his conversation: "what did he say about X" has nothing to find here.
+    memory: async (query) => {
+      const kept = await memory.search(query);
+      return kept.length === 0 ? "Nothing earlier matches." : kept.join("\n\n");
+    },
+    remember: (text) => memory.remember(text),
+    forget: (id) => memory.forget(id),
+    pin: (id, pinned) => memory.pin(id, pinned),
+    used: () => memory.used(),
+    type: async (text, window) => {
+      for (let at = 0; at < text.length; at += TYPE_CHUNK) {
+        if (closed) return STOPPED;
+        await input.host.type(text.slice(at, at + TYPE_CHUNK), window);
+      }
+      return "Typed.";
+    },
+    // A plan or a lesson would carry his yes across steps a device chose; a device asks one step at a time.
+    planShow: async () =>
+      "A paired device's request cannot set up a plan. Do one step at a time; each asks him.",
+    guided: async () => "A paired device's request cannot start a lesson on his screen.",
+    // A weave never carries a secret, and a device's turn never offers one to his vault.
+    jobs: async (op, args) =>
+      op === "weave_send" && detectSecret(String(args["text"] ?? "")) !== null
+        ? "That looks like a secret, and a weave never carries one. Nothing was sent."
+        : input.host.jobs(op, args),
+  };
+  return {
+    gate,
+    host,
+    memory,
+    /** Each tool does nothing once the turn is closed, and is counted while it runs. */
+    guard: (tools: ReadonlyArray<BatonTool>): ReadonlyArray<BatonTool> =>
+      tools.map((tool) => ({
+        ...tool,
+        run: async (args) => (closed ? { text: STOPPED } : track(tool.run(args))),
+      })),
+    /** Ends the turn: refuses from now on, and waits up to `capMs` for what was running to finish. */
+    close: async (capMs = 2_000): Promise<void> => {
+      closed = true;
+      await Promise.race([
+        Promise.allSettled(inFlight),
+        new Promise((resolve) => setTimeout(resolve, capMs)),
+      ]);
+    },
+    closed: (): boolean => closed,
+    beginTurn: (said: string) => {
+      memory.beginTurn();
+      taint.reset(said);
+    },
+  };
+};
+
+export type OutsideSlot = ReturnType<typeof createOutsideSlot>;

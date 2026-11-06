@@ -93,6 +93,7 @@ export class BatonPhoneInbox extends Context.Service<
     readonly recent: (limit: number) => Effect.Effect<ReadonlyArray<PhoneAsk>>;
     /** The desktop takes the oldest waiting ask (null when none), and is counted as connected. */
     readonly take: Effect.Effect<PhoneAsk | null>;
+    readonly renew: (id: string) => Effect.Effect<void>;
     readonly answer: (id: string, spoken: string, card: string) => Effect.Effect<boolean>;
     readonly fail: (id: string, message: string) => Effect.Effect<boolean>;
     readonly connected: Effect.Effect<boolean>;
@@ -117,8 +118,10 @@ export const make = Effect.gen(function* () {
       UPDATE fabric_phone_asks SET status = 'expired'
       WHERE status IN ('queued', 'taken') AND expires_at <= ${now}
     `;
+    // The desktop renews every ask it works on, so a lapsed lease means it is gone mid-turn: running it
+    // again could act twice, so it is dropped and the phone says to ask again.
     yield* sql`
-      UPDATE fabric_phone_asks SET status = 'queued', taken_at = NULL
+      UPDATE fabric_phone_asks SET status = 'expired'
       WHERE status = 'taken' AND taken_at <= ${now - ASK_LEASE_MS}
     `;
     yield* sql`UPDATE fabric_phone_prompts SET status = 'closed' WHERE status = 'pending' AND expires_at <= ${now}`;
@@ -177,6 +180,14 @@ export const make = Effect.gen(function* () {
       Effect.orDie,
     );
     return (yield* read(row.id))!;
+  });
+
+  /** The desktop is still working on it: its lease and its deadline move on, so it is not taken twice. */
+  const renew = Effect.fn("BatonPhoneInbox.renew")(function* (id: string) {
+    const now = yield* Clock.currentTimeMillis;
+    lastSeen = now;
+    yield* sql`UPDATE fabric_phone_asks SET taken_at = ${now}, expires_at = MAX(expires_at, ${now + ASK_LEASE_MS})
+      WHERE id = ${id} AND status = 'taken'`.pipe(Effect.orDie);
   });
 
   const get = Effect.fn("BatonPhoneInbox.get")(function* (id: string) {
@@ -278,6 +289,7 @@ export const make = Effect.gen(function* () {
     get,
     recent,
     take,
+    renew,
     answer,
     fail,
     connected: Effect.map(Clock.currentTimeMillis, (now) => isConnected(lastSeen, now)),
@@ -343,6 +355,11 @@ export const phoneCall = Effect.fn("BatonPhoneInbox.call")(function* (input: Bat
         value:
           ask === null ? null : { status: ask.status, line: askLine(ask, yield* inbox.connected) },
       };
+    }
+    case "renew": {
+      if (id === null) return yield* bad();
+      yield* inbox.renew(id);
+      return { value: null };
     }
     case "take": {
       const ask = yield* inbox.take;
