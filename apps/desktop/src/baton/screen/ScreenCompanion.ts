@@ -974,8 +974,6 @@ export const startScreenCompanion = (input: {
       effort: effort === null ? now.effort : (e ?? null),
     })}.`;
   };
-  /** Whose name the last answer carried, so a change of persona says its name. */
-  let lastFace = face.name;
   let leadName = face.name;
   /** The focused session's project this turn: a persona that leads it hands out its work. */
   let turnProject: ProjectRef | null = null;
@@ -2721,8 +2719,6 @@ export const startScreenCompanion = (input: {
         why: brain.why,
       };
       input.onNote?.("agent_turn_start", { said: text, ...who });
-      const introduce = face.name !== lastFace;
-      lastFace = face.name;
       // The pill says it is working; nothing is drawn over the window it may be acting in (CU-1).
       input.onActivity?.("Thinking");
       const reply = await sayFor(outside, turn.onCancel)(
@@ -2735,7 +2731,6 @@ export const startScreenCompanion = (input: {
           persona: {
             name: face.name,
             role: face.role,
-            introduce,
             ...(face.lead ||
             (turnProject !== null && leadsProject(face, turnProject, actions?.projects?.() ?? []))
               ? {}

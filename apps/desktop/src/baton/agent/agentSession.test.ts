@@ -55,12 +55,13 @@ describe("the one assistant's session", () => {
     await agent.say("what time is it", {
       window: null,
       session: null,
-      persona: { name: "Freya", role: "his day; warm.", introduce: true },
+      persona: { name: "Freya", role: "his day; warm." },
     });
     expect(prompts).toHaveLength(1);
-    expect(asked[1]).toContain(
-      "you answer this turn as Freya: his day; warm. start your reply by saying you are Freya.",
-    );
+    expect(asked[1]).toContain("you answer this turn as Freya: his day; warm.");
+    // No "Freya here." on a new face: the card and the voice say who it is, and her saying the name
+    // over the speakers is what dropped his next "Freya, …" as her own voice (0.1.63).
+    expect(asked[1]).not.toContain("saying you are");
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 
