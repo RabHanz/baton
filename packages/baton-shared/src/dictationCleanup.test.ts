@@ -94,6 +94,13 @@ describe("needsModel", () => {
     expect(needsModel("anything at all goes here", "raw")).toBe(false);
     expect(needsModel(Array(70).fill("word").join(" "), "default")).toBe(true);
   });
+
+  it("pastes a short dictation at once unless he corrected himself in it", () => {
+    expect(needsModel("see you at the the station", "default")).toBe(false);
+    expect(needsModel("you know, the usual", "default")).toBe(false);
+    expect(needsModel("Fix the bug.", "notes")).toBe(false);
+    expect(needsModel("Friday, no, actually Saturday.", "default")).toBe(true);
+  });
 });
 
 describe("checkRewrite", () => {

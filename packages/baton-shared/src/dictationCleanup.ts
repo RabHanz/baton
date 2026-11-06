@@ -262,6 +262,7 @@ export const localClean = (
 };
 
 const LONG_WORDS = 60;
+const SHORT_WORDS = 8;
 const RUN_ON_WORDS = 30;
 
 /** Whether anything is left that only a reading of the sentence can settle. */
@@ -269,6 +270,8 @@ export const needsModel = (text: string, mode: DictationMode): boolean => {
   if (mode === "raw") return false;
   const words = text.split(/\s+/).length;
   if (CORRECTION_MARK.test(text)) return true;
+  // A few words are pasted at once: a model call there costs more time than it saves.
+  if (words < SHORT_WORDS) return false;
   // Raw recogniser output with no sentence marks at all: someone has to punctuate it.
   if (words >= 12 && !/[.?!]/.test(text)) return true;
   if (/\b(you know|sort of like|kind of like|i guess),/i.test(text)) return true;
