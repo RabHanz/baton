@@ -128,7 +128,9 @@ describe("the voice log", () => {
       type: "outcome",
       outcome: { kind: "ran", reply: "", workSessionId: null, source: "screen" },
     });
-    log.event({ type: "dropped", text: "Freya", reason: "own voice" });
-    expect(lines.at(-1)).toMatchObject({ kind: "dropped", wake: null });
+    log.event({ type: "dropped", text: "Freya", reason: "own voice", score: 1.05 });
+    // Over her voice: the score is kept for tuning, and no wake is hung on it.
+    expect(lines.at(-1)).toMatchObject({ kind: "dropped", score: 1.05 });
+    expect(lines.at(-1)).not.toHaveProperty("wake");
   });
 });

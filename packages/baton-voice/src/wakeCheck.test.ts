@@ -6,7 +6,12 @@ import { createVoiceCore, type VoiceCoreEvent } from "./core.ts";
 const FRAME = 320;
 const frames = (seconds: number) => Math.round((seconds * 16_000) / FRAME);
 
-const rig = (verify: (pcm: Int16Array, word: string | null) => Promise<boolean>) => {
+const rig = (
+  verify: (pcm: Int16Array, word: string | null) => Promise<boolean>,
+  trustWake?: (word: string, score: number) => boolean,
+  /** The echo guard hears someone over her voice. */
+  nearEnd = false,
+) => {
   let fire = false;
   let firedAgo = 0;
   let speech = false;
@@ -16,6 +21,17 @@ const rig = (verify: (pcm: Int16Array, word: string | null) => Promise<boolean>)
   const core = createVoiceCore({
     waitMs: () => 0,
     verifyWake: verify,
+    ...(trustWake === undefined ? {} : { trustWake }),
+    ...(nearEnd
+      ? {
+          echo: {
+            reference: () => {},
+            process: () => ({ ready: true, nearEnd: true, erleDb: 20 }),
+            reset: () => {},
+            state: () => ({ delayMs: 0, erleDb: 20, converged: true }),
+          },
+        }
+      : {}),
     wake: {
       name: "fake",
       reset: () => {},
@@ -165,6 +181,35 @@ describe("the second check before a wake from sleep", () => {
     r.push(0.2);
     expect(r.events.some((e) => e.type === "barge_in" || e.type === "wake")).toBe(false);
     expect(r.events.some((e) => e.type === "dropped" && e.reason === "own voice")).toBe(true);
+    // A sure score alone may be her own clean "Sebastian": still hers, with the score kept.
+    const alone = rig(
+      async () => true,
+      () => true,
+    );
+    alone.core.noteSpoken("Sebastian, your build is done");
+    alone.core.setSpeaking(true);
+    alone.push(1);
+    alone.wake();
+    alone.push(0.2);
+    expect(alone.events.find((e) => e.type === "dropped")).toMatchObject({
+      reason: "own voice",
+      score: 1,
+    });
+    // With his voice heard over hers as well, the sure fire is his.
+    const sure = rig(
+      async () => true,
+      () => true,
+      true,
+    );
+    sure.core.noteSpoken("Sebastian, your build is done");
+    sure.core.setSpeaking(true);
+    sure.push(1);
+    sure.wake();
+    sure.push(0.1);
+    await new Promise((resolve) => setImmediate(resolve));
+    sure.push(0.2);
+    expect(sure.events.some((e) => e.type === "dropped" && e.reason === "own voice")).toBe(false);
+    expect(sure.events.some((e) => e.type === "barge_in")).toBe(true);
     const other = rig(async () => false);
     other.core.noteSpoken("The build is done");
     other.core.setSpeaking(true);

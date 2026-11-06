@@ -42,6 +42,7 @@ import {
   type SttProvider,
   type VoiceCoreEvent,
   type VoiceIntentClient,
+  OVER_HER_VOICE,
 } from "@t3tools/baton-voice";
 import type { EscapeRank } from "../screen/escapeKey.ts";
 import type { ConversationLog } from "../conversation/conversationLog.ts";
@@ -378,7 +379,7 @@ import {
 } from "./audioKeep.ts";
 import { createVocabToast } from "./vocabToast.ts";
 import { WAIT_DEFAULT_MS, clampWait } from "@t3tools/baton-shared/endOfTurn";
-import { wakeWordHeard } from "@t3tools/baton-shared/wakeVerify";
+import { wakeTrusted, wakeWordHeard } from "@t3tools/baton-shared/wakeVerify";
 import { CUE_GAIN, CUE_WAIT_MS, parseCueLevel, type CueLevel } from "./pillSounds.ts";
 import { openHistory, type HistoryTurn, type TidyStatus } from "./history.ts";
 import {
@@ -766,6 +767,8 @@ export interface VoiceCoreHooks {
   readonly listening: () => { readonly commandWindowMs: number; readonly conversationMs: number };
   /** The second check before a wake from sleep: was the wake word really said. */
   readonly verifyWake: (pcm: Int16Array, word: string | null) => Promise<boolean>;
+  /** The model is sure of this word past any doubt (see `wakeTrusted`). */
+  readonly trustWake: (word: string, score: number) => boolean;
   /** Hears him over Baton's own voice through the speakers (docs/baton/BARGE_IN.md). */
   readonly echo: EchoGuard | undefined;
   readonly speakerMode: () => "speakers" | "headphones";
@@ -2775,6 +2778,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         case "nothing":
           return { type: "failed", message: "Didn't catch that" };
         case "dropped":
+          // Set aside over her voice: the pill keeps saying she is speaking.
+          if (OVER_HER_VOICE.has(event.reason)) return null;
           return { type: event.reason === "wake not confirmed" ? "unconfirmed" : "resume" };
         case "stop_heard":
           input.onSpokenStop?.();
@@ -2945,6 +2950,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       }),
       echo: settings.voiceBargeIn ? echoGuard : undefined,
       speakerMode: () => (settings.headphones ? "headphones" : "speakers"),
+      trustWake: (word, score) => wakeTrusted(settings.wakeWords, word, score),
       verifyWake: async (pcm, word) => {
         // Unsure is a wake: the check only ever removes wakes it is sure were not the name.
         if (!settings.verifyWake || word === null || sidecar === null) return true;

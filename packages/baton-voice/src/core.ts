@@ -30,6 +30,7 @@ import {
   isAffirmative,
   isFiller,
   isStopPhrase,
+  plainWords,
   stripWake,
 } from "./modeMachine.ts";
 import type { RouteOutcome, VoiceRouter } from "./router.ts";
@@ -63,6 +64,14 @@ export const DEFAULT_SEGMENTER: SegmenterConfig = {
   preRollMs: 300,
 };
 
+/** Reasons a drop happened over her voice: none of them is his turn, so the pill and Home stay quiet. */
+export const OVER_HER_VOICE: ReadonlySet<string> = new Set([
+  "own voice",
+  "not a stop, said over her voice",
+  "recogniser busy",
+  "recognition failed",
+]);
+
 export type VoiceCoreEvent =
   | { readonly type: "state"; readonly state: VoiceState; readonly target: string | null }
   | {
@@ -93,7 +102,13 @@ export type VoiceCoreEvent =
   /** Speech recognition came back with nothing usable. */
   | { readonly type: "nothing" }
   /** Heard and set aside: silence after a wake, a lone filler, its own voice over the speakers. */
-  | { readonly type: "dropped"; readonly text: string; readonly reason: string }
+  | {
+      readonly type: "dropped";
+      readonly text: string;
+      readonly reason: string;
+      /** The wake model's score, for a wake set aside as her own voice. */
+      readonly score?: number;
+    }
   /** He said only a dismissal ("never mind"): the window ended at once, no model was asked. */
   | { readonly type: "dismissed"; readonly text: string; readonly at: number }
   /** He said a stop phrase over Baton's voice. No wake word needed. */
@@ -199,6 +214,8 @@ export const createVoiceCore = (input: {
    * wake as if it never happened. Absent, the model alone decides.
    */
   readonly verifyWake?: (pcm: Int16Array, word: string | null) => Promise<boolean>;
+  /** The model is sure enough of this word that her saying the name too cannot make it her echo. */
+  readonly trustWake?: (word: string, score: number) => boolean;
   /** Hears him over Baton's own voice through the speakers (docs/baton/BARGE_IN.md). Absent: only a wake or stop phrase gets through. */
   readonly echo?: EchoGuard;
   /** Headphones: the mic cannot hear the voice, so it listens all the time and his speech over it is a barge-in. */
@@ -626,24 +643,39 @@ export const createVoiceCore = (input: {
     const parts = stopFrames;
     const spoken = stopSpeech;
     clearStop();
-    if (stopBusy || spoken < msToSamples(STOP_MIN_SPEECH_MS)) return;
+    if (spoken < msToSamples(STOP_MIN_SPEECH_MS)) return;
+    if (stopBusy) return emit({ type: "dropped", text: "", reason: "recogniser busy" });
     stopBusy = true;
     void input.stt
       .transcribe(joined(parts))
       .then((text) => {
         // Over speakers the window starts inside her sentence, so his stop is at the end of it.
-        const words = text.trim().split(/\s+/);
+        const words = text.trim().split(/\s+/).filter(Boolean);
         const said = [1, 2, 3, 4]
           .map((n) => stripWake(words.slice(-n).join(" "), timings.wakeWords))
           .find(isStopPhrase);
-        if (said === undefined) return;
-        // Only the sentence she is saying (or just said) can have put the word there.
-        if (echoesSpeech(said, spokenLately.slice(-2))) {
+        const hers = spokenLately.slice(-2);
+        if (said === undefined) {
+          if (words.length > 0)
+            emit({
+              type: "dropped",
+              text: text.trim(),
+              reason: echoesSpeech(text, hers) ? "own voice" : "not a stop, said over her voice",
+            });
+          return;
+        }
+        // Only the sentence she is saying (or just said) can have put the word there. A clip that is
+        // nothing but the command ("Stop.") is his, unless she said that command on its own too.
+        const whole = isStopPhrase(stripWake(words.join(" "), timings.wakeWords));
+        const sheSaidIt = hers
+          .flatMap((sentence) => sentence.split(/(?<=[.!?])\s+/))
+          .some((part) => isStopPhrase(part) && plainWords(part) === plainWords(said));
+        if ((!whole || sheSaidIt) && echoesSpeech(said, hers)) {
           return emit({ type: "dropped", text: said, reason: "own voice" });
         }
         emit({ type: "stop_heard", text: said, at: now() });
       })
-      .catch(() => undefined)
+      .catch(() => emit({ type: "dropped", text: "", reason: "recognition failed" }))
       .finally(() => {
         stopBusy = false;
       });
@@ -699,6 +731,8 @@ export const createVoiceCore = (input: {
   const heardItselfAt = (at: number) =>
     !headphones() && at >= spokeFrom && (speaking || at < echoUntil);
   let bargeRun = 0;
+  /** The last sample the echo guard (or, on headphones, the detector) heard him over her voice. */
+  let lastNearEndAt = -Infinity;
   /** The detector's scored speech, as of the last frame. */
   let scoredSpeech = 0;
   let ducked = false;
@@ -778,10 +812,15 @@ export const createVoiceCore = (input: {
       score !== null &&
       heardItselfAt(firedAt) &&
       wakeWord !== null &&
-      echoesSpeech(wakeWord, spokenLately)
+      echoesSpeech(wakeWord, spokenLately) &&
+      // A sure score alone could be her own clean "Tessaya": only with his voice heard over hers around then.
+      !(
+        lastNearEndAt >= firedAt - msToSamples(WAKE_LOOKBACK_MS) &&
+        input.trustWake?.(wakeWord, score) === true
+      )
     ) {
       // The reply itself says the name: it is its own voice, never a barge-in.
-      emit({ type: "dropped", text: wakeWord, reason: "own voice" });
+      emit({ type: "dropped", text: wakeWord, reason: "own voice", score });
     } else if (score !== null) {
       // Over its own voice too: a barge-in needs the recogniser to hear the name, not just the model.
       if (input.verifyWake !== undefined && machine.mode !== "dictation") {
@@ -857,6 +896,7 @@ export const createVoiceCore = (input: {
         : input.echo !== undefined &&
           ((v) => v.ready && v.nearEnd)(input.echo.process(frame, Date.now()));
       bargeRun = flagged ? bargeRun + frame.length : 0;
+      if (flagged) lastNearEndAt = samples;
       if (bargeRun >= msToSamples(BARGE_MS)) {
         const onset = bargeRun;
         bargeRun = 0;

@@ -22,6 +22,13 @@ describe("the history on Home", () => {
     expect(items[2]!.text).toBe("what is VantageOS doing");
     expect(items[3]!.text).toBe("yesterday");
   });
+  it("leaves out what was heard over her own voice", () => {
+    const dropped = (reason: string) =>
+      JSON.stringify({ at: at("2026-11-01", "10:00:00"), kind: "dropped", text: "x", reason });
+    expect(parseActivity(dropped("own voice"))).toEqual([]);
+    expect(parseActivity(dropped("not a stop, said over her voice"))).toEqual([]);
+    expect(parseActivity(dropped("filler")).map((i) => i.kind)).toEqual(["ignored"]);
+  });
   it("counts today's turns and dictations only", () => {
     const stats = todayStats(parseActivity(lines), new Date("2026-11-01T12:00:00"));
     expect(stats).toEqual({ turns: 1, dictations: 1 });

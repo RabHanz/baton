@@ -272,6 +272,7 @@ export const createDesktopVoiceCore = async (input: {
   readonly listening?: () => { readonly commandWindowMs: number; readonly conversationMs: number };
   /** The second check before a wake from sleep. */
   readonly verifyWake?: (pcm: Int16Array, word: string | null) => Promise<boolean>;
+  readonly trustWake?: (word: string, score: number) => boolean;
   /** Baton's one voice; off in tests. */
   readonly tts?: TtsProvider | null;
   /** Everything the core reports, for the cue after a wake word. */
@@ -342,6 +343,7 @@ export const createDesktopVoiceCore = async (input: {
     ...(input.origin === undefined ? {} : { origin: input.origin }),
     ...(input.waitMs === undefined ? {} : { waitMs: input.waitMs }),
     ...(input.verifyWake === undefined ? {} : { verifyWake: input.verifyWake }),
+    ...(input.trustWake === undefined ? {} : { trustWake: input.trustWake }),
     ...(input.echo === undefined ? {} : { echo: input.echo }),
     ...(input.speakerMode === undefined ? {} : { speakerMode: input.speakerMode }),
   });

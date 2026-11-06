@@ -136,7 +136,7 @@ export const isAffirmative = (text: string): boolean => answerOf(text) === "yes"
 const SLEEP =
   /^(?:that's all|thats all|that is all|go to sleep|stop listening|thanks,? that's it|thanks|thank you|cheers|goodbye)[.!]?$/i;
 
-const plainWords = (text: string): string =>
+export const plainWords = (text: string): string =>
   text
     .toLowerCase()
     .replace(/[‘’]/g, "'")
@@ -153,7 +153,7 @@ const FILLER =
 export const isFiller = (text: string): boolean => FILLER.test(plainWords(text));
 
 const STOP_PHRASE =
-  /^(?:(?:ok|okay|no|hey|please) )?(?:stop(?: it| that| talking)?|quiet|be quiet|enough|that's enough|cancel|shut up)(?: please| now)?$/;
+  /^(?:(?:ok|okay|no|hey|please) )?(?:stop(?: it| that| talking)?|wait|quiet|be quiet|enough|that's enough|cancel|shut up)(?: please| now)?$/;
 /** A short command said over Baton's voice. Nothing else is acted on there. */
 export const isStopPhrase = (text: string): boolean =>
   STOP_PHRASE.test(plainWords(text).replace(/\b(\w+)(?: \1\b)+/g, "$1"));
