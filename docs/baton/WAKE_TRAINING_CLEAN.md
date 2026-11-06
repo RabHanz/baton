@@ -2,6 +2,8 @@
 
 Decision (Director, 2026-11-01): Tessaya's wake word is trained in British English with varied voices on data whose licences allow an MIT release. The current Sebastian, Alfred, Freya and Onyx models were trained on sets with unclear or non-commercial terms (`LAUNCH.md` section 2) and block that.
 
+Not yet met: the shipped `tessaya.onnx` (2026-11-06) is trained with `clean=false`, because the release stays private and non-commercial for now. The clean path's negatives are 30 h of LibriSpeech against openWakeWord's 2,000 h, and its Tessaya models woke 9 to 25 times an hour in the trainer's validation and 10.75 an hour on the false-wake harness. A clean Tessaya needs far more negative speech before it can replace it.
+
 Run it: `gh workflow run baton-wake-train.yml -R RabHanz/tessaya --ref main -f word=tessaya -f clean=true`. Free GitHub runners, about 5 hours; the model comes back as the `wake-tessaya` artifact. `clean=false` keeps the old data path for the existing words.
 
 ## What changes with CLEAN=1

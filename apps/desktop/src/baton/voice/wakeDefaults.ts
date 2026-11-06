@@ -15,7 +15,7 @@ const ONYX = { word: "Onyx", enabled: false, threshold: 0.9 };
 // roster's two trained faces; Tessaya's model ships off until he turns it on. Sebastian answers to his name
 // in text until his false wakes are measured. Alfred and Freya carry stricter thresholds than before.
 export const FRESH_WAKE_WORDS: ReadonlyArray<WakeWordSetting> = [
-  { word: "Tessaya", enabled: false, threshold: 0.95 },
+  { word: "Tessaya", enabled: false, threshold: 0.99 },
   { ...SEBASTIAN, enabled: false },
   { word: "Alfred", enabled: true, threshold: 0.95 },
   { word: "Freya", enabled: true, threshold: 0.95 },
