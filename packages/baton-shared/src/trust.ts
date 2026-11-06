@@ -209,3 +209,21 @@ export const standingVerdict = (tool: string, agent: TrustAgent): TrustVerdict =
         plan: null,
       })
     : { verdict: "deny", why: `${tool} does not run with nobody there; it is held.` };
+
+/** Agent-to-agent messages: sends one sender may make in a minute (decided 2026-11-06). */
+export const MESSAGES_PER_MINUTE = 30;
+
+/**
+ * Whether one agent may message another agent's thread now. Who may reach which thread is T3's own rule (a link below
+ * full access only reaches threads it started); this adds the per-sender limit, counted on the receiving machine.
+ */
+export const decideMessage = (ask: {
+  /** What this sender sent in the last minute. */
+  readonly sentLastMinute: number;
+}): { readonly verdict: "allow" } | { readonly verdict: "deny"; readonly why: string } =>
+  ask.sentLastMinute >= MESSAGES_PER_MINUTE
+    ? {
+        verdict: "deny",
+        why: `This sender has sent ${MESSAGES_PER_MINUTE} messages in the last minute, the most allowed. Wait a minute, then send again.`,
+      }
+    : { verdict: "allow" };

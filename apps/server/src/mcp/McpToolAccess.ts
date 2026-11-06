@@ -258,6 +258,16 @@ export const startsThreads = <P, A, E, R>(
   );
 };
 
+/** The same access rule, its handler run inside `wrap` (Baton: the agent-message gate around t3_thread_send). */
+export const around = <P, A, E, R, A2, E2, R2>(
+  declaration: Declaration<(params: P) => Effect.Effect<A, E, R>>,
+  wrap: (params: P, handle: Effect.Effect<A, E, R>) => Effect.Effect<A2, E2, R2>,
+) =>
+  declare(
+    (params: P) => wrap(params, checkedHandler(declaration)(params)),
+    remoteCheckOf(declaration) as RemoteCheck<P> | undefined,
+  );
+
 /** One tool with two access rules, picked per call, such as create versus update. */
 export const either = <P, A, E, R, A2, E2, R2>(
   useFirst: (params: P) => boolean,

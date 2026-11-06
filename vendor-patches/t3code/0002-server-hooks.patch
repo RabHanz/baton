@@ -202,6 +202,27 @@ index 1dd273dbe64ce41e473ec144e0b8cb754dc3bb9a..baa4f5acb50c7fd5afbf8009468d7eb4
            },
            Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
              failEnvironmentInternal("pairing_credential_issuance_failed", error),
+diff --git a/apps/server/src/mcp/McpToolAccess.ts b/apps/server/src/mcp/McpToolAccess.ts
+index b82d9bb5ae59cd97f81dbe2443d31a7e98c9085a..e0ef051b7dfa8a47e92362a8a15eeb7953d3e5e8 100644
+--- a/apps/server/src/mcp/McpToolAccess.ts
++++ b/apps/server/src/mcp/McpToolAccess.ts
+@@ -258,6 +258,16 @@ export const startsThreads = <P, A, E, R>(
+   );
+ };
+ 
++/** The same access rule, its handler run inside `wrap` (Baton: the agent-message gate around t3_thread_send). */
++export const around = <P, A, E, R, A2, E2, R2>(
++  declaration: Declaration<(params: P) => Effect.Effect<A, E, R>>,
++  wrap: (params: P, handle: Effect.Effect<A, E, R>) => Effect.Effect<A2, E2, R2>,
++) =>
++  declare(
++    (params: P) => wrap(params, checkedHandler(declaration)(params)),
++    remoteCheckOf(declaration) as RemoteCheck<P> | undefined,
++  );
++
+ /** One tool with two access rules, picked per call, such as create versus update. */
+ export const either = <P, A, E, R, A2, E2, R2>(
+   useFirst: (params: P) => boolean,
 diff --git a/apps/server/src/mcp/OrchestratorMcpService.ts b/apps/server/src/mcp/OrchestratorMcpService.ts
 index 9d15408483a3eac9fe4b09ff20c6c987a46711f7..fa445d77c87e52d1a5f2970bdce39dfb441fcf0a 100644
 --- a/apps/server/src/mcp/OrchestratorMcpService.ts
@@ -230,6 +251,44 @@ index 9d15408483a3eac9fe4b09ff20c6c987a46711f7..fa445d77c87e52d1a5f2970bdce39dfb
            attachments: [],
            mode,
            ...(input.freshContext ? { freshContext: true } : {}),
+diff --git a/apps/server/src/mcp/toolkits/orchestrator/handlers.ts b/apps/server/src/mcp/toolkits/orchestrator/handlers.ts
+index 3db297bc0d303cb252dabe280d2350513475096d..f364daaac68a01e290d9af39b4116dedce0e0e8e 100644
+--- a/apps/server/src/mcp/toolkits/orchestrator/handlers.ts
++++ b/apps/server/src/mcp/toolkits/orchestrator/handlers.ts
+@@ -10,6 +10,7 @@ import * as McpInvocationContext from "../../McpInvocationContext.ts";
+ import * as McpToolAccess from "../../McpToolAccess.ts";
+ import * as OrchestratorMcpService from "../../OrchestratorMcpService.ts";
+ import * as ThreadMetadataMcpService from "../../ThreadMetadataMcpService.ts";
++import { gateThreadSend } from "../../../baton/AgentMessageGate.ts";
+ 
+ const handlers = {
+   orchestrator_capabilities: McpToolAccess.reads((input) =>
+@@ -168,14 +169,17 @@ const handlers = {
+         return yield* service.update(scope, input);
+       }),
+   ),
+-  t3_thread_send: McpToolAccess.writesThreads(
+-    (input) => [input.threadId],
+-    (input) =>
+-      Effect.gen(function* () {
+-        const scope = yield* McpInvocationContext.McpInvocationContext;
+-        const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+-        return yield* service.sendToThread(scope, input);
+-      }),
++  t3_thread_send: McpToolAccess.around(
++    McpToolAccess.writesThreads(
++      (input) => [input.threadId],
++      (input) =>
++        Effect.gen(function* () {
++          const scope = yield* McpInvocationContext.McpInvocationContext;
++          const service = yield* OrchestratorMcpService.OrchestratorMcpService;
++          return yield* service.sendToThread(scope, input);
++        }),
++    ),
++    gateThreadSend,
+   ),
+   t3_thread_wait: McpToolAccess.reads((input) =>
+     Effect.gen(function* () {
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.migration.test.ts b/apps/server/src/orchestration-v2/Orchestrator.migration.test.ts
 index 911c1b8de7df58ba468a2c530ae3ae49f834d0ca..4eee02669579c4e1160a4705fc8165a2037fd38e 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.migration.test.ts
