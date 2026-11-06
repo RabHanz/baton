@@ -8,29 +8,29 @@ import {
   MAX_VIDEO_BYTES,
 } from "./mediaPolicy.ts";
 
-const roots = ["/home/onnyx/VentureOS", "/tmp"];
+const roots = ["/home/orbit/VantageOS", "/tmp"];
 const judge = (real: string, over: Partial<Parameters<typeof judgeMedia>[0]> = {}) =>
   judgeMedia({ real, size: 1_000, touched: false, roots, ...over });
 
 describe("what media may be shown", () => {
   it("shows images and videos under the folders the thread owns, and nowhere else unless the session touched them", () => {
-    expect(judge("/home/onnyx/VentureOS/.baton/outbox/baton-logo-concepts.png")).toEqual({
+    expect(judge("/home/orbit/VantageOS/.baton/outbox/baton-logo-concepts.png")).toEqual({
       verdict: "attach",
       kind: "image",
     });
     expect(judge("/tmp/shot/out.mp4")).toEqual({ verdict: "attach", kind: "video" });
-    expect(judge("/mnt/HC_Volume_106652742/dev/baton-frames/a.png")).toMatchObject({
+    expect(judge("/srv/work/projects-00001/dev/baton-frames/a.png")).toMatchObject({
       verdict: "skip",
     });
-    expect(judge("/mnt/HC_Volume_106652742/dev/baton-frames/a.png", { touched: true })).toEqual({
+    expect(judge("/srv/work/projects-00001/dev/baton-frames/a.png", { touched: true })).toEqual({
       verdict: "attach",
       kind: "image",
     });
-    expect(judge("/home/onnyx/VentureOS/notes.txt")).toMatchObject({
+    expect(judge("/home/orbit/VantageOS/notes.txt")).toMatchObject({
       verdict: "skip",
       reason: "not an image or video",
     });
-    expect(judge("/home/onnyx/VentureOS/empty.png", { size: 0 })).toMatchObject({
+    expect(judge("/home/orbit/VantageOS/empty.png", { size: 0 })).toMatchObject({
       verdict: "skip",
     });
   });
@@ -68,7 +68,7 @@ describe("what media may be shown", () => {
         verdict: "skip",
       });
     }
-    expect(deniedReason("/home/onnyx/VentureOS/.baton/outbox/a.png")).toBeNull();
+    expect(deniedReason("/home/orbit/VantageOS/.baton/outbox/a.png")).toBeNull();
   });
 
   it("finds media paths in a tool call's nested input and output", () => {

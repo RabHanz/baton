@@ -87,7 +87,7 @@ describe("shouldShowInstanceBadge", () => {
 
 describe("distinctInstanceInitials", () => {
   it("gives two accounts that read alike different badges, and leaves distinct ones alone", () => {
-    expect(distinctInstanceInitials(["Rabee Work", "Rabee Wife", "Codex"])).toEqual([
+    expect(distinctInstanceInitials(["Robin Work", "Robin Wife", "Codex"])).toEqual([
       "RO",
       "RI",
       "CO",
@@ -95,14 +95,14 @@ describe("distinctInstanceInitials", () => {
     expect(distinctInstanceInitials(["Claude", "Codex"])).toEqual(["CL", "CO"]);
   });
 
-  it("tells apart the two instances both named Rabee in the real picker", () => {
-    // Rendered from the live picker: the default Claude instance and claudeAgent_rabee share a label.
+  it("tells apart the two instances both named Robin in the real picker", () => {
+    // Rendered from the live picker: the default Claude instance and claudeAgent_robin share a label.
     expect(
-      distinctInstanceInitials(["Codex", "Rabee", "Optima", "Rabee", "Signzart", "Live session"]),
-    ).toEqual(["CO", "R1", "OP", "R2", "SI", "LS"]);
+      distinctInstanceInitials(["Codex", "Robin", "Optima", "Robin", "Sablebox", "Live session"]),
+    ).toEqual(["CO", "R1", "OP", "R2", "SA", "LS"]);
   });
 
   it("numbers instances whose labels are identical", () => {
-    expect(distinctInstanceInitials(["Rabee", "Rabee"])).toEqual(["R1", "R2"]);
+    expect(distinctInstanceInitials(["Robin", "Robin"])).toEqual(["R1", "R2"]);
   });
 });

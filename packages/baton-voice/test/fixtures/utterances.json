@@ -396,7 +396,7 @@
     "assistant": "act"
   },
   {
-    "say": "how's VentureOS getting on",
+    "say": "how's VantageOS getting on",
     "tag": "status",
     "rule": "model",
     "assistant": "act"
@@ -552,7 +552,7 @@
     "assistant": "act"
   },
   {
-    "say": "start a session on VentureOS",
+    "say": "start a session on VantageOS",
     "tag": "session command",
     "rule": "model",
     "assistant": "act"

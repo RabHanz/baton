@@ -1,7 +1,7 @@
 
  ▐▛███▛█   Claude Code v2.1.312
 ▝▜██████▀  Opus 5.5 · Claude Max
- ▝▝   ▝▝   /mnt/HC_Volume_106652742/tmp/lanes/baton-prompt-test
+ ▝▝   ▝▝   /srv/work/projects-00001/tmp/lanes/baton-prompt-test
 
 
 ❯ Use the Write tool to create the file probe-two.txt containing the word PROBE.

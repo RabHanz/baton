@@ -13,12 +13,12 @@ import {
 
 const row = (key: string, over: Partial<BatonSessionSummary> = {}): BatonSessionSummary => ({
   key,
-  project: "VentureOS",
+  project: "VantageOS",
   session: key,
   account: null,
   state: "idle",
   urgent: false,
-  box: "onnyx",
+  box: "orbit",
   updatedAt: null,
   thread: null,
   pane: null,
@@ -89,7 +89,7 @@ describe("the assistant's session tools", () => {
     const now = Date.parse("2026-11-01T10:00:00Z");
     expect(
       describeSession(row("k", { state: "working", updatedAt: "2026-11-01T09:55:00Z" }), now),
-    ).toBe("k (VentureOS, on onnyx) is working, last active 5 min ago.");
+    ).toBe("k (VantageOS, on orbit) is working, last active 5 min ago.");
     expect(describeSession(row("k", { state: "waiting", urgent: true }), now)).toContain(
       "a question or an approval",
     );

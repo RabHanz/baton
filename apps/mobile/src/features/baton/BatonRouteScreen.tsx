@@ -9,7 +9,7 @@
  * microphone of its own.
  *
  * **There is no custom audio here on purpose.** The iOS keyboard already has a
- * dictation key, and by `docs/baton/DECISIONS.md` D24 the fork owns everything
+ * dictation key, and by the maintainers' decision log D24 the fork owns everything
  * after the text exists. The Director speaks into the field with the key he
  * already uses, and the sentence goes through the same deterministic grammar
  * as one typed on a laptop. A second speech pipeline would add a permission

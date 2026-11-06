@@ -13,13 +13,13 @@ const descriptor = (over: Record<string, unknown> = {}) =>
     cwd: "/home/dev/p",
     kind: "interactive",
     entrypoint: "cli",
-    name: "Ventureos",
+    name: "Vantageos",
     status: "busy",
     updatedAt: 1793006446893,
     ...over,
   });
 
-const live = { alive: () => true, env: () => new Map<string, string>(), account: "signzart" };
+const live = { alive: () => true, env: () => new Map<string, string>(), account: "sablebox" };
 
 describe("live Claude Code sessions from their own descriptors (D68)", () => {
   it("reads an interactive session with its account and state", () => {
@@ -28,7 +28,7 @@ describe("live Claude Code sessions from their own descriptors (D68)", () => {
       pid: 42,
       sessionId: "s-1",
       status: "busy",
-      account: "signzart",
+      account: "sablebox",
       herdrPane: null,
     });
   });
@@ -63,7 +63,7 @@ describe("live Claude Code sessions from their own descriptors (D68)", () => {
 
 describe("Tessaya's own helper sessions", () => {
   it("are told apart from the user's projects by their folder under the app's data directory", () => {
-    expect(isTessayaOwnFolder("C:\\Users\\rabee\\.t3\\userdata")).toBe(true);
+    expect(isTessayaOwnFolder("C:\\Users\\robin\\.t3\\userdata")).toBe(true);
     expect(isTessayaOwnFolder("/home/dev/.t3/userdata/screen")).toBe(true);
     expect(isTessayaOwnFolder("D:\\Downloads\\Development\\3D-Printer")).toBe(false);
     expect(isTessayaOwnFolder("/home/dev/.t3x/work")).toBe(false);

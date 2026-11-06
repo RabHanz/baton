@@ -8,9 +8,9 @@ import {
 } from "./ThreadAccountMoves.ts";
 
 setClaudeAccountInstances({
-  claudeAgent_rabee: "4",
+  claudeAgent_robin: "4",
   claudeAgent_optima: "5",
-  claudeAgent_signzart: "6",
+  claudeAgent_sablebox: "6",
 });
 
 describe("what holds a move", () => {

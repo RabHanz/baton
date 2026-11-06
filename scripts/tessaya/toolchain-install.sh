@@ -7,7 +7,7 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 dir="${BATON_TOOLCHAIN_DIR:-}"
-[ -n "$dir" ] || { [ -d /mnt/HC_Volume_106652742/dev ] && dir=/mnt/HC_Volume_106652742/dev/toolchain || dir="$HOME/dev/toolchain"; }
+[ -n "$dir" ] || dir="$HOME/dev/toolchain"
 mkdir -p "$dir"
 
 node_ver="$(node -p 'require("./package.json").engines.node')"

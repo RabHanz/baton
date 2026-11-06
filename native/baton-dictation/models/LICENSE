@@ -1,0 +1,9 @@
+The models in this folder are not under the Functional Source License that covers the rest of
+native/baton-dictation. Each keeps its own licence:
+
+- silero_vad.onnx: Silero VAD v6.2.3, Silero Team, MIT.
+- melspectrogram.onnx, embedding_model.onnx: openWakeWord v0.5.1, CC BY-NC-SA 4.0.
+- sebastian.onnx, alfred.onnx, freya.onnx, onyx.onnx, tessaya.onnx: Tessaya's wake models, trained
+  with openWakeWord's trainer on sets that include non-commercial data, so CC BY-NC-SA 4.0.
+
+Sources, copyright lines and full terms: docs/baton/THIRD_PARTY_NOTICES.md.

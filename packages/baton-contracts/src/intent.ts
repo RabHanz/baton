@@ -249,7 +249,7 @@ export type BatonIntentRecord = typeof BatonIntentRecord.Type;
  * §28's sketch names these `fabric.voice.*`. They are `fabric.intent.*` here
  * because the same sentence arrives from dictation, a phone, a keyboard and a
  * future wake word, and naming the family after one transport would misdescribe
- * every other one. See `docs/baton/DECISIONS.md`.
+ * every other one. See the maintainers' decision log.
  */
 export const BatonIntentEvent = Schema.Union([
   Schema.Struct({

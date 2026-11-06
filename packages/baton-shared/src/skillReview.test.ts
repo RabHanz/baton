@@ -12,7 +12,7 @@ describe("adding a skill from an address", () => {
   it("fetches only https, and turns a GitHub page into the raw file", () => {
     expect(normalizeSkillUrl("http://x.io/s.md")).toBeNull();
     expect(normalizeSkillUrl("file:///c:/x")).toBeNull();
-    expect(normalizeSkillUrl("https://user:pw@x.io/s.md")).toBeNull();
+    expect(normalizeSkillUrl("https://user:pw@host.example/s.md")).toBeNull();
     expect(normalizeSkillUrl("https://github.com/o/r/blob/main/skills/a/SKILL.md")).toEqual({
       url: "https://raw.githubusercontent.com/o/r/main/skills/a/SKILL.md",
       host: "raw.githubusercontent.com",

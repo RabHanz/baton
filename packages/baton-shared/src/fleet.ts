@@ -11,7 +11,7 @@
  * last opened a thread — is client state; the environment has no idea. A
  * server therefore passes null and its `done_unseen` means "a turn completed
  * and nothing has been recorded since", while a client passes its real value
- * and gets the stricter, truer answer. `docs/baton/DECISIONS.md` D17.
+ * and gets the stricter, truer answer. the maintainers' decision log D17.
  *
  * @module batonFleet
  */

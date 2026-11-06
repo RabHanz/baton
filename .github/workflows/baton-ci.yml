@@ -23,8 +23,6 @@ jobs:
         with:
           fetch-depth: 0
           filter: blob:none
-      - name: Nothing private ships by default
-        run: node scripts/tessaya/guard-private.mjs
       - name: Every shipped third-party piece has a notice
         run: |
           node scripts/tessaya/check-notices.mjs
@@ -33,6 +31,9 @@ jobs:
         run: node --test scripts/tessaya/status-file.test.mjs scripts/tessaya/cloud-logins.test.mjs scripts/tessaya/live/answer-review.test.mjs
       - name: Upstream paths equal PIN + series
         run: bash scripts/tessaya/patches.sh verify
+      # After verify, which fetches the pin: the guard needs its tree to know which files are ours.
+      - name: Nothing private ships by default
+        run: node scripts/tessaya/guard-private.mjs
       - name: patches.sh self-test
         run: |
           git config --global user.email ci@baton.invalid

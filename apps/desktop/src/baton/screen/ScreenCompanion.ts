@@ -2,7 +2,7 @@
 /**
  * The assistant (D84, D100): answers, look, teach and drive, by voice or from the ask box. The one
  * brain decides which; every capture still needs his yes (once, an hour, this lesson, or always)
- * and every drive plan its own Run it. How each mode runs is in docs/baton/DECISIONS.md.
+ * and every drive plan its own Run it. How each mode runs is in docs/baton/SCREEN.md.
  */
 import { createModelAsk } from "../writing/modelAsk.ts";
 import { appOf, tracedTurns } from "@t3tools/baton-shared/skillLearning";

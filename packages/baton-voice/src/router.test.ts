@@ -24,17 +24,17 @@ const snapshot = (over: Partial<BatonContextSnapshot>): BatonContextSnapshot =>
 
 const focused = applyContextSnapshot(
   emptyContextBus,
-  snapshot({ activeWorkSessionId: "ws-ventureos" as never }),
+  snapshot({ activeWorkSessionId: "ws-vantageos" as never }),
 );
 
 describe("voice router", () => {
   it("runs a low-risk command through the intent path", async () => {
     const { client, calls } = grammarClient();
     const out = await createVoiceRouter(client).route(
-      { kind: "command", text: "what's VentureOS doing", inheritedTarget: null },
+      { kind: "command", text: "what's VantageOS doing", inheritedTarget: null },
       { bus: emptyContextBus, now: NOW },
     );
-    expect(out).toMatchObject({ kind: "ran", workSessionId: "ws-ventureos" });
+    expect(out).toMatchObject({ kind: "ran", workSessionId: "ws-vantageos" });
     expect(calls.map((c) => c.kind)).toEqual(["resolve", "run"]);
   });
 
@@ -54,14 +54,14 @@ describe("voice router", () => {
       { kind: "command", text: "tell it to run the migration tests", inheritedTarget: null },
       { bus: focused, now: NOW },
     );
-    expect(out).toMatchObject({ kind: "ran", workSessionId: "ws-ventureos" });
+    expect(out).toMatchObject({ kind: "ran", workSessionId: "ws-vantageos" });
   });
 
   it("refuses high-risk sentences before anything leaves the client", async () => {
     const { client, calls } = grammarClient();
     const router = createVoiceRouter(client);
     const a = await router.route(
-      { kind: "command", text: "tell it to deploy to production", inheritedTarget: "ws-ventureos" },
+      { kind: "command", text: "tell it to deploy to production", inheritedTarget: "ws-vantageos" },
       { bus: focused, now: NOW },
     );
     const b = await router.route(
@@ -77,7 +77,7 @@ describe("voice router", () => {
     const { client, calls } = grammarClient();
     const router = createVoiceRouter(client);
     const ask = await router.route(
-      { kind: "command", text: "start work on VentureOS with codex", inheritedTarget: null },
+      { kind: "command", text: "start work on VantageOS with codex", inheritedTarget: null },
       { bus: emptyContextBus, now: NOW },
     );
     expect(ask.kind).toBe("needs_confirmation");
@@ -104,14 +104,14 @@ describe("voice router", () => {
       { kind: "session_message", text: "Also run the migration tests." },
       { bus: focused, now: NOW },
     );
-    expect(sent).toEqual({ kind: "sent_to_session", reply: "", workSessionId: "ws-ventureos" });
+    expect(sent).toEqual({ kind: "sent_to_session", reply: "", workSessionId: "ws-vantageos" });
     const none = await router.route(
       { kind: "session_message", text: "hello" },
       { bus: emptyContextBus, now: NOW, mostRecentWorkSessionId: "ws-margin" },
     );
     expect(none).toMatchObject({ kind: "refused", reason: "no_focus" });
     expect(calls).toEqual([
-      { kind: "sendToSession", text: "Also run the migration tests.", target: "ws-ventureos" },
+      { kind: "sendToSession", text: "Also run the migration tests.", target: "ws-vantageos" },
     ]);
   });
 

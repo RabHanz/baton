@@ -68,7 +68,7 @@ describe("the shared conversation", () => {
     expect(currentTarget(turns)).toEqual({ label: "Claude on Scheduler", workSessionId: "ws-1" });
     expect(followUpSession("show it", currentTarget(turns))).toBe("ws-1");
     expect(followUpSession("tell it to rerun the tests", currentTarget(turns))).toBe("ws-1");
-    expect(followUpSession("show the one on Hetzner", currentTarget(turns))).toBeNull();
+    expect(followUpSession("show the one on Harbour", currentTarget(turns))).toBeNull();
     expect(conversationBlock({ recent: turns, earlier: [] })).toContain("Claude on Scheduler");
     expect(parseTurn(JSON.stringify(turns[0]))?.target?.workSessionId).toBe("ws-1");
   });

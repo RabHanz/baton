@@ -11,14 +11,14 @@ import * as SqlClient from "effect/sql/SqlClient";
  * finished a hundred times. Without somewhere to remember the previous state,
  * every thread event on an idle work session re-fires every `on_done` rule
  * until its bound stops it — the bound doing the work of a schedule, which
- * `DECISIONS.md` D20 already named as the wrong shape.
+ * the decision log D20 already named as the wrong shape.
  *
  * Durable rather than in memory for the same reason the firing count is: a
  * restart would otherwise re-fire everything that was already matched, and a
  * restart is exactly when a runaway does the most damage.
  *
  * Additive, so an older build opens the database and ignores the table —
- * `docs/fabric/DECISIONS.md` D7.
+ * the maintainers' decision log D7.
  */
 export default Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;

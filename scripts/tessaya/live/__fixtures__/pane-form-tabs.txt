@@ -1,7 +1,7 @@
 
  ▐▛███▛█   Claude Code v2.1.316
 ▝▜██████▀  Haiku 5.5 · Claude API
- ▝▝   ▝▝   /mnt/HC_Volume_106652742/tmp/lanes/cc-throwaway/work
+ ▝▝   ▝▝   /srv/work/projects-00001/tmp/lanes/cc-throwaway/work
 
 ▎ Auto mode is now Claude Code's default permission mode.
 ▎ Auto mode lets Claude handle permission prompts automatically. Claude checks each tool call for risky actions and

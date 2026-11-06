@@ -143,7 +143,7 @@ Code's own dependencies are covered by `third-party-licenses.config.json`. Licen
 | Pocket TTS (Kyutai) binary and weights; VCTK-derived voices                | spoken replies                                                                                               | MIT (binary); CC BY 4.0 (weights and voices)                                            | no, downloaded on first use |
 
 Texts: `licences/CC-BY-4.0.txt`, `licences/CC-BY-NC-SA-4.0.txt`, `licences/MIT.txt`. A clean-licence wake model for the word
-Tessaya is trained on the sets marked "clean" below (`WAKE_TRAINING_CLEAN.md`); the four older words are not.
+Tessaya is trained on the sets marked "clean" below; the four older words are not.
 
 ### Training data for the wake models
 

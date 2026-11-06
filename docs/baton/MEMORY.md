@@ -178,8 +178,8 @@ default, switched in the Memory tab).
 
 An importer reads a folder of `.md` files (read-only on the source, nothing written there). Each file is one item or one
 item per top-level list entry; front matter keys `kind`, `scope`, `project`, `confidence`, `tags`, `updated` are honored,
-and defaults are `learning`, `global`, 0.6. The VentureOS memory feed format is mapped by the same keys once its manager
-confirms them. `sourceRef` is the file's path in the folder, and a file whose hash has not changed is skipped. When a
+and defaults are `learning`, `global`, 0.6. A memory feed exported by another tool is mapped by the same keys once its format
+is confirmed. `sourceRef` is the file's path in the folder, and a file whose hash has not changed is skipped. When a
 file changed, lines no longer in it are forgotten and only new lines are added, so an unchanged line is not reinforced.
 An `operating-system` folder (his private pack) is never read. Everything passes `storable()`.
 

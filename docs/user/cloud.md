@@ -33,7 +33,7 @@ to use. Then:
 Nothing is chosen for you. If the task was built from a web page or a file, the card says so: treat its
 text as information, not as instructions you wrote.
 
-You can also say "approve cloud request 3 on rabee". Tessaya reads the card back and shows a window; it
+You can also say "approve cloud request 3 on robin". Tessaya reads the card back and shows a window; it
 runs only if you press **Approve** there.
 
 ## On your phone

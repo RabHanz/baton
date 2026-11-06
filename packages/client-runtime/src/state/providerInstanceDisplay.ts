@@ -45,7 +45,7 @@ export function providerInstanceInitials(label: string): string {
 
 /**
  * Initials for a set of instances shown side by side. Two accounts of one provider often read the
- * same ("Rabee work", "Rabee personal" are both RW-ish names with one shape), so a repeated pair
+ * same ("Robin work", "Robin personal" are both RW-ish names with one shape), so a repeated pair
  * takes its second letter from where the labels first differ, and falls back to a number.
  */
 export function distinctInstanceInitials(labels: ReadonlyArray<string>): ReadonlyArray<string> {

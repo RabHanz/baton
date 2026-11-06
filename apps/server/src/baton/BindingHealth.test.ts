@@ -6,7 +6,7 @@ const SESSION = "cc828d1b-2b64-4a21-8aaf-2d1f0c2f99eb";
 const base = (over: Partial<BindingFacts> = {}): BindingFacts => ({
   threadId: `baton-live4:${SESSION}`,
   sessionId: SESSION,
-  session: { status: "waiting", pane: "fab-VentureOS~w1:p2" },
+  session: { status: "waiting", pane: "fab-VantageOS~w1:p2" },
   thread: { instanceId: "baton-live", nativeId: SESSION, running: false },
   ...over,
 });

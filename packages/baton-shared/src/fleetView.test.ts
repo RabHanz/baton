@@ -13,7 +13,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { buildFleetRows, countFleetRows, filterFleetRows } from "./fleetView.ts";
 
 const environmentId = EnvironmentId.make("home-linux");
-const projectId = ProjectId.make("ventureos");
+const projectId = ProjectId.make("vantageos");
 const NOW = Date.parse("2026-09-18T04:10:00.000Z");
 
 const entry = (input: {
@@ -52,7 +52,7 @@ const entry = (input: {
 const rowsFor = (entries: readonly BatonFleetEntry[]) =>
   buildFleetRows({
     entries: entries.map((value) => ({ environmentId, entry: value })),
-    resolveProjectLabel: () => "VentureOS",
+    resolveProjectLabel: () => "VantageOS",
     resolveEnvironmentLabel: () => "home-linux",
     resolveProviderAccount: (_environmentId: string, instanceId: string) =>
       instanceId === "claude-b"
@@ -95,7 +95,7 @@ describe("buildFleetRows", () => {
       }),
     ]);
     expect(row?.glyph).toBe("●");
-    expect(row?.heading).toBe("VentureOS / Scheduler reconnect race");
+    expect(row?.heading).toBe("VantageOS / Scheduler reconnect race");
     expect(row?.stateLabel).toBe("Working");
     expect(row?.attribution).toBe("Claude B · home-linux");
   });
@@ -164,7 +164,7 @@ describe("filterFleetRows", () => {
       entry({ id: "scheduler", title: "Scheduler", state: "working" }),
     ]);
     expect(countFleetRows(rows)).toEqual({ total: 2, needsUser: 1 });
-    expect(filterFleetRows(rows, true).map((row) => row.heading)).toEqual(["VentureOS / Deploy"]);
+    expect(filterFleetRows(rows, true).map((row) => row.heading)).toEqual(["VantageOS / Deploy"]);
     expect(filterFleetRows(rows, false)).toHaveLength(2);
   });
 });

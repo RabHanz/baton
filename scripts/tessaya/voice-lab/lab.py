@@ -17,7 +17,7 @@ import sys
 MICS = [("AT2020", "scarlett|focusrite"), ("DJI", "wireless mic rx|dji")]
 TARGET_FA = 0.5
 # A clip with any of these is a real use of the word, not a false wake.
-SPELLINGS = {"onyx": ("onyx", "onnyx", "onix")}
+SPELLINGS = {"onyx": ("onyx", "onix", "oniks")}
 TARGET_MISS = 0.05
 
 

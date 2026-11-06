@@ -112,47 +112,42 @@ describe("claudeVision", () => {
   });
 
   // The real thing, on the subscription: BATON_REAL_CLAUDE=1 with `claude` signed in (Linux/macOS).
-  it.runIf(process.env["BATON_REAL_CLAUDE"] === "1")(
-    "answers a screenshot question with a point on the right element",
-    async () => {
-      const png = NodeFS.readFileSync(
-        NodePath.join(
-          __dirname,
-          "../../../../../docs/baton/research/clicky-2026-10-27/frames/03-clicky-windows-demo-pointing-youtube.png",
-        ),
+  // BATON_REAL_SCREENSHOT: a 900x506 PNG of YouTube's home page, its search box where the bounds below say.
+  it.runIf(
+    process.env["BATON_REAL_CLAUDE"] === "1" && process.env["BATON_REAL_SCREENSHOT"] !== undefined,
+  )("answers a screenshot question with a point on the right element", async () => {
+    const png = NodeFS.readFileSync(process.env["BATON_REAL_SCREENSHOT"]!);
+    const { LOOK_PROMPT, parseReply } = await import("@t3tools/baton-shared/screenCompanion");
+    const session = startVisionSession({
+      claudeBinary: "claude",
+      model: "sonnet",
+      systemPrompt: LOOK_PROMPT,
+      workDir: NodePath.join(process.env["TMPDIR"] ?? "/tmp", "baton-screen-real"),
+      env: process.env,
+      platform: "linux",
+    });
+    try {
+      const reply = parseReply(
+        await session.ask([
+          {
+            type: "text",
+            text: "user's screen (cursor is here) (image dimensions: 900x506 pixels)",
+          },
+          { type: "image", mediaType: "image/png", data: png },
+          { type: "text", text: "where do i type to search for videos?" },
+        ]),
       );
-      const { LOOK_PROMPT, parseReply } = await import("@t3tools/baton-shared/screenCompanion");
-      const session = startVisionSession({
-        claudeBinary: "claude",
-        model: "sonnet",
-        systemPrompt: LOOK_PROMPT,
-        workDir: NodePath.join(process.env["TMPDIR"] ?? "/tmp", "baton-screen-real"),
-        env: process.env,
-        platform: "linux",
-      });
-      try {
-        const reply = parseReply(
-          await session.ask([
-            {
-              type: "text",
-              text: "user's screen (cursor is here) (image dimensions: 900x506 pixels)",
-            },
-            { type: "image", mediaType: "image/png", data: png },
-            { type: "text", text: "where do i type to search for videos?" },
-          ]),
-        );
-        // The search box spans roughly x 240–580, y 52–82 in this frame.
-        expect(reply.point).not.toBeNull();
-        expect(reply.point!.x).toBeGreaterThan(240);
-        expect(reply.point!.x).toBeLessThan(580);
-        expect(reply.point!.y).toBeGreaterThan(45);
-        expect(reply.point!.y).toBeLessThan(90);
-        expect(reply.spoken.length).toBeGreaterThan(10);
-      } finally {
-        session.dispose();
-      }
-    },
-  );
+      // The search box spans roughly x 240–580, y 52–82 in this frame.
+      expect(reply.point).not.toBeNull();
+      expect(reply.point!.x).toBeGreaterThan(240);
+      expect(reply.point!.x).toBeLessThan(580);
+      expect(reply.point!.y).toBeGreaterThan(45);
+      expect(reply.point!.y).toBeLessThan(90);
+      expect(reply.spoken.length).toBeGreaterThan(10);
+    } finally {
+      session.dispose();
+    }
+  });
 });
 
 describe("inputDriver key maps", () => {

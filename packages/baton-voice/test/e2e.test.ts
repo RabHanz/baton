@@ -74,7 +74,7 @@ describe.skipIf(!ready)("voice pipeline end to end (real models)", () => {
     const stt = createWhisperCppStt({
       binary: whisper,
       model: NodePath.join(models, "ggml-base.en.bin"),
-      vocabulary: () => ["VentureOS", "The Margin", "Codex", "Claude"],
+      vocabulary: () => ["VantageOS", "The Margin", "Codex", "Claude"],
     });
     const { client, calls } = grammarClient();
     const core = createVoiceCore({ wake, vad, stt, router: createVoiceRouter(client), origin: 0 });
@@ -98,18 +98,18 @@ describe.skipIf(!ready)("voice pipeline end to end (real models)", () => {
     const cases: Array<[string, string, number]> = [];
 
     const t1 = await feed("wake-status");
-    cases.push(["wake-status", "Hey Jarvis, what is VentureOS doing?", wakes()]);
+    cases.push(["wake-status", "Hey Jarvis, what is VantageOS doing?", wakes()]);
     report.push(`wake-status: wakes=${wakes()} heard="${t1}"`);
     expect(wakes()).toBe(1);
     expect(calls.find((c) => c.kind === "run")).toBeDefined();
-    expect(core.snapshot().machine.conversationTarget).toBe("ws-ventureos");
+    expect(core.snapshot().machine.conversationTarget).toBe("ws-vantageos");
 
     const before = wakes();
     const t2 = await feed("followup");
     cases.push(["followup", "Tell it to run the other test too.", wakes() - before]);
     report.push(`followup: wakes=${wakes() - before} heard="${t2}"`);
     // Conversation mode: no wake needed, target inherited.
-    expect(calls.findLast((c) => c.kind === "run")?.target).toBe("ws-ventureos");
+    expect(calls.findLast((c) => c.kind === "run")?.target).toBe("ws-vantageos");
 
     const t3 = await feed("dictate");
     cases.push([

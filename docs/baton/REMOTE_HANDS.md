@@ -1,6 +1,6 @@
 # Remote hands
 
-A remote session (the Hetzner manager, a phone) can drive this computer's apps through Tessaya itself: no ssh, no copied scripts,
+A remote session (the Harbour manager, a phone) can drive this computer's apps through Tessaya itself: no ssh, no copied scripts,
 no console windows. Today's manager path costs 5 to 10 s a step because every step is a new ssh login plus a new PowerShell.
 
 ## Shape
@@ -43,7 +43,7 @@ than the window itself (`open_page` opens Home).
 ## Granting it and calling it
 
 1. On the Director's computer, once per remote session, issue a token for that session only (it expires, and revoking it ends the session):
-   `auth session issue --scope baton:hands --ttl 8h --label hetzner-manager --token-only` (the app's bundled server CLI).
+   `auth session issue --scope baton:hands --ttl 8h --label harbour-manager --token-only` (the app's bundled server CLI).
 2. In Tessaya, Working for you: turn on "Let a remote session drive this computer". Turn on "I'm away" when he is not there.
 3. From the remote box, with the hub's tailnet URL and that token:
 

@@ -13,13 +13,13 @@ import {
   type EnvironmentLive,
 } from "./batonProjects";
 
-const repo = { key: "github.com/rabhanz/ventureos", label: "VentureOS" };
+const repo = { key: "github.com/rabhanz/vantageos", label: "VantageOS" };
 
 const claude = (over: Partial<ClaudeLiveSession>): ClaudeLiveSession =>
   ({
     pid: 1,
     sessionId: "s",
-    cwd: "/home/onnyx/VentureOS",
+    cwd: "/home/orbit/VantageOS",
     name: null,
     status: "idle",
     entrypoint: "cli",
@@ -44,31 +44,31 @@ describe("one entry per project, across boxes and accounts (D72)", () => {
   it("puts sessions on two boxes and two accounts under one project", () => {
     const groups = buildBatonProjects({
       environments: [
-        env("e1", "signzart", {
+        env("e1", "sablebox", {
           claude: [claude({ sessionId: "a", account: "optima", herdrPane: "fab-v~w1:p1" })],
         }),
-        env("e2", "onnyx", { claude: [claude({ sessionId: "b", account: "rabee" })] }),
+        env("e2", "orbit", { claude: [claude({ sessionId: "b", account: "robin" })] }),
       ],
       resolveWorkProject: () => null,
     });
     expect(groups).toHaveLength(1);
-    expect(groups[0]?.label).toBe("VentureOS");
-    expect(groups[0]?.boxes).toEqual(["signzart", "onnyx"]);
-    expect(groups[0]?.accounts.toSorted()).toEqual(["optima", "rabee"]);
+    expect(groups[0]?.label).toBe("VantageOS");
+    expect(groups[0]?.boxes).toEqual(["sablebox", "orbit"]);
+    expect(groups[0]?.accounts.toSorted()).toEqual(["optima", "robin"]);
     expect(groups[0]?.rows.map((row) => row.key)).toEqual(["claude:a", "claude:b"]);
   });
 
   it("keeps a session's row through rotation and adoption: the key is the conversation", () => {
     const before = buildBatonProjects({
       environments: [
-        env("e1", "signzart", { claude: [claude({ sessionId: "a", pid: 10, account: "optima" })] }),
+        env("e1", "sablebox", { claude: [claude({ sessionId: "a", pid: 10, account: "optima" })] }),
       ],
       resolveWorkProject: () => null,
     });
     const after = buildBatonProjects({
       environments: [
-        env("e1", "signzart", {
-          claude: [claude({ sessionId: "a", pid: 99, account: "rabee", herdrPane: "fab-v~w1:p2" })],
+        env("e1", "sablebox", {
+          claude: [claude({ sessionId: "a", pid: 99, account: "robin", herdrPane: "fab-v~w1:p2" })],
         }),
       ],
       resolveWorkProject: () => null,
@@ -81,7 +81,7 @@ describe("one entry per project, across boxes and accounts (D72)", () => {
   it("files a T3 work session under the same project, and a bare Herdr pane by its folder", () => {
     const groups = buildBatonProjects({
       environments: [
-        env("e1", "signzart", {
+        env("e1", "sablebox", {
           entries: [
             {
               workSessionId: "w1",
@@ -105,8 +105,8 @@ describe("one entry per project, across boxes and accounts (D72)", () => {
       ],
       resolveWorkProject: () => repo,
     });
-    const ventureos = groups.find((group) => group.key === repo.key);
-    expect(ventureos?.rows.map((row) => row.kind).toSorted()).toEqual(["claude", "work"]);
+    const vantageos = groups.find((group) => group.key === repo.key);
+    expect(vantageos?.rows.map((row) => row.kind).toSorted()).toEqual(["claude", "work"]);
     expect(groups.find((group) => group.key === "dir:logs")?.rows[0]?.kind).toBe("pane");
   });
 });
@@ -147,8 +147,8 @@ describe("the sessions Tessaya's own window lists", () => {
     const groups = [
       {
         key: "p",
-        label: "VentureOS",
-        boxes: ["onnyx"],
+        label: "VantageOS",
+        boxes: ["orbit"],
         accounts: [],
         urgent: true,
         rows: [
@@ -156,7 +156,7 @@ describe("the sessions Tessaya's own window lists", () => {
             kind: "pane" as const,
             key: "pane:e:1",
             environmentId: "e" as never,
-            box: "onnyx",
+            box: "orbit",
             title: "Scheduler",
             state: "needs_input",
             urgent: true,
@@ -168,7 +168,7 @@ describe("the sessions Tessaya's own window lists", () => {
             kind: "claude" as const,
             key: "claude:s1",
             environmentId: "e" as never,
-            box: "onnyx",
+            box: "orbit",
             title: "Planner",
             state: "running",
             urgent: false,

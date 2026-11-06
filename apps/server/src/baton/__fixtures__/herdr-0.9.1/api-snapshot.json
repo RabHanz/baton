@@ -38,9 +38,9 @@
       "panes": [
         {
           "agent_status": "unknown",
-          "cwd": "/mnt/HC_Volume_106652742/tmp/lanes",
+          "cwd": "/srv/work/projects-00001/tmp/lanes",
           "focused": true,
-          "foreground_cwd": "/mnt/HC_Volume_106652742/tmp/lanes",
+          "foreground_cwd": "/srv/work/projects-00001/tmp/lanes",
           "pane_id": "w1:p1",
           "revision": 0,
           "scroll": { "max_offset_from_bottom": 0, "offset_from_bottom": 0, "viewport_rows": 24 },
@@ -50,9 +50,9 @@
         },
         {
           "agent_status": "unknown",
-          "cwd": "/mnt/HC_Volume_106652742/tmp/lanes",
+          "cwd": "/srv/work/projects-00001/tmp/lanes",
           "focused": false,
-          "foreground_cwd": "/mnt/HC_Volume_106652742/tmp/lanes",
+          "foreground_cwd": "/srv/work/projects-00001/tmp/lanes",
           "pane_id": "w1:p2",
           "revision": 0,
           "scroll": { "max_offset_from_bottom": 0, "offset_from_bottom": 0, "viewport_rows": 24 },

@@ -153,7 +153,7 @@ false wakes an hour, under 5% misses). Results stay in `D:\\baton-voice-lab`.
 Result on 2026-10-26 (Linux box, ggml-base.en, espeak-ng voice):
 
 ```
-wake-status: wakes=1 heard="What is VentureOS doing?"
+wake-status: wakes=1 heard="What is VantageOS doing?"
 followup: wakes=0 heard="Tell it to run the other test too."
 dictate: heard="Hey Jarvis, dictate. Thanks, I will send the revised version tomorrow." mode=dictation
 stop-dictating: heard="Stop dictating." mode=sleeping

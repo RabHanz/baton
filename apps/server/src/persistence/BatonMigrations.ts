@@ -23,7 +23,7 @@
  * had to be reshaped — `MigratorOptions.table` is theirs, and it exists for
  * exactly this.
  *
- * See `docs/baton/DECISIONS.md` D48.
+ * See the maintainers' decision log D48.
  */
 
 import * as Effect from "effect/Effect";

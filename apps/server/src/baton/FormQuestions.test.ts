@@ -16,7 +16,7 @@ const ask = (id: string) =>
                 header: "CI account",
                 question: "Which Claude cloud account should run it?",
                 options: [
-                  { label: "signzart", description: "The only cloud login." },
+                  { label: "sablebox", description: "The only cloud login." },
                   { label: "Don't run it", description: "Skip." },
                 ],
               },

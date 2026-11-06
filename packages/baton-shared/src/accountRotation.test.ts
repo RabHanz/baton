@@ -52,13 +52,13 @@ describe("rankRotationTargets", () => {
 
 describe("decideRotation", () => {
   const spent = account({ key: "3", active: true, headroomPercent: 1, label: "optima" });
-  const fresh = account({ key: "1", headroomPercent: 79, label: "signzart" });
+  const fresh = account({ key: "1", headroomPercent: 79, label: "sablebox" });
   const deadLogin = account({
     key: "2",
     usable: false,
     unusableReason: "signed-out",
     headroomPercent: null,
-    label: "rabee",
+    label: "robin",
   });
 
   it("moves to the account with the most room when the provider says the current one is spent", () => {
@@ -177,12 +177,12 @@ describe("rotationLine", () => {
   it("names the account, what is left, and why", () => {
     expect(
       rotationLine({
-        toLabel: "signzart",
+        toLabel: "sablebox",
         fromLabel: "optima",
         toHeadroomPercent: 79.4,
         reason: "limit",
       }),
-    ).toBe("Moved to signzart with 79% left — optima had run out");
+    ).toBe("Moved to sablebox with 79% left — optima had run out");
   });
 });
 
@@ -194,7 +194,7 @@ describe("accountStanding", () => {
   ])("reads %i%% headroom as %s", (headroomPercent, tone) => {
     expect(
       accountStanding(
-        account({ key: "1", label: "signzart", headroomPercent }),
+        account({ key: "1", label: "sablebox", headroomPercent }),
         DEFAULT_ROTATION_THRESHOLDS,
       )?.tone,
     ).toBe(tone);
@@ -203,8 +203,8 @@ describe("accountStanding", () => {
   it("calls a signed-out account signed out rather than empty", () => {
     expect(
       accountStanding(
-        account({ key: "2", label: "rabee", usable: false, unusableReason: "signed-out" }),
+        account({ key: "2", label: "robin", usable: false, unusableReason: "signed-out" }),
       ),
-    ).toEqual({ label: "rabee — signed out", tone: "spent" });
+    ).toEqual({ label: "robin — signed out", tone: "spent" });
   });
 });

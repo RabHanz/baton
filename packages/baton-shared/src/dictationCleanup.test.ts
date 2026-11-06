@@ -65,11 +65,11 @@ describe("localClean", () => {
 
   it("applies his dictionary, and only to whole words", () => {
     const dictionary = [
-      { phrase: "onnyx", replacement: null },
+      { phrase: "orbit", replacement: null },
       { phrase: "meta ads", replacement: "Meta Ads" },
     ];
-    expect(localClean("Ask ONNYX about meta ads.", "default", dictionary)).toBe(
-      "Ask onnyx about Meta Ads.",
+    expect(localClean("Ask ORBIT about meta ads.", "default", dictionary)).toBe(
+      "Ask orbit about Meta Ads.",
     );
     expect(localClean("metadata", "default", dictionary)).toBe("Metadata");
   });
@@ -88,8 +88,8 @@ describe("localClean", () => {
     expect(localClean(raw, "raw")).toBe(raw);
     expect(localClean("Sounds good to me.", "chat")).toBe("Sounds good to me");
     expect(localClean("git status.", "code")).toBe("git status");
-    expect(localClean("Hi Sam, it shipped. Thanks, Rabee.", "email")).toBe(
-      "Hi Sam,\n\nIt shipped.\n\nThanks,\nRabee",
+    expect(localClean("Hi Sam, it shipped. Thanks, Robin.", "email")).toBe(
+      "Hi Sam,\n\nIt shipped.\n\nThanks,\nRobin",
     );
   });
 });

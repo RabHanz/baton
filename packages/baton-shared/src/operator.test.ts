@@ -353,7 +353,7 @@ describe("cloud tools", () => {
       "cloud_cancel",
       "cloud_approve",
     ]) {
-      expect(judgeToolCall(call(t, { id: "3", account: "rabee" }), ctx(true)).verdict).toBe(
+      expect(judgeToolCall(call(t, { id: "3", account: "robin" }), ctx(true)).verdict).toBe(
         "allow",
       );
     }

@@ -15,4 +15,4 @@ edit to a path no patch owns yet is refused until you name its patch once:
 `patches.sh refresh --assign 0008-web.patch apps/web/src/foo.tsx`. Prefer a new Baton file plus a
 one-line hook to a larger patch, because every patched line is a line a sync can conflict on.
 
-To move to a newer upstream, run `scripts/tessaya/upstream-sync.sh` (see `docs/baton/UPSTREAM.md`).
+To move to a newer upstream, run `scripts/tessaya/upstream-sync.sh`.

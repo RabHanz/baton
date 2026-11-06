@@ -9,7 +9,7 @@ import { accountDisplayName, limitsFromAccount, withAccount } from "./ClaudeProb
 
 const account = (overrides: Partial<BatonAccount>): BatonAccount => ({
   key: "4",
-  label: "rabee",
+  label: "robin",
   email: null,
   organizationName: null,
   active: false,
@@ -26,25 +26,25 @@ const account = (overrides: Partial<BatonAccount>): BatonAccount => ({
 });
 
 setClaudeAccountInstances({
-  claudeAgent_rabee: "4",
+  claudeAgent_robin: "4",
   claudeAgent_optima: "5",
-  claudeAgent_signzart: "6",
+  claudeAgent_sablebox: "6",
 });
 
 describe("accountForInstance", () => {
   const pool = [
     account({ active: true }),
     account({ key: "5", label: "optima" }),
-    account({ key: "6", label: "signzart" }),
+    account({ key: "6", label: "sablebox" }),
   ];
 
   it("gives a token instance its own slot, whoever is active", () => {
     expect(accountForInstance("claudeAgent_optima", pool)?.label).toBe("optima");
-    expect(accountForInstance("claudeAgent_signzart", pool)?.label).toBe("signzart");
+    expect(accountForInstance("claudeAgent_sablebox", pool)?.label).toBe("sablebox");
   });
 
   it("gives the default instance the active account", () => {
-    expect(accountForInstance("claudeAgent", pool)?.label).toBe("rabee");
+    expect(accountForInstance("claudeAgent", pool)?.label).toBe("robin");
   });
 });
 
@@ -74,7 +74,7 @@ describe("limitsFromAccount", () => {
 
 describe("accountDisplayName", () => {
   it("reads as a name", () => {
-    expect(accountDisplayName(account({}))).toBe("Rabee");
+    expect(accountDisplayName(account({}))).toBe("Robin");
   });
 });
 
@@ -89,7 +89,7 @@ describe("withAccount", () => {
       displayName: string;
       usageLimits: { credentialFingerprint: string };
     };
-    expect(next.displayName).toBe("Rabee");
+    expect(next.displayName).toBe("Robin");
     expect(next.usageLimits.credentialFingerprint).toBe("4");
     expect(next.auth).toEqual({ status: "authenticated", email: "setup-token-4@token.local" });
   });

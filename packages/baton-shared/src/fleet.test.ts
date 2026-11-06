@@ -12,7 +12,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { buildBatonFleet, filterFleetNeedsUser, type FleetThreadInput } from "./fleet.ts";
 
-const projectId = ProjectId.make("ventureos");
+const projectId = ProjectId.make("vantageos");
 const OBSERVED = "2026-09-18T04:10:00.000Z";
 
 const thread = (overrides: Partial<FleetThreadInput> & { threadId: string }): FleetThreadInput => ({

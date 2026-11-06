@@ -15,7 +15,7 @@
  * would interleave into a record that never existed.
  *
  * Events are a live broadcast, not a durable log — the durable truth is the
- * rows. `docs/baton/DECISIONS.md` D11 explains why Baton keeps its events out
+ * rows. the maintainers' decision log D11 explains why Baton keeps its events out
  * of T3's orchestration event store.
  */
 import { applySynopsisSignals, type SynopsisSignal } from "@t3tools/baton-shared/synopsis";

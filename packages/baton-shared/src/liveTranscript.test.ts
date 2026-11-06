@@ -112,11 +112,11 @@ describe("a live transcript read as messages", () => {
   });
 
   it("names Claude Code's project folder the way Claude Code does", () => {
-    expect(claudeProjectSlug("/mnt/HC_Volume_106652742/dev/baton-autosync")).toBe(
-      "-mnt-HC-Volume-106652742-dev-baton-autosync",
+    expect(claudeProjectSlug("/srv/work/projects-00001/dev/baton-autosync")).toBe(
+      "-srv-work-projects-00001-dev-baton-autosync",
     );
-    expect(claudeProjectSlug("/home/onnyx/VentureOS/.worktrees/x")).toBe(
-      "-home-onnyx-VentureOS--worktrees-x",
+    expect(claudeProjectSlug("/home/orbit/VantageOS/.worktrees/x")).toBe(
+      "-home-orbit-VantageOS--worktrees-x",
     );
   });
 
@@ -130,7 +130,7 @@ describe("a live transcript read as messages", () => {
 
   it("shows an inbox path as a short label", () => {
     const old =
-      "@/mnt/HC_Volume_106652742/dev/t3code/.baton/inbox/2026-11-02T11-13-47-490Z-baton-live4-5ab4ae0c-3cf4-4d50-aae3-94117d982204-6c567ac6-f2d7-4b0c-9541-41a0a052d316.png";
+      "@/srv/work/projects-00001/dev/t3code/.baton/inbox/2026-11-02T11-13-47-490Z-baton-live4-5ab4ae0c-3cf4-4d50-aae3-94117d982204-6c567ac6-f2d7-4b0c-9541-41a0a052d316.png";
     expect(labelAttachmentPaths(`Look at ${old}`)).toBe("Look at \u{1F4CE} image, 11:13");
     expect(
       labelAttachmentPaths(

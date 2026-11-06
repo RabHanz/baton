@@ -17,8 +17,8 @@ import { dictionaryPath, readDictionary } from "./dictationRewriter.ts";
 
 describe("the vocabulary", () => {
   it("adds a word, keeps one entry per phrase, and ignores an empty one", () => {
-    const one = addEntry([], { phrase: " venture os ", replacement: "VentureOS" });
-    expect(one).toEqual([{ phrase: "venture os", replacement: "VentureOS", source: "added" }]);
+    const one = addEntry([], { phrase: " venture os ", replacement: "VantageOS" });
+    expect(one).toEqual([{ phrase: "venture os", replacement: "VantageOS", source: "added" }]);
     const two = addEntry(one, { phrase: "Venture OS", replacement: "" });
     expect(two).toEqual([{ phrase: "Venture OS", replacement: null, source: "added" }]);
     expect(addEntry(two, { phrase: "  ", replacement: "x" })).toBe(two);

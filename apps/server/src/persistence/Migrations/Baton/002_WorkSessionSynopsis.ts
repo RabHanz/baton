@@ -10,7 +10,7 @@ import * as SqlClient from "effect/sql/SqlClient";
  * on every update. A side table would buy a join and nothing else.
  *
  * Additive, so an older build opens the database and ignores the column —
- * `docs/fabric/DECISIONS.md` D7.
+ * the maintainers' decision log D7.
  */
 export default Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;

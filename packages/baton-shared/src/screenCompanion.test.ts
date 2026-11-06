@@ -143,7 +143,7 @@ describe("parseScreenIntent", () => {
     "show me the scheduler session",
     "what needs me?",
     "tell it: run the tests",
-    "start a session on VentureOS",
+    "start a session on VantageOS",
     "next",
     "Look, can you tell the build session to rerun the tests?",
   ])("leaves %s to Baton's grammar", (text) => {

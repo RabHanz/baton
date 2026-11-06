@@ -89,9 +89,9 @@ describe("§14's ladder over the bus", () => {
       snapshot({
         producer: "vscode",
         vscode: {
-          workspaceFolder: "/home/dev/ventureos",
+          workspaceFolder: "/home/dev/vantageos",
           remoteAuthority: "ssh-remote",
-          repositoryRoot: "/home/dev/ventureos",
+          repositoryRoot: "/home/dev/vantageos",
           branch: "main",
           visibleFile: "src/index.ts",
           hasSelection: false,
@@ -107,9 +107,9 @@ describe("§14's ladder over the bus", () => {
       snapshot({
         producer: "vscode",
         vscode: {
-          workspaceFolder: "/home/dev/ventureos",
+          workspaceFolder: "/home/dev/vantageos",
           remoteAuthority: null,
-          repositoryRoot: "/home/dev/ventureos",
+          repositoryRoot: "/home/dev/vantageos",
           branch: "main",
           visibleFile: null,
           hasSelection: false,
@@ -121,7 +121,7 @@ describe("§14's ladder over the bus", () => {
     const resolved = resolveContextWorkSession(linked, { now });
     expect(resolved.workSessionId).toBe("ws-scheduler");
     expect(resolved.rung).toBe("vscode");
-    expect(resolved.evidence).toContain("/home/dev/ventureos");
+    expect(resolved.evidence).toContain("/home/dev/vantageos");
   });
 
   it("falls back to what moved last, and says that is what it did", () => {

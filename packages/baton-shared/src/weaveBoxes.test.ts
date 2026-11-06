@@ -7,19 +7,19 @@ describe("weave hosts", () => {
     expect(parseWeaveHosts(undefined)).toEqual({ hosts: [], rejected: [] });
     const { hosts, rejected } = parseWeaveHosts(
       JSON.stringify([
-        { name: "onnyx", target: "dev@box", key: "~/.ssh/id", herdr: "/home/x/.local/bin/herdr" },
+        { name: "orbit", target: "dev@box", key: "~/.ssh/id", herdr: "/home/x/.local/bin/herdr" },
         { name: "bad", target: "-oProxyCommand=evil" },
         { name: "here", target: "a@b" },
         { name: "semi", target: "a@b; rm -rf /" },
       ]),
     );
-    expect(hosts.map((h) => h.name)).toEqual(["onnyx"]);
+    expect(hosts.map((h) => h.name)).toEqual(["orbit"]);
     expect(rejected).toEqual(["bad", "here", "semi"]);
   });
   it("quotes every argument for the remote shell", () => {
     expect(shellQuote("it's")).toBe(`'it'\\''s'`);
     const cmd = sshHerdr(
-      { name: "onnyx", target: "dev@box", key: "/k", herdr: "/home/x/.local/bin/herdr" },
+      { name: "orbit", target: "dev@box", key: "/k", herdr: "/home/x/.local/bin/herdr" },
       ["pane", "send-text", "p1", "hi; rm -rf /"],
     );
     expect(cmd.args.slice(0, 5)).toEqual(["-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "-i"]);

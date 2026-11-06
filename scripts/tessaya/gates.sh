@@ -23,8 +23,8 @@ for a in "$@"; do
   esac
 done
 
-export TMPDIR="${TMPDIR:-/mnt/HC_Volume_106652742/tmp/lanes}"
-[ -d "$TMPDIR" ] || export TMPDIR="$HOME/tmp" && mkdir -p "$TMPDIR"
+export TMPDIR="${TMPDIR:-$HOME/tmp}"
+mkdir -p "$TMPDIR"
 # shellcheck source=toolchain.sh
 source scripts/tessaya/toolchain.sh
 

@@ -11,7 +11,7 @@
  * therefore passes null, which makes its `done_unseen` mean "a turn completed
  * and nothing has happened since" rather than "you have not seen it". A client
  * building the same fleet locally passes its real value and gets the stricter
- * answer. See `docs/baton/DECISIONS.md` D17.
+ * answer. See the maintainers' decision log D17.
  */
 import {
   type AdoptedSessionCandidate,

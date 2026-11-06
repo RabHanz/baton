@@ -135,10 +135,10 @@ describe("describeAdoptedSession", () => {
       describeAdoptedSession({
         label: "hermes",
         runtime: "herdr",
-        host: "hetzner",
+        host: "harbour",
         capabilities,
       }),
-    ).toBe("hermes (herdr on hetzner) — adopted, so no readConversation, approvals, diffs");
+    ).toBe("hermes (herdr on harbour) — adopted, so no readConversation, approvals, diffs");
   });
 
   it("says nothing about limits when there are none", () => {

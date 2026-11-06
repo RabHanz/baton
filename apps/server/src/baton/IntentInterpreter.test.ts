@@ -42,8 +42,8 @@ describe("choosing the account that reads a sentence", () => {
       vocabularyOf([
         // Exactly the shape of the two claude-swap accounts on the local box:
         // configured first, available, and unable to answer.
-        provider({ instanceId: "claude-rabee", signedIn: false }),
-        provider({ instanceId: "claude-signzart", signedIn: false }),
+        provider({ instanceId: "claude-robin", signedIn: false }),
+        provider({ instanceId: "claude-sablebox", signedIn: false }),
         provider({ instanceId: "claudeAgent" }),
       ]),
     );
@@ -54,14 +54,14 @@ describe("choosing the account that reads a sentence", () => {
   it("keeps the environment's own order among accounts that can answer", () => {
     const chosen = chooseInterpreterInstance(
       vocabularyOf([
-        provider({ instanceId: "claude-signzart" }),
+        provider({ instanceId: "claude-sablebox" }),
         provider({ instanceId: "claudeAgent" }),
       ]),
     );
 
     // Stable and predictable: not "the one with most quota", because the
     // account is what the call is billed to.
-    expect(chosen?.instanceId).toBe("claude-signzart");
+    expect(chosen?.instanceId).toBe("claude-sablebox");
   });
 
   it("skips a signed-in account whose driver cannot read a sentence", () => {
