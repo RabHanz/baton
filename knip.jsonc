@@ -37,7 +37,7 @@
         "verify-windows-desktop-artifact.ts",
         // Baton's labs, proofs and evals are run by hand from the command line.
         "baton/**/*.{ts,mjs}",
-        "tessaya/**/*.{ts,mjs,mts}",
+        "tessaya/**/*.{ts,mjs}",
       ],
       "ignoreDependencies": ["agent-device", "esbuild"],
       // The `t3` npm package's files: copied into the package, never imported.

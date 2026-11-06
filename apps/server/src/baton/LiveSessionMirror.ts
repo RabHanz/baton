@@ -95,7 +95,8 @@ import {
 } from "./UnboundMessages.ts";
 import { staleAskIds } from "./StaleAsks.ts";
 import { splitPaneRef } from "./HerdrAdapterLive.ts";
-import { parsePanePrompt, screenTail } from "../../../../scripts/tessaya/live/pane-prompt.mjs";
+// @ts-expect-error -- plain JS shared with the live agent, which runs without a build; typed below
+import * as panePrompt from "../../../../scripts/tessaya/live/pane-prompt.mjs";
 import { mediaKindFromPath } from "@t3tools/shared/mediaPreview";
 import {
   attachMarkdown,
@@ -181,6 +182,9 @@ interface PanePrompt {
   readonly customIndex: number | null;
   readonly key: string;
 }
+
+const parsePanePrompt: (screen: string) => PanePrompt | null = panePrompt.parsePanePrompt;
+const screenTail: (screen: string) => string = panePrompt.screenTail;
 
 /** The visible screen of a Herdr pane read in-process (no node child per read), or null when Herdr cannot read it. */
 const readPane = (paneRef: string, lines: number): Effect.Effect<string | null> => {
