@@ -352,7 +352,7 @@ import { mouseHookConfig } from "../bindings/inputConfig.ts";
 import { VOICE_HOTKEYS } from "./voiceActivation.ts";
 import { ensureModel, modelPresent, PARAKEET_FAST_MODEL, PARAKEET_MODEL } from "./voiceModels.ts";
 import { hudView, utteranceCaption } from "./voiceHud.ts";
-import { createCpuLoad } from "./cpuLoad.ts";
+import { createCpuLoad, loadBefore } from "./cpuLoad.ts";
 import type { AssistantActions, AssistantFocus, PhoneMirror } from "../screen/ScreenCompanion.ts";
 import { focusedFolder } from "../screen/focusedFolder.ts";
 import { createVoicePill, type VoicePill } from "./voicePill.ts";
@@ -931,6 +931,8 @@ const wordName = (word: string | null): string | null =>
 /** Recognition slower than this, and slower than the clip itself, logs the machine's load. */
 const SLOW_RECOGNITION_MS = 2_000;
 const CPU_SAMPLE_MS = 3_000;
+/** A minute of readings: enough to find one from before the slowest recognition. */
+const CPU_READINGS_KEPT = 20;
 
 export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBatonVoice => {
   // Legacy name (D71): existing settings live in this file, so it keeps "fabric".
@@ -2652,9 +2654,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
 
   // Read every few seconds, so a slow clip's line shows the load during it, not an average since the last one.
   const cpuLoad = createCpuLoad();
-  let cpuBusy: number | null = null;
+  const cpuReadings: Array<{ at: number; busy: number | null }> = [];
   setInterval(() => {
-    cpuBusy = cpuLoad();
+    cpuReadings.push({ at: Date.now(), busy: cpuLoad() });
+    cpuReadings.splice(0, Math.max(0, cpuReadings.length - CPU_READINGS_KEPT));
   }, CPU_SAMPLE_MS).unref();
   /** The sidecar holds no key and no microphone until `configureDictation` gives it a model. */
   const startSidecar = async () => {
@@ -2668,7 +2671,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         input.onNote?.(
           "recognised",
           timing.inferMs > Math.max(SLOW_RECOGNITION_MS, timing.audioMs)
-            ? { ...timing, cpuBusy, cores: NodeOS.cpus().length }
+            ? {
+                ...timing,
+                cpuBusy: cpuReadings.at(-1)?.busy ?? null,
+                // The machine before this clip went in: a high cpuBusy over a low baseline is recognition's own.
+                cpuBefore: loadBefore(cpuReadings, Date.now() - timing.roundTripMs),
+                cores: NodeOS.cpus().length,
+              }
             : timing,
         ),
     });

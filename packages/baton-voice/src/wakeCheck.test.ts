@@ -90,6 +90,26 @@ describe("the second check before a wake from sleep", () => {
     expect(r.events.some((e) => e.type === "wake")).toBe(true);
   });
 
+  it("sends a sure fire over her voice to the check when his voice was not heard", async () => {
+    let checks = 0;
+    const r = rig(
+      async () => {
+        checks += 1;
+        return false;
+      },
+      () => true,
+    );
+    r.core.noteSpoken("The build is done");
+    r.core.setSpeaking(true);
+    r.push(1);
+    r.wake();
+    r.push(0.1);
+    await new Promise((resolve) => setImmediate(resolve));
+    r.push(0.2);
+    expect(checks).toBe(1);
+    expect(r.events.some((e) => e.type === "barge_in")).toBe(false);
+  });
+
   it("drops a wake the recogniser did not hear, with no wake, no cue and no turn", async () => {
     const seen: Array<[number, string | null, number]> = [];
     const r = rig(async (pcm, word, score) => {
@@ -104,7 +124,7 @@ describe("the second check before a wake from sleep", () => {
     await r.core.idle();
     expect(seen).toHaveLength(1);
     expect(seen[0]![1]).toBe("Sebastian");
-    // The model's score goes with it, so a sure fire can skip the text check.
+    // The model's score goes with it, for the wake_check log line.
     expect(seen[0]![2]).toBe(1);
     expect(r.events.some((e) => e.type === "wake")).toBe(false);
     expect(r.events.some((e) => e.type === "dropped" && e.reason === "wake not confirmed")).toBe(

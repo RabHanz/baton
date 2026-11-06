@@ -18,6 +18,10 @@ describe("a follow-up after an answer", () => {
   ])("is taken: %j", (said) => expect(isAddressedFollowUp(said)).toBe(true));
 
   it.each([
+    // Past tense only as a request: "I wanted to…", not a story about what he needed.
+    "I wanted a coffee earlier",
+    "I needed that yesterday",
+    "I meant what I said",
     "Alfonso thinks the festival starts at eight",
     "The government announced new measures today",
     "That sounds like a statement rather than a question",
