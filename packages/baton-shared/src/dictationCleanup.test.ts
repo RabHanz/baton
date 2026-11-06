@@ -44,6 +44,13 @@ describe("localClean", () => {
     expect(localClean("the erm-free uh-huh stays", "default")).toBe("The erm-free uh-huh stays");
   });
 
+  it("drops a spoken filler phrase, so a short dictation pasted without the model has none", () => {
+    expect(localClean("you know, the usual", "default")).toBe("The usual");
+    expect(localClean("it was, sort of like, fine", "default")).toBe("It was, fine");
+    expect(localClean("I guess, we go.", "default")).toBe("We go.");
+    expect(localClean("do you know the way", "default")).toBe("Do you know the way");
+  });
+
   it("takes the corrected value when a number or a day is taken back", () => {
     expect(localClean("How's 6, no 7?", "default")).toBe("How's 7?");
     expect(localClean("Book Monday, no, actually Tuesday.", "default")).toBe("Book Tuesday.");
@@ -93,6 +100,16 @@ describe("needsModel", () => {
     expect(needsModel("Tomorrow, no, actually next week.", "default")).toBe(true);
     expect(needsModel("anything at all goes here", "raw")).toBe(false);
     expect(needsModel(Array(70).fill("word").join(" "), "default")).toBe(true);
+  });
+
+  it("pastes a short dictation at once unless he corrected himself in it", () => {
+    expect(needsModel("see you at the the station", "default")).toBe(false);
+    expect(needsModel("you know, the usual", "default")).toBe(false);
+    // Taken out locally, a filler phrase in a long dictation still marks a false start for the model.
+    const long = "I think we should, you know, I think we should just kill it and start again.";
+    expect(needsModel(localClean(long, "default"), "default", long)).toBe(true);
+    expect(needsModel("Fix the bug.", "notes")).toBe(false);
+    expect(needsModel("Friday, no, actually Saturday.", "default")).toBe(true);
   });
 });
 

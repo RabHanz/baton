@@ -187,6 +187,8 @@ const CORRECTION_MARK =
   /\b(no,? (actually|wait|sorry)|actually,? no|i mean|sorry,|or rather|scratch that|wait,|make that|let me rephrase|what i meant|i meant|strike that)\b/i;
 
 const FILLERS = /(^|[\s,.;:!?])(?:um+|uh+|erm*|hmm+|mhm)(?![\w-])[,.]?(?=\s|$)/gi;
+/** Said to fill a pause, set off by a comma: "you know, the usual". */
+const FILLER_PHRASES = /(^|[\s,.;:!?])(?:you know|sort of like|kind of like|i guess),\s*/gi;
 /** Words nobody doubles on purpose. "had had" and "no no no" are left alone. */
 const STUTTER = /\b(i|the|a|an|to|and|of|we|it|in|on|for|is|you)(?:[,]?\s+\1)+\b/gi;
 /** Only on their own, so "add a new paragraph to the doc" stays a sentence. */
@@ -246,6 +248,7 @@ export const localClean = (
   if (mode === "raw") return raw;
   let text = raw
     .replace(FILLERS, "$1")
+    .replace(FILLER_PHRASES, "$1")
     .replace(STUTTER, "$1")
     .replace(VALUE_CORRECTED, "$1")
     .replace(
@@ -262,16 +265,24 @@ export const localClean = (
 };
 
 const LONG_WORDS = 60;
+const SHORT_WORDS = 8;
 const RUN_ON_WORDS = 30;
 
 /** Whether anything is left that only a reading of the sentence can settle. */
-export const needsModel = (text: string, mode: DictationMode): boolean => {
+export const needsModel = (
+  text: string,
+  mode: DictationMode,
+  /** As heard, before the local pass took its filler phrases out: in a long dictation they mark a false start. */
+  heard: string = text,
+): boolean => {
   if (mode === "raw") return false;
   const words = text.split(/\s+/).length;
   if (CORRECTION_MARK.test(text)) return true;
+  // A few words are pasted at once: a model call there costs more time than it saves.
+  if (words < SHORT_WORDS) return false;
   // Raw recogniser output with no sentence marks at all: someone has to punctuate it.
   if (words >= 12 && !/[.?!]/.test(text)) return true;
-  if (/\b(you know|sort of like|kind of like|i guess),/i.test(text)) return true;
+  if (/\b(you know|sort of like|kind of like|i guess),/i.test(heard)) return true;
   if (/\b(\w+ \w+),? \1\b/i.test(text)) return true;
   if (mode === "document" || mode === "notes") return words >= 8;
   if (words >= LONG_WORDS) return true;
@@ -493,7 +504,8 @@ export const cleanDictation = async (input: {
   if (level === "off" || mode === "raw") return { text: raw, stage: "raw" };
   const local = localClean(raw, mode, dictionary);
   if (level === "local" || local.length === 0) return { text: local, stage: "local" };
-  if (input.always !== true && !needsModel(local, mode)) return { text: local, stage: "local" };
+  if (input.always !== true && !needsModel(local, mode, raw))
+    return { text: local, stage: "local" };
   try {
     const answer = await input.ask(local, mode);
     const verdict = checkRewrite(local, answer, dictionary);
