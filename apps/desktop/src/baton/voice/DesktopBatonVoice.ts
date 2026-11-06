@@ -5757,7 +5757,18 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     wakeOn: settings.enabled,
   });
   if (atLaunch === "now") requestDictation();
-  else if (atLaunch === "settled") setTimeout(requestDictation, DICTATION_SETTLE_MS).unref();
+  else if (atLaunch === "settled") {
+    // Asked again when it fires: he may have switched engine, or pressed the key and loaded it already, meanwhile.
+    setTimeout(() => {
+      const now = dictationAtLaunch({
+        available: binary !== null,
+        dictation: settings.dictation,
+        modelPresent: modelPresent(modelsDir, speechModel()),
+        wakeOn: settings.enabled,
+      });
+      if (now !== "never" && parakeetPath === null) requestDictation();
+    }, DICTATION_SETTLE_MS).unref();
+  }
   void start().catch(failed);
   return {
     refresh: render,

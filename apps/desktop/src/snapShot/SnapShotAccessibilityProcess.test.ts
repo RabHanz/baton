@@ -61,21 +61,37 @@ it("returns immediately when accessibility crashes before the screenshot is read
   assert.isUndefined(await read.result);
 });
 
+it("starts no standby helper before the first read, so start-up spawns nothing", () => {
+  vi.useFakeTimers();
+  const pool = makeSnapShotAccessibilityProcessPool("accessibility.cjs");
+  pool.warm();
+  vi.advanceTimersByTime(10_000);
+  vi.useRealTimers();
+  assert.lengthOf(forkMock.mock.calls, 0);
+  pool.close();
+});
+
 it("replaces a warm helper that exits before capture", async () => {
+  const firstWorker = makeWorker();
   const exitedWorker = makeWorker();
   const captureWorker = makeWorker();
-  const replacementWorker = makeWorker();
   forkMock
     .mockReset()
+    .mockReturnValueOnce(firstWorker)
     .mockReturnValueOnce(exitedWorker)
     .mockReturnValueOnce(captureWorker)
-    .mockReturnValueOnce(replacementWorker);
+    .mockReturnValue(makeWorker());
   vi.useFakeTimers();
   const pool = makeSnapShotAccessibilityProcessPool("accessibility.cjs");
 
-  pool.warm();
-  assert.lengthOf(forkMock.mock.calls, 0);
+  const first = pool.read(request);
+  firstWorker.emit("message", "ready");
+  firstWorker.emit("message", "started");
+  firstWorker.emit("message", { type: "result", context: { accessibleText: "First" } });
+  assert.deepEqual(await first.result, { accessibleText: "First" });
+  // After the first read, the standby starts once things settle.
   vi.advanceTimersByTime(2_000);
+  assert.lengthOf(forkMock.mock.calls, 2);
   exitedWorker.emit("exit", 1);
   const read = pool.read(request);
   captureWorker.emit("message", "ready");
@@ -83,9 +99,7 @@ it("replaces a warm helper that exits before capture", async () => {
   captureWorker.emit("message", { type: "result", context: { accessibleText: "Recovered" } });
 
   assert.deepEqual(await read.result, { accessibleText: "Recovered" });
-  vi.advanceTimersByTime(2_000);
   vi.useRealTimers();
-  assert.lengthOf(forkMock.mock.calls, 3);
   assert.deepEqual(captureWorker.send.mock.calls[0]?.[0], request);
   pool.close();
 });
