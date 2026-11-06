@@ -14,6 +14,8 @@ export const BATON_PHONE_OPS = [
   "prompt",
   "promptPoll",
   "promptClose",
+  "ask",
+  "askGet",
 ] as const;
 
 export const BatonPhoneCallInput = Schema.Struct({

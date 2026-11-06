@@ -7,9 +7,12 @@ import {
   ASK_LEASE_MS,
   ASK_TEXT_MAX,
   ASK_TTL_MS,
+  BAR_ASK_TTL_MS,
+  BAR_NOT_CONNECTED,
   CLIENT_ID,
   PROMPT_TTL_MS,
   QUEUE_MAX,
+  askLine,
   isConnected,
   type AskStatus,
   type PhoneAsk,
@@ -76,6 +79,8 @@ export class BatonPhoneInbox extends Context.Service<
     readonly post: (input: {
       readonly id: string;
       readonly text: string;
+      /** How long it may wait for the desktop; the phone page's 24 hours when absent. */
+      readonly ttlMs?: number;
     }) => Effect.Effect<PostResult>;
     readonly get: (id: string) => Effect.Effect<PhoneAsk | null>;
     readonly recent: (limit: number) => Effect.Effect<ReadonlyArray<PhoneAsk>>;
@@ -124,6 +129,7 @@ export const make = Effect.gen(function* () {
   const post = Effect.fn("BatonPhoneInbox.post")(function* (input: {
     readonly id: string;
     readonly text: string;
+    readonly ttlMs?: number;
   }) {
     const trimmed = input.text.trim();
     if (!CLIENT_ID.test(input.id))
@@ -145,7 +151,7 @@ export const make = Effect.gen(function* () {
     }
     yield* sql`
       INSERT INTO fabric_phone_asks (id, text, source, status, created_at, expires_at)
-      VALUES (${input.id}, ${trimmed}, 'phone', 'queued', ${now}, ${now + ASK_TTL_MS})
+      VALUES (${input.id}, ${trimmed}, 'phone', 'queued', ${now}, ${now + (input.ttlMs ?? ASK_TTL_MS)})
     `.pipe(Effect.orDie);
     return { ok: true as const, ask: (yield* read(input.id))! };
   });
@@ -287,6 +293,32 @@ export const phoneCall = Effect.fn("BatonPhoneInbox.call")(function* (input: Bat
   const bad = () => new BatonPhoneError({ reason: "That phone call was not understood." });
   const id = str(a["id"], 80);
   switch (input.op) {
+    // The web intent bar leaves words for the lead the same way the phone page does, and reads where they stand.
+    case "ask": {
+      // Nothing is queued with no desktop to take it, and what is queued expires in minutes, not a day.
+      if (!(yield* inbox.connected)) return { value: { ok: false, line: BAR_NOT_CONNECTED } };
+      const made = yield* inbox.post({
+        id: id ?? "",
+        text: typeof a["text"] === "string" ? a["text"] : "",
+        ttlMs: BAR_ASK_TTL_MS,
+      });
+      if (!made.ok) return { value: { ok: false, line: made.why } };
+      return {
+        value: {
+          ok: true,
+          status: made.ask.status,
+          line: askLine(made.ask, yield* inbox.connected),
+        },
+      };
+    }
+    case "askGet": {
+      if (id === null) return yield* bad();
+      const ask = yield* inbox.get(id);
+      return {
+        value:
+          ask === null ? null : { status: ask.status, line: askLine(ask, yield* inbox.connected) },
+      };
+    }
     case "take": {
       const ask = yield* inbox.take;
       return { value: ask === null ? null : { id: ask.id, text: ask.text, source: ask.source } };

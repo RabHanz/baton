@@ -16,6 +16,7 @@ import type {
   BatonIntentResolution,
   BatonIntentRisk,
 } from "@t3tools/baton-contracts";
+import { BAR_ASK_TTL_MS } from "@t3tools/baton-shared/phoneRelay";
 
 export interface IntentPreview {
   /** `will` — pressing enter does this. `refused` — it will not happen. */
@@ -33,25 +34,46 @@ export interface IntentPreview {
 
 const WEIGHTY: ReadonlySet<BatonIntentRisk> = new Set(["medium", "high"]);
 
+/** Words the grammar cannot place are the lead's to read; a high-risk, ambiguous or rule refusal stays a refusal. */
+const FOR_THE_LEAD: ReadonlySet<string> = new Set(["unrecognised", "unknown_target"]);
+
+export const goesToLead = (resolution: BatonIntentResolution): boolean =>
+  resolution.outcome === "refused" && FOR_THE_LEAD.has(resolution.refusal.reason);
+
+/**
+ * Whether the bar stops re-reading an ask it left for the lead: it has an outcome, the server no longer knows it,
+ * or it is older than the server would keep it undelivered (a lost connection must not poll for ever).
+ */
+export const leadAskSettled = (
+  got: { readonly status?: string } | null | undefined,
+  askedAt: number,
+  now: number,
+): boolean =>
+  got === null ||
+  (got !== undefined && got.status !== "queued" && got.status !== "taken") ||
+  now - askedAt > BAR_ASK_TTL_MS;
+
 export const previewResolution = (resolution: BatonIntentResolution): IntentPreview =>
-  resolution.outcome === "resolved"
-    ? {
-        tone: "will",
-        line: resolution.description,
-        unplaced: null,
-        weighty: WEIGHTY.has(resolution.risk),
-      }
-    : {
-        tone: "refused",
-        line: resolution.refusal.message,
-        // Shown separately so the user can see which words to change, rather
-        // than re-reading their own sentence looking for the problem.
-        unplaced:
-          resolution.refusal.unplaced.trim().length === 0
-            ? null
-            : resolution.refusal.unplaced.trim(),
-        weighty: false,
-      };
+  goesToLead(resolution)
+    ? { tone: "will", line: "Ask Tessaya", unplaced: null, weighty: false }
+    : resolution.outcome === "resolved"
+      ? {
+          tone: "will",
+          line: resolution.description,
+          unplaced: null,
+          weighty: WEIGHTY.has(resolution.risk),
+        }
+      : {
+          tone: "refused",
+          line: resolution.refusal.message,
+          // Shown separately so the user can see which words to change, rather
+          // than re-reading their own sentence looking for the problem.
+          unplaced:
+            resolution.refusal.unplaced.trim().length === 0
+              ? null
+              : resolution.refusal.unplaced.trim(),
+          weighty: false,
+        };
 
 export interface IntentRow {
   readonly id: string;

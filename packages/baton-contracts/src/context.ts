@@ -27,6 +27,7 @@ import * as Schema from "effect/Schema";
 
 import { IsoDateTime, ThreadId, TrimmedNonEmptyString, TrimmedString } from "@t3tools/contracts";
 import { WorkSessionId } from "./workSession.ts";
+import type { BATON_PHONE_OPS } from "./phone.ts";
 
 /**
  * Who reported a snapshot. §15's producer list, and the reason the bus keeps
@@ -395,6 +396,6 @@ export interface BatonCloudBridgeRequest {
 /** The desktop assistant's phone relay calls, answered by the window with `baton.phone.call`. */
 export interface BatonPhoneBridgeRequest {
   readonly kind: "phone";
-  readonly op: "take" | "answer" | "fail" | "prompt" | "promptPoll" | "promptClose";
+  readonly op: (typeof BATON_PHONE_OPS)[number];
   readonly args: Readonly<Record<string, unknown>>;
 }

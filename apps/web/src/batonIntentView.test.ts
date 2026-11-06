@@ -6,7 +6,9 @@ import {
 } from "@t3tools/baton-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { buildIntentRows, previewResolution } from "./batonIntentView";
+import { BAR_ASK_TTL_MS } from "@t3tools/baton-shared/phoneRelay";
+
+import { buildIntentRows, leadAskSettled, previewResolution } from "./batonIntentView";
 
 const workSessionId = WorkSessionId.make("ws-scheduler");
 
@@ -66,11 +68,23 @@ describe("previewResolution", () => {
     expect(preview.weighty).toBe(true);
   });
 
-  it("shows the words it could not place, separately from the explanation", () => {
+  it("hands words the grammar cannot place to the lead", () => {
     const preview = previewResolution({
       outcome: "refused",
       refusal: {
         reason: "unknown_target",
+        unplaced: "the deploy pipeline",
+        message: 'I could not place "the deploy pipeline". Say the work by name.',
+      },
+    });
+    expect(preview).toEqual({ tone: "will", line: "Ask Tessaya", unplaced: null, weighty: false });
+  });
+
+  it("shows the words it could not place, separately from the explanation", () => {
+    const preview = previewResolution({
+      outcome: "refused",
+      refusal: {
+        reason: "rule_not_understood",
         unplaced: "the deploy pipeline",
         message: 'I could not place "the deploy pipeline". Say the work by name.',
       },
@@ -92,6 +106,19 @@ describe("previewResolution", () => {
       },
     });
     expect(preview.unplaced).toBeNull();
+  });
+});
+
+describe("leadAskSettled", () => {
+  it("stops reading an ask once it has an outcome, is gone, or is older than the server keeps one", () => {
+    expect(leadAskSettled({ status: "queued" }, 0, 1_000)).toBe(false);
+    expect(leadAskSettled({ status: "taken" }, 0, 1_000)).toBe(false);
+    // A failed read is retried, but not past the ask's own life.
+    expect(leadAskSettled(undefined, 0, 1_000)).toBe(false);
+    expect(leadAskSettled({ status: "answered" }, 0, 1_000)).toBe(true);
+    expect(leadAskSettled({ status: "expired" }, 0, 1_000)).toBe(true);
+    expect(leadAskSettled(null, 0, 1_000)).toBe(true);
+    expect(leadAskSettled(undefined, 0, BAR_ASK_TTL_MS + 1)).toBe(true);
   });
 });
 

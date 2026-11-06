@@ -1,6 +1,11 @@
 /** The rules of the phone-to-desktop relay, pure: how long things live and what the phone is told. */
 
 export const ASK_TTL_MS = 24 * 3_600_000;
+/** An ask from the web intent bar is for now: undelivered after this, it expires rather than running later unannounced. */
+export const BAR_ASK_TTL_MS = 5 * 60_000;
+/** What the web intent bar says when no desktop is there to answer; nothing is queued. */
+export const BAR_NOT_CONNECTED =
+  "No Tessaya desktop is connected to this server, so nothing was asked. Open Tessaya on that computer and try again.";
 /** A taken ask nobody answered goes back in the queue after this (the desktop closed mid-answer). */
 export const ASK_LEASE_MS = 5 * 60_000;
 /** The desktop counts as connected if it asked for work this recently. */

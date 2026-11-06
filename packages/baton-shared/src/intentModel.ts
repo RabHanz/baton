@@ -192,12 +192,9 @@ const list = (entries: ReadonlyArray<string>): string => {
 export function buildIntentModelPrompt(input: {
   readonly sentence: string;
   readonly vocabulary: IntentVocabulary;
-  /** Phrasings the user has already confirmed, newest first. Few-shot, from their own vocabulary. */
-  readonly learned?: ReadonlyArray<{ readonly text: string; readonly description: string }>;
 }): string {
   const { sentence, vocabulary } = input;
   const focused = vocabulary.focusedWorkSessionId;
-  const learned = (input.learned ?? []).slice(0, 8);
 
   return [
     "You turn one spoken sentence into one command for a software agent fleet.",
@@ -247,13 +244,6 @@ export function buildIntentModelPrompt(input: {
     "WAITING (id — question):",
     list(vocabulary.openGates.map((gate) => `${gate.firingId} — ${gate.question}`)),
     "",
-    learned.length === 0
-      ? ""
-      : [
-          "The user has said these before, and meant this:",
-          list(learned.map((entry) => `"${entry.text}" → ${entry.description}`)),
-          "",
-        ].join("\n"),
     "The sentence:",
     sentence,
   ]

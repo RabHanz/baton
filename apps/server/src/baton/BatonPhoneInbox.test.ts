@@ -1,11 +1,17 @@
-import { ASK_LEASE_MS, ASK_TTL_MS, CONNECTED_MS } from "@t3tools/baton-shared/phoneRelay";
+import {
+  ASK_LEASE_MS,
+  ASK_TTL_MS,
+  BAR_ASK_TTL_MS,
+  BAR_NOT_CONNECTED,
+  CONNECTED_MS,
+} from "@t3tools/baton-shared/phoneRelay";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
 
 import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
-import { BatonPhoneInbox, layer as inboxLayer } from "./BatonPhoneInbox.ts";
+import { BatonPhoneInbox, layer as inboxLayer, phoneCall } from "./BatonPhoneInbox.ts";
 
 const layer = it.layer(inboxLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)));
 
@@ -23,7 +29,9 @@ layer("BatonPhoneInbox", (it) => {
       yield* inbox.post({ id: "client-aaaa-0002", text: "second" });
       assert.strictEqual((yield* inbox.take)?.id, "client-aaaa-0001");
       assert.strictEqual((yield* inbox.take)?.id, "client-aaaa-0002");
-      assert.isNull(yield* inbox.take);
+      assert.isNull(yield* inbox.get("web-dddd-0001"));
+      // Earlier cases leave asks in the shared queue; taking them counts the desktop as connected.
+      while ((yield* inbox.take) !== null);
     }),
   );
 
@@ -66,7 +74,9 @@ layer("BatonPhoneInbox", (it) => {
         assert.strictEqual((yield* inbox.get("client-dddd-0001"))?.status, "queued");
         yield* TestClock.adjust(2000);
         assert.strictEqual((yield* inbox.get("client-dddd-0001"))?.status, "expired");
-        assert.isNull(yield* inbox.take);
+        assert.isNull(yield* inbox.get("web-dddd-0001"));
+        // Earlier cases leave asks in the shared queue; taking them counts the desktop as connected.
+        while ((yield* inbox.take) !== null);
 
         yield* inbox.post({ id: "client-dddd-0002", text: "lease" });
         assert.strictEqual((yield* inbox.take)?.id, "client-dddd-0002");
@@ -151,6 +161,47 @@ layer("BatonPhoneInbox", (it) => {
         assert.deepStrictEqual(shown?.buttons, buttons);
         assert.isTrue(yield* inbox.answerPrompt("prompt-8", 7));
         assert.strictEqual(yield* inbox.promptAnswer("prompt-8"), 7);
+      }),
+  );
+  it.effect(
+    "the web intent bar asks the lead only while a desktop is there, and its ask expires in minutes",
+    () =>
+      Effect.gen(function* () {
+        const inbox = yield* BatonPhoneInbox;
+        const ask = (id: string, text: string) => phoneCall({ op: "ask", args: { id, text } });
+        // No desktop has asked for work lately: nothing is queued to run later unannounced.
+        yield* TestClock.adjust(CONNECTED_MS + 1);
+        assert.deepEqual((yield* ask("web-dddd-0001", "plan my week")).value, {
+          ok: false,
+          line: BAR_NOT_CONNECTED,
+        });
+        assert.isNull(yield* inbox.get("web-dddd-0001"));
+        // Earlier cases leave asks in the shared queue; taking them counts the desktop as connected.
+        while ((yield* inbox.take) !== null);
+
+        assert.include((yield* ask("web-dddd-0002", "plan my week")).value, {
+          ok: true,
+          status: "queued",
+        });
+        assert.strictEqual((yield* inbox.take)?.id, "web-dddd-0002");
+        yield* inbox.answer("web-dddd-0002", "Done.", "Three things this week.");
+        assert.deepEqual(
+          (yield* phoneCall({ op: "askGet", args: { id: "web-dddd-0002" } })).value,
+          {
+            status: "answered",
+            line: "Three things this week.",
+          },
+        );
+
+        yield* ask("web-dddd-0003", "and next week");
+        yield* TestClock.adjust(BAR_ASK_TTL_MS + 1);
+        assert.include((yield* phoneCall({ op: "askGet", args: { id: "web-dddd-0003" } })).value, {
+          status: "expired",
+        });
+        assert.deepEqual((yield* ask("web-dddd-0004", " ")).value, {
+          ok: false,
+          line: BAR_NOT_CONNECTED,
+        });
       }),
   );
 });
