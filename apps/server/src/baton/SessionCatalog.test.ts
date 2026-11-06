@@ -58,7 +58,7 @@ const machine = (over: Partial<CatalogPorts> = {}) => {
           : [live({ sessionId: "new-1", cwd: args[0]!, herdrPane: "fab-new~p9" })];
       return { ok: true, out: "baton: claude running in fab-shop pane p1" };
     },
-    type: async (pane, text) => (typed.push([pane, text]), true),
+    type: async (pane, text) => (typed.push([pane, text]), "sent" as const),
     sleep: async (ms) => void (clock += ms),
     now: () => clock,
     ...over,
@@ -168,16 +168,66 @@ describe("sending to a stopped session", () => {
     await down.catalog.send({ sessionId: ID, text: "hello" });
     expect(disk).toEqual({ [ID]: ["hello"] });
 
-    const refusing = machine({ kept, type: async () => false });
+    const refusing = machine({ kept, type: async () => "refused" as const });
     expect((await refusing.catalog.list({})).sessions.find((r) => r.id === ID)).toMatchObject({
       waiting: 1,
     });
     await refusing.catalog.resume({ sessionId: ID });
     expect(disk).toEqual({ [ID]: ["hello"] });
 
-    const after = machine({ kept });
-    await after.catalog.resume({ sessionId: ID });
-    expect(after.typed).toEqual([["fab-shop~p1", "hello"]]);
+    // Once the question is answered, sending again sends the kept one first, then the new one.
+    const after = machine({ kept, live: async () => [live()] });
+    const again = await after.catalog.send({ sessionId: ID, text: "and this" });
+    expect(after.typed).toEqual([
+      ["fab-shop~p1", "hello"],
+      ["fab-shop~p1", "and this"],
+    ]);
+    expect(again).toMatchObject({ delivered: true });
+    expect(disk).toEqual({});
+
+    // A send Herdr never answered may have arrived: dropped, said so, never typed again.
+    const unsure = machine({
+      kept,
+      live: async () => [live()],
+      type: async () => "unsure" as const,
+    });
+    const maybe = await unsure.catalog.send({ sessionId: ID, text: "maybe" });
+    expect(maybe).toMatchObject({
+      delivered: false,
+      detail: expect.stringMatching(/may already be/),
+    });
+    expect(disk).toEqual({});
+  });
+
+  it("a message sent while kept ones are being typed goes after them, once, and a second Resume types nothing twice", async () => {
+    let disk: Record<string, ReadonlyArray<string>> = { [ID]: ["first"] };
+    const kept = {
+      read: () => disk,
+      write: (all: Record<string, ReadonlyArray<string>>) => void (disk = all),
+    };
+    const typed: string[] = [];
+    let release: () => void = () => undefined;
+    let gate: Promise<void> | null = new Promise((r) => (release = r));
+    let started: () => void = () => undefined;
+    const typing = new Promise<void>((r) => (started = r));
+    const { catalog } = machine({
+      kept,
+      type: async (_pane, text) => {
+        started();
+        if (gate !== null) await gate;
+        gate = null;
+        typed.push(text);
+        return "sent" as const;
+      },
+    });
+    const resumed = catalog.resume({ sessionId: ID });
+    await typing;
+    const during = await catalog.send({ sessionId: ID, text: "second" });
+    expect(during.delivered).toBe(false);
+    expect(await catalog.resume({ sessionId: ID })).toMatchObject({ state: "resuming" });
+    release();
+    await resumed;
+    expect(typed).toEqual(["first", "second"]);
     expect(disk).toEqual({});
   });
 

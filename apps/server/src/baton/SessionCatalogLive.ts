@@ -1,6 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off globalDate:off globalDateInEffect:off preferSchemaOverJson:off globalTimers:off
 /** The real machine behind the session catalog: Claude's transcripts, the history index, `baton`, Herdr. */
 import * as NodeChildProcess from "node:child_process";
+import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
@@ -199,3 +200,44 @@ export const realCatalogPorts = (type: CatalogPorts["type"]): CatalogPorts => ({
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   now: () => Date.now(),
 });
+
+/**
+ * The kept-messages file: `{ sessionId: [text, ...] }`. Missing is empty. Anything unreadable or of another shape is
+ * moved aside (never silently replaced, since it holds his words) and reported, and the catalog starts empty.
+ */
+export const readKeptFile = (
+  file: string,
+): { readonly kept: Record<string, ReadonlyArray<string>>; readonly problem: string | null } => {
+  let raw: string;
+  try {
+    raw = NodeFS.readFileSync(file, "utf8");
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "ENOENT"
+      ? { kept: {}, problem: null }
+      : { kept: {}, problem: `could not read ${file}: ${String(error)}` };
+  }
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      !Array.isArray(parsed) &&
+      Object.values(parsed).every(
+        (texts) => Array.isArray(texts) && texts.every((text) => typeof text === "string"),
+      )
+    )
+      return { kept: parsed as Record<string, ReadonlyArray<string>>, problem: null };
+  } catch {}
+  const aside = `${file}.bad-${Date.now()}-${NodeCrypto.randomUUID().slice(0, 8)}`;
+  try {
+    NodeFS.renameSync(file, aside);
+  } catch {}
+  return { kept: {}, problem: `${file} was not a kept-messages file; moved to ${aside}` };
+};
+
+/** Written whole to a temporary file and renamed over, so a crash mid-write never leaves half a file. */
+export const writeKeptFile = (file: string, all: Record<string, ReadonlyArray<string>>): void => {
+  const temp = `${file}.tmp`;
+  NodeFS.writeFileSync(temp, JSON.stringify(all), { mode: 0o600 });
+  NodeFS.renameSync(temp, file);
+};

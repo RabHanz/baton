@@ -36,6 +36,9 @@ import {
   liveQueueDir,
   takeDrainLock,
   UNSURE_NOTE,
+  maybeNote,
+  run,
+  sendFailure,
 } from "./baton-live-acp.mjs";
 import { parsePanePrompt, parseReviewScreen, screenTail } from "./pane-prompt.mjs";
 
@@ -393,7 +396,15 @@ NodeTest.test(
     enqueue(dir, "s12", msg("only once"));
     await drainSession(dir, "s12", deps);
     NodeAssert.equal(readQueue(dir, "s12").length, 0);
-    NodeAssert.deepEqual(said, [lostNote(UNSURE_NOTE, "only once")]);
+    NodeAssert.deepEqual(said, [maybeNote("only once")]);
+    // A killed herdr (timeout) maps to unsure; a refusal does not.
+    const killed = await run(process.execPath, ["-e", "setTimeout(() => {}, 5000)"], 50);
+    NodeAssert.equal(killed.timedOut, true);
+    NodeAssert.equal(sendFailure(killed), UNSURE_NOTE);
+    NodeAssert.notEqual(
+      sendFailure({ ok: false, timedOut: false, out: "agent_blocked" }),
+      UNSURE_NOTE,
+    );
   },
 );
 

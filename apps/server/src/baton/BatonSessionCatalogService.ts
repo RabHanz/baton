@@ -65,8 +65,8 @@ import {
   watchLiveSessions,
   type WatchdogOutcome,
 } from "@t3tools/baton-shared/watch";
-import { createSessionCatalog, type CatalogPorts } from "./SessionCatalog.ts";
-import { realCatalogPorts } from "./SessionCatalogLive.ts";
+import { createSessionCatalog, sendOutcome, type CatalogPorts } from "./SessionCatalog.ts";
+import { readKeptFile, realCatalogPorts, writeKeptFile } from "./SessionCatalogLive.ts";
 
 export class BatonSessionCatalogService extends Context.Service<
   BatonSessionCatalogService,
@@ -361,6 +361,8 @@ export const layer = Layer.effect(
     );
     // Messages sent to a stopped session while it comes back, kept across a restart.
     const keptFile = NodePath.join(NodePath.dirname(stateFile), "baton-catalog-kept.json");
+    const { kept: keptAtStart, problem: keptProblem } = readKeptFile(keptFile);
+    if (keptProblem !== null) yield* Effect.logWarning("Tessaya kept messages", keptProblem);
     let autoState: AutoResumeState = emptyAutoResumeState;
     try {
       autoState = {
@@ -380,7 +382,7 @@ export const layer = Layer.effect(
     };
     const real = realCatalogPorts((pane, text) =>
       Effect.runPromiseWith(services)(herdrSend(adopted, { pane, text, submit: true })).then(
-        (r) => r.delivered,
+        sendOutcome,
       ),
     );
     const ports: CatalogPorts = {
@@ -401,19 +403,10 @@ export const layer = Layer.effect(
           }),
       autoResumed: (id) => autoResumedWithin(autoState, id, Date.now(), 2 * HOUR_MS),
       kept: {
-        read: () => {
-          try {
-            return JSON.parse(NodeFS.readFileSync(keptFile, "utf8")) as Record<
-              string,
-              ReadonlyArray<string>
-            >;
-          } catch {
-            return {};
-          }
-        },
+        read: () => keptAtStart,
         write: (all) => {
           try {
-            NodeFS.writeFileSync(keptFile, JSON.stringify(all), { mode: 0o600 });
+            writeKeptFile(keptFile, all);
           } catch {
             // a read-only data directory keeps them in memory only
           }

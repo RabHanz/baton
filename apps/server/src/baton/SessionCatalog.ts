@@ -29,6 +29,19 @@ export interface HistoryHit {
   readonly at: string | null;
 }
 
+export type SendOutcome = "sent" | "refused" | "unsure";
+
+/** What a Herdr send's answer means for a kept message: only a definite refusal keeps it; anything else may have been typed. */
+export const sendOutcome = (result: {
+  readonly delivered: boolean;
+  readonly detail: string;
+}): SendOutcome =>
+  result.delivered
+    ? "sent"
+    : /waiting on a question|No Herdr pane/.test(result.detail)
+      ? "refused"
+      : "unsure";
+
 export interface CatalogPorts {
   readonly machine: string;
   readonly live: () => Promise<ReadonlyArray<ClaudeLiveSession>>;
@@ -41,8 +54,8 @@ export interface CatalogPorts {
   readonly baton: (
     args: ReadonlyArray<string>,
   ) => Promise<{ readonly ok: boolean; readonly out: string }>;
-  /** Types the text into a Herdr pane and submits it. */
-  readonly type: (pane: string, text: string) => Promise<boolean>;
+  /** Types the text into a Herdr pane and submits it. `refused`: definitely not typed (a question is up, or no pane). */
+  readonly type: (pane: string, text: string) => Promise<SendOutcome>;
   /** Machines with no Herdr: brings the session back as a T3 thread resuming that id, sending nothing. */
   readonly thread?: (
     sessionId: string,
@@ -115,6 +128,32 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
     ports.kept?.write(Object.fromEntries(waiting));
   };
   const failed = new Map<string, string>();
+  /** Sends in progress per session, so a second caller only appends and the one loop sends it, in order. */
+  const flushing = new Set<string>();
+  /** Messages a send could not confirm, per session: dropped, never sent again, and reported once. */
+  const unsure = new Map<string, number>();
+  /**
+   * Sends what waits for a session, oldest first, one at a time, until nothing new has arrived. A definite refusal
+   * keeps it and everything after it; an unsure send drops that one. Each sent message leaves the kept file at once.
+   */
+  const flush = async (
+    sessionId: string,
+    put: (text: string) => Promise<SendOutcome>,
+  ): Promise<"done" | "refused"> => {
+    flushing.add(sessionId);
+    try {
+      for (;;) {
+        const head = waiting.get(sessionId)?.[0];
+        if (head === undefined) return "done";
+        const outcome = await put(head);
+        if (outcome === "refused") return "refused";
+        if (outcome === "unsure") unsure.set(sessionId, (unsure.get(sessionId) ?? 0) + 1);
+        keep(sessionId, (waiting.get(sessionId) ?? []).slice(1));
+      }
+    } finally {
+      flushing.delete(sessionId);
+    }
+  };
 
   const liveRow = (s: ClaudeLiveSession): BatonCatalogSession => ({
     id: s.sessionId,
@@ -332,31 +371,24 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
     if (existing !== undefined)
       return Promise.resolve({ state: "resuming" as const, pane: null, detail: IMPORTING });
     const job = doResume(input.sessionId, input.cwd).then(async (r) => {
-      resuming.delete(input.sessionId);
       if (r.threadId !== undefined) resumedThreads.set(input.sessionId, r.threadId);
       if (r.state === "failed") failed.set(input.sessionId, r.detail ?? "It could not be resumed.");
       else failed.delete(input.sessionId);
-      // Messages that arrived while it came back go now, in order, once.
-      // One the pane does not take (a question is up) stays kept, never typed again by itself.
+      // What waited goes now, in order, once; `resuming` stays set until it has, so a second tap cannot type it twice.
       if (r.state === "running" && r.pane !== null) {
-        const left: string[] = [];
-        for (const text of waiting.get(input.sessionId) ?? [])
-          if (!(await ports.type(r.pane, text))) left.push(text);
-        keep(input.sessionId, left);
+        const pane = r.pane;
+        await flush(input.sessionId, (text) => ports.type(pane, text));
       }
       // No Herdr: the session came back as a thread, so what waited goes there. Anything not taken stays kept.
-      if (r.state === "running" && r.pane === null) {
-        const queued = waiting.get(input.sessionId) ?? [];
-        const left: string[] = [];
-        for (const text of queued) {
-          const sent =
-            r.threadId !== undefined &&
-            ports.threadSend !== undefined &&
-            (await ports.threadSend(r.threadId, text).catch(() => false));
-          if (!sent) left.push(text);
-        }
-        keep(input.sessionId, left);
-      }
+      if (r.state === "running" && r.pane === null)
+        await flush(input.sessionId, async (text) =>
+          r.threadId !== undefined &&
+          ports.threadSend !== undefined &&
+          (await ports.threadSend(r.threadId, text).catch(() => false))
+            ? "sent"
+            : "refused",
+        );
+      resuming.delete(input.sessionId);
       return r;
     });
     resuming.set(input.sessionId, job);
@@ -374,13 +406,35 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
     ]);
   };
 
+  const QUEUED_BEHIND =
+    "Earlier messages to it are still being sent; this one goes after them, in order.";
+  const afterFlush = (sessionId: string, outcome: "done" | "refused") => {
+    const maybe = unsure.get(sessionId) ?? 0;
+    unsure.delete(sessionId);
+    if (outcome === "refused")
+      return {
+        delivered: false,
+        detail:
+          "It is waiting on a question in its terminal. Your message is kept; answer the question, then send again and it goes first.",
+      };
+    return maybe === 0
+      ? { delivered: true, detail: null }
+      : {
+          delivered: false,
+          detail: `Herdr did not answer in time for ${maybe} message${maybe === 1 ? "" : "s"}, so ${maybe === 1 ? "it" : "they"} may already be in the session; not sent again in case.`,
+        };
+  };
+
   const send = async (input: { sessionId: string; text: string; cwd?: string }) => {
     const live = (await ports.live()).find((s) => s.sessionId === input.sessionId);
     if (live !== undefined && live.herdrPane !== null) {
-      const ok = await ports.type(live.herdrPane, input.text);
-      return ok
-        ? { state: "running" as const, delivered: true, detail: null }
-        : { state: "failed" as const, delivered: false, detail: "Herdr did not take the message." };
+      // Anything kept from before goes first, then this one; a send already under way takes it in order.
+      keep(input.sessionId, [...(waiting.get(input.sessionId) ?? []), input.text]);
+      if (flushing.has(input.sessionId) || resuming.has(input.sessionId))
+        return { state: "running" as const, delivered: false, detail: QUEUED_BEHIND };
+      const pane = live.herdrPane;
+      const outcome = await flush(input.sessionId, (text) => ports.type(pane, text));
+      return { state: "running" as const, ...afterFlush(input.sessionId, outcome) };
     }
     if (live !== undefined)
       return {
@@ -405,14 +459,10 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
       };
     }
     if (result.state === "running")
-      return waiting.has(input.sessionId)
-        ? {
-            state: "running" as const,
-            delivered: false,
-            detail:
-              "It is back, but it is waiting on a question in its terminal. Your message is kept; answer the question, then resume or send again.",
-          }
-        : { state: "running" as const, delivered: true, detail: null };
+      return {
+        state: "running" as const,
+        ...afterFlush(input.sessionId, waiting.has(input.sessionId) ? "refused" : "done"),
+      };
     if (result.state === "resuming")
       return {
         state: "resuming" as const,
