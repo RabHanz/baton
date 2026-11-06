@@ -4,7 +4,7 @@
  * grants anything, and it is used only once it passed its replay test and he accepted it. Pure: the
  * desktop reads and writes the files, asks the model and runs the replays.
  */
-import { splitFront } from "./osPack.ts";
+import { splitFront, type Brain } from "./osPack.ts";
 import { parseSkill, reviewSkill, slugOf } from "./skillReview.ts";
 
 export const SKILLS_FOLDER = "skills";
@@ -302,3 +302,86 @@ export const pathPasses = (
   calls: ReadonlyArray<string>,
 ): boolean =>
   calls.length <= c.maxCalls && calls.some((t) => t.replace(/^mcp__baton__/, "") === c.goal);
+
+/** A turn kept on this machine for the nightly pass: its trace, what a replay needs, and its id (when it began). */
+export interface KeptTurn {
+  readonly turn: number;
+  readonly trace: TurnTrace;
+  readonly window: string | null;
+  readonly answers: Readonly<Record<string, string>>;
+  readonly allowed: ReadonlyArray<string>;
+  readonly brain: Brain;
+}
+
+/** The turns the Record's `turn_trace` rows name (their detail carries the turn's id). */
+export const tracedTurns = (
+  rows: ReadonlyArray<{ readonly kind: string; readonly detail: string }>,
+): ReadonlySet<number> =>
+  new Set(
+    rows.flatMap((r) => {
+      const id = r.kind === "turn_trace" ? /"turn":(\d+)/.exec(r.detail)?.[1] : undefined;
+      return id === undefined ? [] : [Number(id)];
+    }),
+  );
+
+const CORRECTION = /^(no|nope|not that|wrong|i meant|i said)\b/i;
+const same = (a: string, b: string) =>
+  a.trim().toLowerCase().replace(/\s+/g, " ") === b.trim().toLowerCase().replace(/\s+/g, " ");
+
+/** Turns he corrected: answered within a minute by "no, I meant…", or the same request again within ten. */
+export const correctedTurns = (
+  turns: ReadonlyArray<{ readonly turn: number; readonly said: string }>,
+): ReadonlySet<number> => {
+  const sorted = turns.toSorted((a, b) => a.turn - b.turn);
+  const out = new Set<number>();
+  sorted.forEach((t, i) => {
+    const next = sorted[i + 1];
+    if (next === undefined) return;
+    const gap = next.turn - t.turn;
+    if (
+      (gap <= 60_000 && CORRECTION.test(next.said)) ||
+      (gap <= 600_000 && same(t.said, next.said))
+    )
+      out.add(t.turn);
+  });
+  return out;
+};
+
+export const NIGHTLY_GROUPS = 8;
+
+/**
+ * Distil, with no model: of the turns the last day's Record names, those worth learning from (three
+ * calls or more, stopped, or corrected), grouped by the kind of request (shared words and the same
+ * app), at most eight groups, the costliest first. A group's worst turn is the one to learn from.
+ */
+export const nightlyGroups = (
+  kept: ReadonlyArray<KeptTurn>,
+  traced: ReadonlySet<number>,
+): ReadonlyArray<ReadonlyArray<KeptTurn>> => {
+  const corrected = correctedTurns(kept.map((k) => ({ turn: k.turn, said: k.trace.said })));
+  const worth = kept.filter(
+    (k) =>
+      traced.has(k.turn) &&
+      (k.trace.calls.length >= 3 || k.trace.stoppedBy !== null || corrected.has(k.turn)),
+  );
+  const groups: KeptTurn[][] = [];
+  for (const k of worth) {
+    const mine = words(k.trace.said);
+    const home = groups.find((g) => {
+      const theirs = words(g[0]!.trace.said);
+      const shared = [...mine].filter((w) => theirs.has(w)).length;
+      return (
+        g[0]!.trace.app === k.trace.app &&
+        (shared > 0 || mine.size + theirs.size === 0) &&
+        shared * 2 >= Math.min(mine.size, theirs.size)
+      );
+    });
+    if (home === undefined) groups.push([k]);
+    else home.push(k);
+  }
+  const calls = (g: ReadonlyArray<KeptTurn>) => g.reduce((n, k) => n + k.trace.calls.length, 0);
+  return groups
+    .map((g) => g.toSorted((a, b) => b.trace.calls.length - a.trace.calls.length))
+    .toSorted((a, b) => calls(b) - calls(a))
+    .slice(0, NIGHTLY_GROUPS);
+};

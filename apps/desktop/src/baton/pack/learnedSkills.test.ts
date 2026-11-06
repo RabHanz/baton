@@ -10,8 +10,12 @@ import {
   learnedAction,
   learnedControls,
   learnFromTurn,
+  keepRecentTurn,
+  learnNightly,
+  pruneRecentTurns,
   readSkills,
   skillsForTurn,
+  waitingSkillsLine,
   type LastTurn,
 } from "./learnedSkills.ts";
 
@@ -89,8 +93,13 @@ describe("learning from a turn", () => {
     );
     expect(row).toMatchObject({ button: "Accept", secondary: "Reject" });
     expect(learnedAction(row!.id)).toEqual({ slug: skill!.slug, secondary: false });
+    expect(waitingSkillsLine(dir, now)).toBe(
+      "I learned one thing yesterday; it's waiting for you.",
+    );
+    expect(waitingSkillsLine(dir, new Date(now.getTime() + 2 * 86_400_000))).toBeNull();
     expect(decideSkill(dir, skill!.slug, "accept", now)).toBe(true);
     expect(skillsForTurn(dir, sentence, allowed).slugs).toEqual([skill!.slug]);
+    expect(waitingSkillsLine(dir, now)).toBeNull();
     // A persona that may not use its tools does not get it.
     expect(skillsForTurn(dir, sentence, ["screen_capture"]).slugs).toEqual([]);
     // Edited after its test, it is not used, and cannot be accepted again until tested.
@@ -128,6 +137,74 @@ describe("learning from a turn", () => {
       "refused",
     );
     expect(readSkills(dir)).toEqual([]);
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("learning at night", () => {
+  it("learns from the day's slow turn the Record names, counts its replays, leaves it for his yes, and never tries it again", async () => {
+    const dir = tmp();
+    const brain = { model: "sonnet", effort: "medium" };
+    keepRecentTurn(dir, { ...turn, turn: now.getTime() - 3_600_000, brain }, now.getTime());
+    // A turn from three days ago is dropped when the next one is kept.
+    keepRecentTurn(
+      dir,
+      { ...turn, turn: now.getTime() - 3 * 86_400_000, brain },
+      now.getTime() - 3 * 86_400_000,
+    );
+    keepRecentTurn(dir, { ...turn, turn: now.getTime() - 60_000, brain }, now.getTime());
+    const models: string[] = [];
+    const nightly = () =>
+      learnNightly({
+        dir,
+        traced: new Set([now.getTime() - 3_600_000, now.getTime() - 60_000]),
+        ask: async () => SKILL,
+        // Fails its test: the skill does not shorten the turn.
+        replay: (b) => async () => (
+          models.push(b.model),
+          ["mcp__baton__screen_capture", "mcp__baton__type_text"]
+        ),
+        now,
+      });
+    const first = await nightly();
+    expect(first.text).toContain("did not help");
+    expect(first.text).toContain("Looked at 1 kind of request; 6 replays.");
+    expect(first.replays).toBe(6);
+    expect(new Set(models)).toEqual(new Set(["sonnet"]));
+    expect(readSkills(dir)).toEqual([]);
+    expect((await nightly()).text).toBe("Nothing in the last day to learn from.");
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("keeps a turn's tool output with obvious secrets taken out, and lets nothing past two days be read", async () => {
+    const dir = tmp();
+    const brain = { model: "sonnet", effort: "medium" };
+    const old = now.getTime() - 3 * 86_400_000;
+    keepRecentTurn(
+      dir,
+      {
+        ...turn,
+        answers: { screen_capture: "token sk-abcdefghijklmnopqrstuvwx here" },
+        turn: old,
+        brain,
+      },
+      old,
+    );
+    const file = NodePath.join(dir, ".recent", `${old}.json`);
+    expect(NodeFS.readFileSync(file, "utf8")).not.toContain("sk-abcdefghijklmnopqrstuvwx");
+    // Read at night with nothing newer kept: the stale turn is cleared, not learned from.
+    const result = await learnNightly({
+      dir,
+      traced: new Set([old]),
+      ask: async () => SKILL,
+      replay: () => async () => [],
+      now,
+    });
+    expect(result.text).toBe("Nothing in the last day to learn from.");
+    expect(NodeFS.existsSync(file)).toBe(false);
+    keepRecentTurn(dir, { ...turn, turn: old, brain }, old);
+    pruneRecentTurns(dir, now.getTime());
+    expect(NodeFS.existsSync(file)).toBe(false);
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 });

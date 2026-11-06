@@ -228,6 +228,7 @@ import {
   type BuiltInId,
   type StandingJobDef,
 } from "../presence/standingJobs.ts";
+import { skillsDirOf, waitingSkillsLine } from "../pack/learnedSkills.ts";
 import { standingVerdict } from "@t3tools/baton-shared/trust";
 import type { OrchestrationRuleWithFirings } from "@t3tools/baton-contracts";
 import { nodeExec } from "@t3tools/baton-shared/cloud/nodeExec";
@@ -772,6 +773,8 @@ export const resampleTo16k = (pcm: Int16Array, rate: number): Int16Array => {
 
 /** The assistant, as the voice side sees it: its tray entries (D84) and the one brain (D100). */
 export interface TrayExtras extends BrainVoiceHook {
+  /** The lead's nightly learning pass over the turns these Record rows trace. */
+  readonly learnNightly?: (rows: ReadonlyArray<BatonRecordEntry>) => Promise<string>;
   /** The phone's words run as a typed ask; the reply comes back. */
   readonly askFromPhone?: (
     text: string,
@@ -1828,6 +1831,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const lines = [
       briefCommitments(commitments.list(), Date.now()),
       jobsDigest(jobsCache ?? [], Date.now()),
+      waitingSkillsLine(skillsDirOf(NodePath.join(input.stateDir, PACK_FOLDER)), new Date()),
     ];
     return lines.filter((l): l is string => l !== null);
   };
@@ -3450,6 +3454,17 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           return text;
         },
         say: (text) => input.extras?.announce(text, true),
+        learn: async () => {
+          const learn = input.extras?.learnNightly;
+          if (learn === undefined || input.direct === undefined)
+            throw new Error("Learning is not available here.");
+          const value = (await input.direct("baton.record.list", {
+            kind: "turn_trace",
+            since: new Date(now - 86_400_000).toISOString(),
+            limit: 500,
+          })) as { entries?: ReadonlyArray<BatonRecordEntry> } | null;
+          return learn(value?.entries ?? []);
+        },
         note: async (id, text) => {
           await requestKept({
             kind: "job",

@@ -2,6 +2,10 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   appOf,
+  correctedTurns,
+  nightlyGroups,
+  tracedTurns,
+  type KeptTurn,
   matchSkills,
   parseLearnedSkill,
   pathPasses,
@@ -140,5 +144,57 @@ describe("learned skills", () => {
         "mcp__baton__type_text",
       ]),
     ).toBe(false);
+  });
+});
+
+describe("the nightly distil", () => {
+  const kept = (turn: number, said: string, calls: number, app = "notepad.exe"): KeptTurn => ({
+    turn,
+    trace: {
+      ...trace,
+      said,
+      app,
+      calls: Array.from({ length: calls }, () => trace.calls[0]!),
+    },
+    window: null,
+    answers: {},
+    allowed: [],
+    brain: { model: "opus", effort: "medium" },
+  });
+
+  it("reads the turn ids the Record's traces name, and nothing else", () => {
+    expect(
+      tracedTurns([
+        { kind: "turn_trace", detail: '{"turn":17,"calls":[]}' },
+        { kind: "turn_trace", detail: '{"calls":[' },
+        { kind: "assistant_turn", detail: '{"turn":9}' },
+      ]),
+    ).toEqual(new Set([17]));
+  });
+
+  it("flags a turn he corrected within a minute, or asked again within ten", () => {
+    expect(
+      correctedTurns([
+        { turn: 0, said: "open the report" },
+        { turn: 30_000, said: "no, I meant the March report" },
+        { turn: 1_000_000, said: "Type hello" },
+        { turn: 1_300_000, said: "type  hello" },
+        { turn: 5_000_000, said: "no thanks" },
+      ]),
+    ).toEqual(new Set([0, 1_000_000]));
+  });
+
+  it("groups the day's slow turns by the kind of request, costliest first, and leaves short or untraced ones", () => {
+    const groups = nightlyGroups(
+      [
+        kept(1, "type hello world into notepad", 9),
+        kept(2, "type my address into notepad", 5),
+        kept(3, "what is the weather", 1),
+        kept(4, "summarise the build log", 4, "chrome.exe"),
+        kept(5, "type a poem into notepad", 12),
+      ],
+      new Set([1, 2, 3, 4]),
+    );
+    expect(groups.map((g) => g.map((k) => k.turn))).toEqual([[1, 2], [4]]);
   });
 });
