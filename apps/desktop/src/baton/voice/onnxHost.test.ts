@@ -1,6 +1,12 @@
 import { assert, it, vi } from "vite-plus/test";
 
-import { createOnnxHost, serveOnnx, type OnnxChild, type OnnxReply } from "./onnxHost.ts";
+import {
+  createOnnxHost,
+  REQUEST_TIMEOUT_MS,
+  serveOnnx,
+  type OnnxChild,
+  type OnnxReply,
+} from "./onnxHost.ts";
 
 const paths = {
   melspectrogram: "mel.onnx",
@@ -8,55 +14,74 @@ const paths = {
   wakes: [{ word: "tessaya", path: "tessaya.onnx", threshold: 0.5 }],
 };
 
-/** A child that answers through the real request loop, with scorers that need no models. */
-const fakeChildren = () => {
-  const children: Array<{ readonly exit: (code: number) => void; readonly opened: string[] }> = [];
+interface FakeChild {
+  readonly exit: (code: number) => void;
+  readonly opened: string[];
+  /** Stops answering, like a worker stuck inside a native call. */
+  hung: boolean;
+}
+
+/** Children that answer through the real request loop, with scorers that need no models. */
+const fakeChildren = (failsToLoad: (n: number) => boolean = () => false) => {
+  const children: FakeChild[] = [];
   const fork = (): OnnxChild => {
     const listeners: Array<(reply: OnnxReply) => void> = [];
     const exits: Array<(code: number) => void> = [];
-    const opened: string[] = [];
     let alive = true;
+    const fails = failsToLoad(children.length);
+    const me: FakeChild = {
+      opened: [],
+      hung: false,
+      exit: (code) => {
+        if (!alive) return;
+        alive = false;
+        for (const exit of exits) exit(code);
+      },
+    };
+    const load = (kind: string) => {
+      if (fails) throw new Error(`cannot load ${kind}`);
+      me.opened.push(kind);
+    };
     const handle = serveOnnx(
       (reply) => {
-        if (alive) for (const listener of listeners) listener(reply);
+        if (alive && !me.hung) for (const listener of listeners) listener(reply);
       },
       {
         wake: async () => {
-          opened.push("wake");
+          load("wake");
           return { chunkSamples: 1280, score: async () => [0.9], reset: () => undefined };
         },
         vad: async () => {
-          opened.push("vad");
+          load("vad");
           return { chunkSamples: 512, score: async () => 0.8, reset: () => undefined };
         },
       },
     );
-    children.push({
-      opened,
-      exit: (code) => {
-        alive = false;
-        for (const exit of exits) exit(code);
-      },
-    });
+    children.push(me);
     return {
       postMessage: (request) => {
         if (alive) handle(request);
       },
       onMessage: (listener) => listeners.push(listener),
       onExit: (listener) => exits.push(listener),
-      kill: () => undefined,
+      kill: () => me.exit(-15),
     };
   };
   return { children, fork };
 };
 
-it("scores through the worker, hears nothing while it is down, and reloads the models after a crash", async () => {
+const listening = async (failsToLoad?: (n: number) => boolean) => {
   vi.useFakeTimers();
-  const { children, fork } = fakeChildren();
-  const crashes: number[] = [];
-  const host = createOnnxHost({ fork, onCrash: (code) => crashes.push(code) });
+  const { children, fork } = fakeChildren(failsToLoad);
+  const crashes: Array<[number, boolean]> = [];
+  const host = createOnnxHost({ fork, onCrash: (code, speak) => crashes.push([code, speak]) });
   const wake = await host.wake(paths);
   const vad = await host.vad("silero.onnx");
+  return { children, crashes, host, wake, vad };
+};
+
+it("scores through the worker, hears nothing while it is down, and reloads the models after a crash", async () => {
+  const { children, crashes, host, wake, vad } = await listening();
   assert.deepEqual(await wake.score(new Int16Array(1280)), [0.9]);
   assert.equal(await vad.score(new Int16Array(512)), 0.8);
 
@@ -65,23 +90,78 @@ it("scores through the worker, hears nothing while it is down, and reloads the m
   children[0]!.exit(1);
   assert.deepEqual(await inFlight, [0]);
   assert.equal(await vad.score(new Int16Array(512)), 0);
-  assert.deepEqual(crashes, [1]);
 
-  vi.runAllTimers();
+  await vi.advanceTimersByTimeAsync(1_000);
   assert.lengthOf(children, 2);
   assert.deepEqual(await wake.score(new Int16Array(1280)), [0.9]);
   assert.deepEqual(children[1]!.opened, ["wake", "vad"]);
 
-  // A second crash restarts again but says nothing more.
+  // Every exit is logged; only the first is spoken. The next restart waits longer.
   children[1]!.exit(2);
-  vi.runAllTimers();
-  vi.useRealTimers();
-  assert.deepEqual(crashes, [1]);
+  assert.deepEqual(crashes, [
+    [1, true],
+    [2, false],
+  ]);
+  await vi.advanceTimersByTimeAsync(1_999);
+  assert.lengthOf(children, 2);
+  await vi.advanceTimersByTimeAsync(1);
+  assert.lengthOf(children, 3);
   assert.equal(await vad.score(new Int16Array(512)), 0.8);
+  vi.useRealTimers();
+  host.close();
+});
+
+it("starts the backoff again once a restarted worker has stayed up", async () => {
+  const { children, host } = await listening();
+  children[0]!.exit(1);
+  await vi.advanceTimersByTimeAsync(1_000);
+  await vi.advanceTimersByTimeAsync(60_000);
+  children[1]!.exit(1);
+  await vi.advanceTimersByTimeAsync(1_000);
+  assert.lengthOf(children, 3);
+  vi.useRealTimers();
+  host.close();
+});
+
+it("ends a worker whose models fail to reload, so the next restart tries again", async () => {
+  const { children, host, wake } = await listening((n) => n === 1);
+  children[0]!.exit(1);
+  await vi.advanceTimersByTimeAsync(1_000);
+  assert.lengthOf(children, 2);
+  await vi.advanceTimersByTimeAsync(2_000);
+  assert.lengthOf(children, 3);
+  assert.deepEqual(await wake.score(new Int16Array(1280)), [0.9]);
+  vi.useRealTimers();
+  host.close();
+});
+
+it("restarts a worker that stops answering", async () => {
+  const { children, host, wake } = await listening();
+  children[0]!.hung = true;
+  let heard: ReadonlyArray<number> | null = null;
+  void wake.score(new Int16Array(1280)).then((value) => (heard = value));
+  await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS);
+  assert.deepEqual(heard, [0]);
+  await vi.advanceTimersByTimeAsync(1_000);
+  assert.deepEqual(await wake.score(new Int16Array(1280)), [0.9]);
+  vi.useRealTimers();
+  host.close();
+});
+
+it("with voice off, a crash is logged but neither spoken nor reloaded", async () => {
+  const { children, crashes, host, wake, vad } = await listening();
+  wake.close();
+  vad.close();
+  children[0]!.exit(1);
+  await vi.advanceTimersByTimeAsync(60_000);
+  assert.lengthOf(children, 1);
+  assert.deepEqual(crashes, [[1, false]]);
+  vi.useRealTimers();
   host.close();
 });
 
 it("fails the first load, so voice reports it instead of listening to nothing", async () => {
+  const crashes: Array<[number, boolean]> = [];
   const host = createOnnxHost({
     fork: () => ({
       postMessage: () => undefined,
@@ -89,9 +169,10 @@ it("fails the first load, so voice reports it instead of listening to nothing", 
       onExit: (listener) => queueMicrotask(() => listener(3)),
       kill: () => undefined,
     }),
-    onCrash: () => assert.fail("not a crash after loading"),
+    onCrash: (code, speak) => crashes.push([code, speak]),
   });
   let error: unknown = null;
   await host.wake(paths).catch((e: unknown) => (error = e));
   assert.match(String(error), /exited \(3\)/);
+  assert.deepEqual(crashes, [[3, false]]);
 });

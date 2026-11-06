@@ -342,7 +342,10 @@ export const startBatonDesktop = Effect.gen(function* () {
         const child = Electron.utilityProcess.fork(
           NodePath.join(__dirname, "baton", "voice", "onnxWorker.cjs"),
           [],
-          { serviceName: "Tessaya voice models", stdio: "ignore" },
+          { serviceName: "Tessaya voice models", stdio: ["ignore", "ignore", "pipe"] },
+        );
+        child.stderr?.on("data", (chunk: Buffer) =>
+          lifecycle.note("voice-models-stderr", { text: chunk.toString("utf8").slice(0, 500) }),
         );
         return {
           postMessage: (request) => child.postMessage(request),
@@ -351,11 +354,13 @@ export const startBatonDesktop = Effect.gen(function* () {
           kill: () => child.kill(),
         };
       },
-      onCrash: (code) => {
+      onCrash: (code, speak) => {
         lifecycle.note("voice-models-restarted", { exitCode: code });
-        void speaker
-          .speak("My hearing stopped for a moment. It is coming back now.")
-          .catch(() => undefined);
+        if (speak) {
+          void speaker
+            .speak("My hearing stopped for a moment. It is coming back now.")
+            .catch(() => undefined);
+        }
       },
     });
     Electron.app.on("will-quit", onnx.close);

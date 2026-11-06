@@ -68,11 +68,18 @@ export interface OnnxChild {
 
 const FIRST_RESTART_MS = 1_000;
 const MAX_RESTART_MS = 60_000;
+/** A worker up this long after reloading has recovered: the next crash starts the backoff again. */
+const HEALTHY_MS = 60_000;
+/** Longer than a cold model load on a slow laptop; a worker silent this long is hung and is restarted. */
+export const REQUEST_TIMEOUT_MS = 30_000;
+
+/** A scorer from the host; `close` stops a crash from reloading it once voice is off. */
+export type HostedScorer<T> = T & { readonly close: () => void };
 
 export const createOnnxHost = (input: {
   readonly fork: () => OnnxChild;
-  /** Once per run, at the first crash after the models loaded: the voice says it is listening again. */
-  readonly onCrash: (code: number) => void;
+  /** Every unexpected exit, for the log; `speak` is true once per run, at the first crash while listening. */
+  readonly onCrash: (code: number, speak: boolean) => void;
 }) => {
   let child: OnnxChild | null = null;
   let id = 0;
@@ -82,6 +89,7 @@ export const createOnnxHost = (input: {
       readonly resolve: (value: never) => void;
       readonly reject: (error: Error) => void;
       readonly fallback?: unknown;
+      readonly timer: ReturnType<typeof setTimeout>;
     }
   >();
   const opened: OnnxRequest[] = [];
@@ -89,13 +97,20 @@ export const createOnnxHost = (input: {
   let closed = false;
   let restartMs = FIRST_RESTART_MS;
 
+  const settle = (key: number) => {
+    const waiting = pending.get(key);
+    if (waiting !== undefined) {
+      pending.delete(key);
+      clearTimeout(waiting.timer);
+    }
+    return waiting;
+  };
   const start = () => {
     const current = input.fork();
     child = current;
     current.onMessage((reply) => {
-      const waiting = pending.get(reply.id);
+      const waiting = settle(reply.id);
       if (waiting === undefined) return;
-      pending.delete(reply.id);
       if (!("error" in reply)) waiting.resolve(reply.value as never);
       else if (waiting.fallback !== undefined) waiting.resolve(waiting.fallback as never);
       else waiting.reject(new Error(reply.error));
@@ -103,25 +118,39 @@ export const createOnnxHost = (input: {
     current.onExit((code) => {
       if (child !== current) return;
       child = null;
-      for (const [key, waiting] of pending) {
-        pending.delete(key);
+      for (const key of pending.keys()) {
+        const waiting = settle(key)!;
         if (waiting.fallback !== undefined) waiting.resolve(waiting.fallback as never);
         else waiting.reject(new Error(`voice model process exited (${code})`));
       }
-      if (closed || opened.length === 0) return;
-      if (!told) {
-        told = true;
-        input.onCrash(code);
-      }
+      if (closed) return;
+      const listening = opened.length > 0;
+      input.onCrash(code, listening && !told);
+      if (!listening) return;
+      told = true;
       setTimeout(restart, restartMs).unref();
       restartMs = Math.min(restartMs * 2, MAX_RESTART_MS);
     });
   };
   const restart = () => {
-    if (closed || child !== null) return;
+    if (closed || child !== null || opened.length === 0) return;
     start();
+    const current = child!;
     // The worker answers in order, so scores sent after these wait for the models to load again.
-    for (const request of opened) child!.postMessage({ ...request, id: (id += 1) } as OnnxRequest);
+    void Promise.all(
+      opened.map((request) =>
+        call<number>({ ...request, id: (id += 1) } as OnnxRequest & { readonly id: number }),
+      ),
+    ).then(
+      () =>
+        setTimeout(() => {
+          if (child === current) restartMs = FIRST_RESTART_MS;
+        }, HEALTHY_MS).unref(),
+      // A failed reload would leave voice deaf: end this worker so the backoff tries again.
+      () => {
+        if (child === current) current.kill();
+      },
+    );
   };
 
   const call = <T>(request: OnnxRequest & { readonly id: number }, fallback?: T): Promise<T> =>
@@ -131,12 +160,18 @@ export const createOnnxHost = (input: {
         if (closed) return reject(new Error("voice model process closed"));
         start();
       }
+      const current = child!;
+      const timer = setTimeout(() => {
+        if (child === current) current.kill();
+      }, REQUEST_TIMEOUT_MS);
+      timer.unref();
       pending.set(request.id, {
         resolve: resolve as (value: never) => void,
         reject,
+        timer,
         ...(fallback === undefined ? {} : { fallback }),
       });
-      child!.postMessage(request);
+      current.postMessage(request);
     });
   const open = async (request: OnnxRequest & { readonly id: number }) => {
     const chunkSamples = await call<number>(request);
@@ -145,21 +180,31 @@ export const createOnnxHost = (input: {
     opened.push(request);
     return chunkSamples;
   };
+  const release = (request: OnnxRequest) => () => {
+    const slot = opened.indexOf(request);
+    if (slot >= 0) opened.splice(slot, 1);
+  };
 
   return {
-    wake: async (paths: OpenWakeWordPaths): Promise<OpenWakeWordScorer> => {
+    wake: async (paths: OpenWakeWordPaths): Promise<HostedScorer<OpenWakeWordScorer>> => {
       const silent = paths.wakes.map(() => 0);
+      const request = { op: "open-wake" as const, id: (id += 1), paths };
       return {
-        chunkSamples: await open({ op: "open-wake", id: (id += 1), paths }),
+        chunkSamples: await open(request),
         score: (chunk) => call({ op: "wake", id: (id += 1), chunk }, silent),
         reset: () => child?.postMessage({ op: "reset-wake" }),
+        close: release(request),
       };
     },
-    vad: async (path: string): Promise<SileroScorer> => ({
-      chunkSamples: await open({ op: "open-vad", id: (id += 1), path }),
-      score: (chunk) => call({ op: "vad", id: (id += 1), chunk }, 0),
-      reset: () => child?.postMessage({ op: "reset-vad" }),
-    }),
+    vad: async (path: string): Promise<HostedScorer<SileroScorer>> => {
+      const request = { op: "open-vad" as const, id: (id += 1), path };
+      return {
+        chunkSamples: await open(request),
+        score: (chunk) => call({ op: "vad", id: (id += 1), chunk }, 0),
+        reset: () => child?.postMessage({ op: "reset-vad" }),
+        close: release(request),
+      };
+    },
     close: () => {
       closed = true;
       child?.kill();
