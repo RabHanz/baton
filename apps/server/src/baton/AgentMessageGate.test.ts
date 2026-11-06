@@ -10,82 +10,88 @@ import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
 import { BatonRecordService, layer as recordLayer } from "./BatonRecordService.ts";
 
 const TARGET = ThreadId.make("thread:target");
-const shell = (linkSession?: string) =>
-  ({
-    id: TARGET,
-    title: "Fix the checkout",
-    projectId: "project:shop",
-    deletedAt: null,
-    ...(linkSession === undefined ? {} : { linkOrigin: { sessionId: linkSession, label: "x" } }),
-  }) as never;
 
-/** A call from another environment's link, with `access`, to a thread that link did or did not start. */
-const fromLink = (
-  access: "full-access" | "auto",
-  targetStartedByLink = false,
-  label = "Ann's laptop",
-) =>
+/** A call from another environment's link, by its session, to a thread here. */
+const fromLink = (sessionId: string, label = "Ann's laptop") =>
   Effect.provide(
     Layer.mergeAll(
       Layer.succeed(McpInvocationContext.McpInvocationContext, {
         thread: undefined,
-        client: { sessionId: "link-1", label, access, linked: true },
+        client: { sessionId, label, access: "full-access", linked: true },
       } as never),
       Layer.succeed(ThreadManagement.ThreadManagementService, {
-        getThreadShell: () => Effect.succeed(shell(targetStartedByLink ? "link-1" : undefined)),
+        getThreadShell: () =>
+          Effect.succeed({
+            id: TARGET,
+            title: "Fix the checkout",
+            projectId: "project:shop",
+            deletedAt: null,
+          } as never),
       } as never),
     ),
   );
 
+const failed = (message: string) =>
+  new OrchestratorMcpFailure({ code: "capability_denied", message });
+
 const layer = it.layer(recordLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)));
 
 layer("the agent-message gate", (it) => {
-  it.effect(
-    "records a send and a refusal; a lower link reaches only its own threads, by name",
-    () =>
-      Effect.gen(function* () {
-        const record = yield* BatonRecordService;
-        let sent = 0;
-        const send = Effect.sync(() => (sent += 1));
-        yield* gateThreadSend({ threadId: TARGET }, send).pipe(fromLink("full-access"));
-        yield* gateThreadSend({ threadId: TARGET }, send).pipe(fromLink("auto", true));
-        const refused = yield* gateThreadSend({ threadId: TARGET }, send).pipe(
-          fromLink("auto"),
-          Effect.flip,
-        );
-        assert.strictEqual(sent, 2);
-        assert.include((refused as OrchestratorMcpFailure).message, "Ann's laptop");
-        assert.include((refused as OrchestratorMcpFailure).message, "full access");
-        const rows = yield* record.query({ kind: "agent_message" });
-        assert.deepStrictEqual(
-          rows.map((r) => [r.actor, r.outcome, r.ref]),
-          [
-            ["link:Ann's laptop", "refused", TARGET],
-            ["link:Ann's laptop", "sent", TARGET],
-            ["link:Ann's laptop", "sent", TARGET],
-          ],
-        );
-      }),
-  );
-
-  it.effect("records a refusal from further in, and stops a sender at 30 sends a minute", () =>
+  it.effect("records each send and each refusal from further in, keyed by the link's session", () =>
     Effect.gen(function* () {
       const record = yield* BatonRecordService;
-      const fenced = new OrchestratorMcpFailure({ code: "capability_denied", message: "fence" });
-      yield* gateThreadSend({ threadId: TARGET }, Effect.fail(fenced)).pipe(
-        fromLink("full-access", false, "Server"),
+      yield* gateThreadSend({ threadId: TARGET }, Effect.void).pipe(fromLink("link-a"));
+      // Same name, another link: its own sender.
+      yield* gateThreadSend({ threadId: TARGET }, Effect.void).pipe(fromLink("link-b"));
+      yield* gateThreadSend({ threadId: TARGET }, Effect.fail(failed("fenced"))).pipe(
+        fromLink("link-a"),
         Effect.flip,
       );
-      assert.strictEqual((yield* record.query({ kind: "agent_message" }))[0]?.detail, "fence");
-      for (let i = 0; i < 30; i += 1)
-        yield* gateThreadSend({ threadId: TARGET }, Effect.void).pipe(
-          fromLink("full-access", false, "Server"),
-        );
-      const limited = yield* gateThreadSend({ threadId: TARGET }, Effect.void).pipe(
-        fromLink("full-access", false, "Server"),
-        Effect.flip,
+      const rows = yield* record.query({ kind: "agent_message" });
+      assert.deepStrictEqual(
+        rows.map((r) => [r.actor, r.outcome, r.detail]),
+        [
+          ["link:link-a", "refused", "fenced"],
+          ["link:link-b", "sent", ""],
+          ["link:link-a", "sent", ""],
+        ],
       );
-      assert.include((limited as OrchestratorMcpFailure).message, "30 messages in the last minute");
+    }),
+  );
+
+  it.effect("lets 30 of 31 sends started at once through, and refuses the last by the limit", () =>
+    Effect.gen(function* () {
+      const results = yield* Effect.all(
+        Array.from({ length: 31 }, () =>
+          gateThreadSend({ threadId: TARGET }, Effect.void).pipe(
+            fromLink("link-race"),
+            Effect.result,
+          ),
+        ),
+        { concurrency: "unbounded" },
+      );
+      const refused = results.filter((r) => r._tag === "Failure");
+      assert.strictEqual(refused.length, 1);
+      assert.include(String(refused[0]), "30 messages in the last minute");
     }),
   );
 });
+
+it.effect(
+  "a Record that cannot be read or written never blocks a send or turns it into a failure",
+  () =>
+    Effect.gen(function* () {
+      let sent = 0;
+      const broken = BatonRecordService.of({
+        append: () => Effect.die("disk full"),
+        appendFromClient: () => Effect.die("disk full"),
+        query: () => Effect.die("locked"),
+      });
+      const result = yield* gateThreadSend(
+        { threadId: TARGET },
+        Effect.sync(() => (sent += 1)),
+      ).pipe(fromLink("link-broken"), Effect.provideService(BatonRecordService, broken));
+      assert.strictEqual(result, 1);
+      assert.strictEqual(sent, 1);
+    }),
+);

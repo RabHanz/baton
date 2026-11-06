@@ -239,39 +239,12 @@ describe("One Trust", () => {
 });
 
 describe("a message from one agent to another's thread", () => {
-  const limited = { label: "Ann's laptop", fullAccess: false };
-  it.each([
-    ["this machine", { link: null, sameLink: false, sentLastMinute: 0 }, "allow"],
-    [
-      "his full-access link",
-      { link: { label: "Server", fullAccess: true }, sameLink: false, sentLastMinute: 0 },
-      "allow",
-    ],
-    [
-      "a lower link, to a thread it started",
-      { link: limited, sameLink: true, sentLastMinute: 0 },
-      "allow",
-    ],
-    [
-      "a lower link, to any other thread",
-      { link: limited, sameLink: false, sentLastMinute: 0 },
-      "deny",
-    ],
-    [
-      "a sender at the limit",
-      { link: null, sameLink: false, sentLastMinute: MESSAGES_PER_MINUTE },
-      "deny",
-    ],
-  ] as const)("from %s", (_name, ask, verdict) => {
-    expect(decideMessage(ask).verdict).toBe(verdict);
-  });
-
-  it("names the link and says it needs full access", () => {
-    const refused = decideMessage({ link: limited, sameLink: false, sentLastMinute: 0 });
-    expect(refused).toMatchObject({
+  it("goes through below the per-minute limit and is refused at it, saying why", () => {
+    expect(decideMessage({ sentLastMinute: 0 }).verdict).toBe("allow");
+    expect(decideMessage({ sentLastMinute: MESSAGES_PER_MINUTE - 1 }).verdict).toBe("allow");
+    expect(decideMessage({ sentLastMinute: MESSAGES_PER_MINUTE })).toMatchObject({
       verdict: "deny",
-      why: expect.stringContaining("Ann's laptop"),
+      why: expect.stringContaining("30 messages in the last minute"),
     });
-    expect(refused).toMatchObject({ why: expect.stringContaining("full access") });
   });
 });

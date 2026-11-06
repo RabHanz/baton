@@ -37,6 +37,8 @@ export class BatonRecordService extends Context.Service<
       readonly since?: string;
       readonly project?: string;
       readonly kind?: string;
+      readonly actor?: string;
+      readonly outcome?: string;
       readonly limit?: number;
     }) => Effect.Effect<ReadonlyArray<BatonRecordEntry>>;
   }
@@ -65,6 +67,8 @@ const make = Effect.gen(function* () {
     readonly since?: string;
     readonly project?: string;
     readonly kind?: string;
+    readonly actor?: string;
+    readonly outcome?: string;
     readonly limit?: number;
   }) {
     const limit = Math.max(1, Math.min(500, Math.floor(input.limit ?? 100)));
@@ -76,6 +80,8 @@ const make = Effect.gen(function* () {
       WHERE ${since === null ? sql`1 = 1` : sql`at > ${since}`}
         AND ${input.project === undefined ? sql`1 = 1` : sql`project = ${input.project} COLLATE NOCASE`}
         AND ${input.kind === undefined ? sql`1 = 1` : sql`kind = ${input.kind}`}
+        AND ${input.actor === undefined ? sql`1 = 1` : sql`actor = ${input.actor}`}
+        AND ${input.outcome === undefined ? sql`1 = 1` : sql`outcome = ${input.outcome}`}
       ORDER BY at DESC, id DESC
       LIMIT ${limit}
     `;

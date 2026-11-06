@@ -213,31 +213,17 @@ export const standingVerdict = (tool: string, agent: TrustAgent): TrustVerdict =
 /** Agent-to-agent messages: sends one sender may make in a minute (decided 2026-11-06). */
 export const MESSAGES_PER_MINUTE = 30;
 
-export interface MessageAsk {
-  /** The link the sender came through; null for a sender on this machine. */
-  readonly link: { readonly label: string; readonly fullAccess: boolean } | null;
-  /** The target thread was started by that same link. */
-  readonly sameLink: boolean;
-  /** What this sender sent in the last minute, from the Record. */
-  readonly sentLastMinute: number;
-}
-
 /**
- * Whether one agent may message another agent's thread. This machine and a full-access link (his own machines) go
- * through; a lower link reaches only threads it started. Refusals stay refusals: nothing waits for his yes.
+ * Whether one agent may message another agent's thread now. Who may reach which thread is T3's own rule (a link below
+ * full access only reaches threads it started); this adds the per-sender limit, counted on the receiving machine.
  */
-export const decideMessage = (
-  ask: MessageAsk,
-): { readonly verdict: "allow" } | { readonly verdict: "deny"; readonly why: string } => {
-  if (ask.link !== null && !ask.link.fullAccess && !ask.sameLink)
-    return {
-      verdict: "deny",
-      why: `Messages from ${ask.link.label} are refused: that link is not paired with full access, so it may message only threads it started. Pair it with full access to message this machine's threads.`,
-    };
-  if (ask.sentLastMinute >= MESSAGES_PER_MINUTE)
-    return {
-      verdict: "deny",
-      why: `This sender has sent ${MESSAGES_PER_MINUTE} messages in the last minute, the most allowed. Wait a minute, then send again.`,
-    };
-  return { verdict: "allow" };
-};
+export const decideMessage = (ask: {
+  /** What this sender sent in the last minute. */
+  readonly sentLastMinute: number;
+}): { readonly verdict: "allow" } | { readonly verdict: "deny"; readonly why: string } =>
+  ask.sentLastMinute >= MESSAGES_PER_MINUTE
+    ? {
+        verdict: "deny",
+        why: `This sender has sent ${MESSAGES_PER_MINUTE} messages in the last minute, the most allowed. Wait a minute, then send again.`,
+      }
+    : { verdict: "allow" };
