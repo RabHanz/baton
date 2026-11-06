@@ -22,14 +22,17 @@ import {
 } from "react";
 
 import { useComposerDraftStore } from "../../composerDraftStore";
+import { isElectron } from "../../env";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { cn } from "../../lib/utils";
+import { workspaceAreaProps } from "../../lib/workspaceFocus";
+import { isLocalEnvironmentDisabled } from "../../localEnvironment";
 import {
   useHiddenThreadKeys,
   useQuietThreadShell,
   useQuietThreadShells,
 } from "../../state/entities";
-import { useEnvironments } from "../../state/environments";
+import { useEnvironments, usePrimaryEnvironmentId } from "../../state/environments";
 import { liveShellEnvironmentIdsAtom } from "../../state/shell";
 import {
   buildDraftThreadRouteParams,
@@ -39,6 +42,8 @@ import {
 import ChatView from "../ChatView";
 import { BackgroundThreadContext } from "../chat/backgroundThread";
 import { Button } from "../ui/button";
+import { SidebarInset } from "../ui/sidebar";
+import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { toastManager } from "../ui/toast";
 import {
   closePane,
@@ -49,6 +54,7 @@ import {
   paneEnvironmentState,
   paneFallback,
   paneNeighbour,
+  paneRestoreState,
   paneRects,
   paneTargetKey,
   resolvePaneLayout,
@@ -218,10 +224,12 @@ function usePaneThread(target: ThreadRouteTarget) {
 
 function usePaneEnvironments() {
   const { isReady, presentationById } = useEnvironments();
+  const primaryId = usePrimaryEnvironmentId();
   const live = useAtomValue(liveShellEnvironmentIdsAtom);
   return (environmentId: EnvironmentId) =>
     paneEnvironmentState({
-      environmentsReady: isReady,
+      catalogReady: isReady,
+      localListed: primaryId !== null || isLocalEnvironmentDisabled(),
       phase: presentationById.get(environmentId)?.connection.phase ?? null,
       shellLive: live.has(environmentId),
     });
@@ -237,31 +245,40 @@ export function BatonPaneRestore() {
   const navigate = useNavigate();
   const slots = useBatonPanesStore((state) => state.slots);
   const focusedSlotId = useBatonPanesStore((state) => state.focusedSlotId);
+  const ceded = useBatonPanesStore((state) => state.ceded);
   const environmentState = usePaneEnvironments();
   const shells = useQuietThreadShells();
   const hidden = useHiddenThreadKeys();
   const decision = resolvePaneRestore({ slots, focusedSlotId }, (target) => {
+    const heldElsewhere = ceded.includes(paneTargetKey(target));
     if (target.kind === "draft") {
       const session = useComposerDraftStore.getState().getDraftSession(target.draftId);
-      return session === null ? "gone" : "ready";
+      return paneRestoreState({
+        heldElsewhere,
+        environment: session === null ? null : environmentState(session.environmentId),
+        exists: session !== null,
+      });
     }
-    const state = environmentState(target.threadRef.environmentId);
-    if (state === "connecting") return "waiting";
-    if (state === "unreachable") return "gone";
-    const key = threadKey(target.threadRef);
     const shell = shells.find(
       (entry) =>
         entry.environmentId === target.threadRef.environmentId &&
         entry.id === target.threadRef.threadId,
     );
-    const open = shell && shell.deletedAt == null && shell.archivedAt == null;
-    return open && !hidden.has(key) ? "ready" : "gone";
+    return paneRestoreState({
+      heldElsewhere,
+      environment: environmentState(target.threadRef.environmentId),
+      exists:
+        shell !== undefined &&
+        shell.deletedAt == null &&
+        shell.archivedAt == null &&
+        !hidden.has(threadKey(target.threadRef)),
+    });
   });
   const goKey = decision.kind === "go" ? paneTargetKey(decision.target) : decision.kind;
   const settle = useEffectEvent(() => {
     if (decision.kind === "wait") return;
-    useBatonPanesStore.getState().settleRestore();
-    if (decision.kind === "stay") return;
+    // A "go" stays pending until noteLocation sees the thread, so home never starts a draft first.
+    if (decision.kind === "stay") return useBatonPanesStore.getState().settleRestore();
     const { target } = decision;
     void (target.kind === "server"
       ? navigate({
@@ -279,7 +296,16 @@ export function BatonPaneRestore() {
   useEffect(() => {
     if (goKey !== "wait") settle();
   }, [goKey]);
-  return null;
+  return (
+    <SidebarInset
+      {...workspaceAreaProps("home", 1, "Home")}
+      role="main"
+      className="h-dvh min-h-0 overflow-hidden overscroll-y-none"
+    >
+      {isElectron ? <WorkspacePageHeader electron /> : null}
+      <PaneLoading />
+    </SidebarInset>
+  );
 }
 
 function BatonPane(props: {

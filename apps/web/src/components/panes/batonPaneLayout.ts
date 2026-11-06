@@ -82,13 +82,16 @@ export function closePane(
 export type PaneEnvironmentState = "connecting" | "ready" | "unreachable";
 
 export function paneEnvironmentState(input: {
-  readonly environmentsReady: boolean;
+  readonly catalogReady: boolean;
+  /** The catalog lists saved environments first; the local one joins after a fetch. */
+  readonly localListed: boolean;
   /** Null when the environment is not in the catalog. */
   readonly phase: EnvironmentConnectionPhase | null;
   readonly shellLive: boolean;
 }): PaneEnvironmentState {
-  if (!input.environmentsReady) return "connecting";
-  if (input.phase === "connecting" || input.phase === "reconnecting") return "connecting";
+  if (!input.catalogReady || !input.localListed) return "connecting";
+  // Only a first try is worth waiting on; "reconnecting" can retry forever.
+  if (input.phase === "connecting") return "connecting";
   if (input.phase !== "connected") return "unreachable";
   return input.shellLive ? "ready" : "connecting";
 }
@@ -101,6 +104,18 @@ export function paneFallback(input: {
 }): "loading" | "unavailable" {
   if (input.environment === "connecting") return "loading";
   return input.environment === "ready" && input.threadPending ? "loading" : "unavailable";
+}
+
+/** Whether a saved pane can be resumed. A draft passes its project's environment. */
+export function paneRestoreState(input: {
+  readonly heldElsewhere: boolean;
+  /** Null when the pane has no environment left, such as a draft whose session is gone. */
+  readonly environment: PaneEnvironmentState | null;
+  readonly exists: boolean;
+}): "ready" | "waiting" | "gone" {
+  if (input.heldElsewhere) return "gone";
+  if (input.environment === "connecting") return "waiting";
+  return input.environment === "ready" && input.exists ? "ready" : "gone";
 }
 
 export type PaneRestore =

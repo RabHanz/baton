@@ -13,6 +13,7 @@ import {
   paneEnvironmentState,
   paneFallback,
   paneDividers,
+  paneRestoreState,
   paneDropZone,
   paneLeaves,
   paneNeighbour,
@@ -137,18 +138,35 @@ describe("reopening a window", () => {
 
   it("waits only for an environment that is on its way", () => {
     const state = (phase: Parameters<typeof paneEnvironmentState>[0]["phase"], shellLive = false) =>
-      paneEnvironmentState({ environmentsReady: true, phase, shellLive });
-    expect(paneEnvironmentState({ environmentsReady: false, phase: null, shellLive: false })).toBe(
+      paneEnvironmentState({ catalogReady: true, localListed: true, phase, shellLive });
+    const listing = { phase: null, shellLive: false };
+    expect(paneEnvironmentState({ ...listing, catalogReady: false, localListed: true })).toBe(
+      "connecting",
+    );
+    // Saved environments are listed before the local one is fetched.
+    expect(paneEnvironmentState({ ...listing, catalogReady: true, localListed: false })).toBe(
       "connecting",
     );
     expect(state("connecting")).toBe("connecting");
-    expect(state("reconnecting")).toBe("connecting");
+    // A remote that keeps retrying must not hold the restore forever.
+    expect(state("reconnecting")).toBe("unreachable");
     expect(state("connected")).toBe("connecting");
     expect(state("connected", true)).toBe("ready");
     // Removed, offline or failed: nothing is coming.
     expect(state(null)).toBe("unreachable");
     expect(state("offline")).toBe("unreachable");
     expect(state("error")).toBe("unreachable");
+  });
+
+  it("resumes a pane only when no other window holds it and its environment has it", () => {
+    const ready = { heldElsewhere: false, environment: "ready", exists: true } as const;
+    expect(paneRestoreState(ready)).toBe("ready");
+    expect(paneRestoreState({ ...ready, heldElsewhere: true })).toBe("gone");
+    expect(paneRestoreState({ ...ready, environment: "connecting" })).toBe("waiting");
+    expect(paneRestoreState({ ...ready, environment: "unreachable" })).toBe("gone");
+    // A draft whose session is gone has no environment to wait for.
+    expect(paneRestoreState({ ...ready, environment: null })).toBe("gone");
+    expect(paneRestoreState({ ...ready, exists: false })).toBe("gone");
   });
 
   it("shows a pane as loading only while something is on its way", () => {
