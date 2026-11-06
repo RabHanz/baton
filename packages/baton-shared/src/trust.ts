@@ -170,12 +170,42 @@ export const decideTrust = (ask: TrustAsk): TrustVerdict => {
 };
 
 /**
- * A standing job (a rule, a playbook, a schedule) runs by itself only where its one tool is allowed for its
- * owner with nobody there to ask: reading and reporting. Anything that would ask waits for his yes.
+ * A standing job (a rule, a playbook, a schedule) runs by itself only where its one tool is on the unattended list
+ * and allowed for its owner with nobody there to ask. Anything else is held: the run is recorded as held and does
+ * nothing.
  */
+/**
+ * What a run nobody is watching may use at all: reading and reporting, and the three writes the built-in jobs make
+ * into Tessaya's own records (a read-only look job, a note on a job, a skill draft that waits for his yes). Anything
+ * else, including every screen and keyboard tool and any tool added later, is held.
+ */
+const UNATTENDED_TOOLS: ReadonlySet<string> = new Set([
+  "jobs_list",
+  "watch_report",
+  "what_happened",
+  "morning_brief",
+  "needs_me",
+  "commit_list",
+  "trust_show",
+  "cloud_status",
+  "cloud_list",
+  "cloud_usage",
+  "activity_today",
+  "weave_list",
+  "note_search",
+  "approvals_list",
+  "job_start",
+  "job_refine",
+  "skill_draft",
+]);
+
 export const standingVerdict = (tool: string, agent: TrustAgent): TrustVerdict =>
-  decideTrust({
-    call: { tool: `${BATON_TOOL_PREFIX}${tool}`, input: {} },
-    context: { actWithoutAsking: false, tainted: false },
-    agent,
-  });
+  UNATTENDED_TOOLS.has(tool)
+    ? decideTrust({
+        call: { tool: `${BATON_TOOL_PREFIX}${tool}`, input: {} },
+        // Nothing he granted in person carries over: no act-without-asking, no plan, no screen or keys window.
+        context: { actWithoutAsking: false, tainted: false },
+        agent,
+        plan: null,
+      })
+    : { verdict: "deny", why: `${tool} does not run with nobody there; it is held.` };

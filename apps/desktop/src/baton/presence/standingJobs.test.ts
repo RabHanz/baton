@@ -10,6 +10,7 @@ import {
   createStandingStore,
   EMPTY_STANDING,
   migrateStanding,
+  missedRunOf,
   runStandingJobs,
   type StandingInput,
   type StandingOps,
@@ -207,6 +208,43 @@ describe("standing jobs", () => {
     );
     await runStandingJobs(input({ state: night.state, hour: 3 }), ops);
     expect(log.learned).toBe(1);
+  });
+
+  it("makes up a timed job missed while it was off once the same day, or skips it, as set per job", async () => {
+    const once = fakes();
+    // Off at six, first running at nine: the default runs it once, and not again that day.
+    const back = await runStandingJobs(input({ hour: 9 }), once.ops);
+    await runStandingJobs(input({ state: back.state, hour: 10 }), once.ops);
+    expect(once.log.briefs).toBe(1);
+    const skip = fakes();
+    const skipping: StandingState = {
+      ...allOn,
+      missed: { morning_brief: "skip", nightly_learning: "skip" },
+    };
+    await runStandingJobs(input({ state: skipping, hour: 9 }), skip.ops);
+    expect(skip.log.briefs).toBe(0);
+    expect(skip.log.learned).toBe(0);
+    expect(missedRunOf(allOn, "morning_brief")).toBe("once");
+  });
+
+  it("does not count quiet hours or a clock change as a missed hour, even when set to skip", async () => {
+    const skipping: StandingState = {
+      ...allOn,
+      missed: { morning_brief: "skip", nightly_learning: "skip" },
+    };
+    // Running since one in the morning: quiet hours hold the brief at six, and it comes at eight when they end.
+    const { log, ops } = fakes();
+    const night = await runStandingJobs(input({ state: skipping, hour: 1 }), ops);
+    const six = await runStandingJobs(input({ state: night.state, hour: 6, quiet: true }), ops);
+    expect(log.briefs).toBe(0);
+    await runStandingJobs(input({ state: six.state, hour: 8 }), ops);
+    expect(log.briefs).toBe(1);
+    // A spring-forward night with no two o'clock: learning runs at three, the next hour there is.
+    const spring = fakes();
+    const one = await runStandingJobs(input({ state: skipping, hour: 1 }), spring.ops);
+    expect(spring.log.learned).toBe(0);
+    await runStandingJobs(input({ state: one.state, hour: 3 }), spring.ops);
+    expect(spring.log.learned).toBe(1);
   });
 
   it("builds no brief before six, nor in quiet hours", async () => {

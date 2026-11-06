@@ -108,12 +108,44 @@ describe("One Trust", () => {
     expect(standingVerdict("morning_brief", lead)).toEqual({ verdict: "allow" });
     expect(standingVerdict("job_start", lead)).toEqual({ verdict: "allow" });
     expect(standingVerdict("job_start", freya).verdict).toBe("deny");
-    // A standing permission still asks him every time.
-    expect(standingVerdict("job_grant", lead).verdict).toBe("ask");
+    // A standing permission is not something a run nobody watches can give: held.
+    expect(standingVerdict("job_grant", lead).verdict).toBe("deny");
     expect(standingVerdict("job_refine", { ...lead, tools: ["morning_brief"] })).toEqual({
       verdict: "deny",
       why: `job_refine is not one of ${lead.name}'s tools.`,
     });
+  });
+
+  it("a standing run is held from anything but reading, reporting and its own records, whatever the session granted", () => {
+    const lead = DEFAULT_OS_PACK.personas.find((p) => p.lead)!;
+    // What the built-in jobs use runs for their owner.
+    for (const tool of ["morning_brief", "watch_report", "job_start", "job_refine", "skill_draft"])
+      expect(standingVerdict(tool, lead), tool).toEqual({ verdict: "allow" });
+    // The screen, the keyboard, a grant and any tool added later are held, though his own turn with act without
+    // asking or an approved plan might be allowed them: none of that reaches a run nobody watches.
+    for (const tool of [
+      "type_text",
+      "press_keys",
+      "click",
+      "click_element",
+      "scroll",
+      "drag",
+      "act_batch",
+      "screen_capture",
+      "window_capture",
+      "job_grant",
+      "session_send",
+      "a_tool_added_later",
+    ])
+      expect(standingVerdict(tool, lead).verdict, tool).toBe("deny");
+    const typing = { tool: "mcp__baton__type_text", input: { text: "hello" } };
+    expect(
+      decideTrust({
+        call: typing,
+        context: { actWithoutAsking: true, tainted: false, textIsHis: true },
+        agent: lead,
+      }).verdict,
+    ).toBe("allow");
   });
 
   it("a project's own lead hands out only that project's work, and never to the cloud", () => {

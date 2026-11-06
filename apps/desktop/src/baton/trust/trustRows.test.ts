@@ -154,6 +154,30 @@ describe("trust page", () => {
     });
   });
 
+  it("shows a timed job's missed-run policy on its own row, and reads a change to it", () => {
+    const brief = {
+      kind: "built_in" as const,
+      id: "morning_brief",
+      title: "Every morning, build my brief",
+      what: "Writes the brief.",
+      owner: "Tessaya",
+      on: true,
+      count: 3,
+      missed: "skip" as const,
+    };
+    const rows = trustControls(data({ standing: [brief] }), NOW);
+    const missed = rows.find((c) => c.id === "trust.missed:morning_brief");
+    expect(missed?.kind === "choice" && missed.value).toBe("skip");
+    // An event job has no hour to miss: no such row.
+    expect(trustControls(data(), NOW).some((c) => c.id.startsWith("trust.missed:"))).toBe(false);
+    expect(trustAction("trust.missed:morning_brief", "once")).toEqual({
+      kind: "missed",
+      id: "morning_brief",
+      missed: "once",
+    });
+    expect(trustAction("trust.missed:morning_brief", "later")).toBeNull();
+  });
+
   it("filters the log", () => {
     const logRows = (filter: TrustData["filter"]) =>
       trustControls(data({ filter }), NOW).filter((c) => c.id.startsWith("trust.log:"));
