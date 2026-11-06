@@ -879,10 +879,10 @@ function paletteItems() {
   cmd('Open T3 sessions', '', () => real && ipc.send('baton-home:sessions'));
   cmd(on('v.dnd') ? 'Turn Do not disturb off' : 'Turn Do not disturb on', '', () => set('v.dnd', !on('v.dnd')));
   cmd('Snooze for an hour', 'No offers or reminders for an hour', () => set('v.snooze', null));
-  cmd('Run the playbooks now', 'The ones you have switched on', () => set('trust.playbooks-run', null));
+  cmd('Run the standing jobs now', 'The ones you have switched on', () => set('trust.standing-run', null));
   cmd(L('wizard.rerun'), '', () => { const sp = (S.extra || {}).setup; if (sp) { setupStep = 0; modal = 'setup'; render(); } });
   for (const c of S.controls) {
-    if (c.id.indexOf('trust.playbook:') === 0) cmd((c.on ? 'Turn off playbook: ' : 'Turn on playbook: ') + c.label, 'Unattended work, never sends or spends', () => set(c.id, !c.on));
+    if (c.id.indexOf('trust.standing:') === 0 || c.id.indexOf('trust.rule:') === 0) cmd((c.on ? 'Turn off standing job: ' : 'Turn on standing job: ') + c.label, 'Unattended work, counted and logged', () => set(c.id, !c.on));
     else if (c.kind === 'session' && c.canOpen) items.push({ kind: 'Session', label: 'Open session ' + c.label, hint: c.project + ' ' + c.box, run: () => set(c.id, null) });
     else if (c.kind === 'toggle' || c.kind === 'choice' || c.kind === 'action') items.push({ kind: 'Setting', label: c.label, hint: c.hint || '', run: () => { modal = null; go(c.tab || 'settings'); } });
   }

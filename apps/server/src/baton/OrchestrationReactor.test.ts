@@ -67,6 +67,8 @@ const harness = (effects: Partial<OrchestrationEffects>) =>
         startProviderSession: () => Effect.succeed(null),
         messageThread: () => Effect.succeed(true),
         notify: () => Effect.void,
+        refusal: () => Effect.succeed(null),
+        noteRun: () => Effect.void,
         ...effects,
       }),
     ),
@@ -130,6 +132,36 @@ describe("the reactor's own evaluation", () => {
       assert.strictEqual(yield* ruleCount(id), 1);
     }).pipe(
       Effect.provide(harness({ startProviderSession: () => Effect.succeed(reviewThreadId) })),
+    ),
+  );
+
+  it.effect("a rule its owner may not run by itself is recorded as held and does nothing", () =>
+    Effect.gen(function* () {
+      yield* givenFinishedWork;
+      const rules = yield* OrchestrationRuleService;
+      const id = OrchestrationRuleId.make("rule-held");
+      yield* rules.create({
+        id,
+        workSessionId,
+        trigger: { kind: "on_done" },
+        action: reviewAction,
+      });
+
+      const fired = yield* (yield* BatonOrchestrationReactor).evaluate({
+        workSessionId,
+        changedThreadId: implThreadId,
+      });
+
+      assert.strictEqual(fired[0]?.outcome, "skipped");
+      assert.strictEqual(fired[0]?.detail, "Held: job_start is not one of Tessaya's tools.");
+      assert.strictEqual(fired[0]?.producedThreadId, null);
+    }).pipe(
+      Effect.provide(
+        harness({
+          refusal: () => Effect.succeed("job_start is not one of Tessaya's tools."),
+          startProviderSession: () => Effect.die("a held rule must not start anything"),
+        }),
+      ),
     ),
   );
 

@@ -33,13 +33,13 @@ export const BatonRecordListInput = Schema.Struct({
 });
 export const BatonRecordListResult = Schema.Struct({ entries: Schema.Array(BatonRecordEntry) });
 
-/** What a client may write: its own assistant's turns, their traces (tools, argument names, times; no text) and his answers at its gate, stored as `approval_reported_by_client`. The server writes every other kind itself. */
+/** What a client may write: its own assistant's turns, their traces (tools, argument names, times; no text), its standing jobs' runs, and his answers at its gate, stored as `approval_reported_by_client`. The server writes every other kind itself. */
 export const BatonRecordAppendInput = Schema.Struct({
-  kind: Schema.Literals(["assistant_turn", "approval", "turn_trace"]),
+  kind: Schema.Literals(["assistant_turn", "approval", "turn_trace", "standing_job"]),
   actor: Line(60),
   project: Schema.optionalKey(Line(200)),
   subject: Line(300),
-  outcome: Schema.Literals(["answered", "failed", "approved", "declined"]),
+  outcome: Schema.Literals(["answered", "failed", "approved", "declined", "ran", "held"]),
   detail: Line(1000),
 });
 export const BatonRecordAppendResult = Schema.Struct({});

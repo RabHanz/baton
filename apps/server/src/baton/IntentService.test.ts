@@ -105,6 +105,8 @@ const harness = Effect.gen(function* () {
         Effect.as(true),
       ),
     notify: () => Effect.void,
+    refusal: () => Effect.succeed(null),
+    noteRun: () => Effect.void,
   });
 
   return { sent, started, effects };

@@ -63,6 +63,10 @@ export interface OrchestrationEffects {
     readonly workSessionId: WorkSessionId;
     readonly message: string;
   }) => Effect.Effect<void>;
+  /** A rule is the lead's standing job: why One Trust will not let the lead run its action by itself, or null. */
+  readonly refusal: (action: OrchestrationAction) => Effect.Effect<string | null>;
+  /** Each firing goes to the Record under its owner, the one timeline every standing job is counted in. */
+  readonly noteRun: (rule: OrchestrationRule, firing: OrchestrationFiring) => Effect.Effect<void>;
 }
 
 export class BatonOrchestrationReactor extends Context.Service<
@@ -132,6 +136,9 @@ export const make = Effect.gen(function* () {
   }) =>
     Effect.gen(function* () {
       const action = input.rule.action;
+      const refused = yield* effects.refusal(action);
+      if (refused !== null)
+        return { outcome: "skipped" as const, threadId: null, detail: `Held: ${refused}` };
       switch (action.kind) {
         case "start_provider_session": {
           const threadId = yield* effects.startProviderSession({
@@ -243,6 +250,7 @@ export const make = Effect.gen(function* () {
             detail: result.detail,
           })
           .pipe(Effect.catchCause(() => Effect.succeed(null)));
+        yield* effects.noteRun(rule, completed ?? firing);
         fired.push(completed ?? firing);
       }
       return fired;

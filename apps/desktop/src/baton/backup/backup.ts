@@ -22,6 +22,7 @@ const FILES = [
   "commitments.json",
   "initiative.json",
   "playbooks.json",
+  "standing-jobs.json",
   "baton-conversation.ndjson",
 ];
 const DIRS: ReadonlyArray<{ readonly dir: string; readonly ext: RegExp }> = [

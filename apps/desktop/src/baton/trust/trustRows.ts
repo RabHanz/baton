@@ -114,13 +114,8 @@ export interface TrustData {
     readonly since: string;
   }>;
   readonly weaveHosts: ReadonlyArray<string>;
-  readonly playbooks: ReadonlyArray<{
-    readonly id: string;
-    readonly title: string;
-    readonly what: string;
-    readonly perDay: number;
-    readonly on: boolean;
-  }>;
+  /** Every standing job: the built-in ones that run here, his rules, and jobs on a schedule. */
+  readonly standing: ReadonlyArray<StandingRow>;
   readonly entries: ReadonlyArray<TrustEntry>;
   readonly filter: TrustFilter;
 }
@@ -128,7 +123,23 @@ export interface TrustData {
 const PERMS = "What Tessaya may do";
 const STANDING = "Standing permissions on jobs";
 const LOG = "What it did for you";
-const PLAYS = "Things it may do by itself";
+const PLAYS = "Standing jobs";
+
+export interface StandingRow {
+  readonly kind: "built_in" | "rule" | "schedule";
+  /** A built-in job's id, a rule's id, or a scheduled job's id. */
+  readonly id: string;
+  readonly title: string;
+  readonly what: string;
+  /** The persona it runs as, by name. */
+  readonly owner: string;
+  /** Null for a schedule, which is taken off rather than switched. */
+  readonly on: boolean | null;
+  /** Runs so far; for a schedule, its worker's turns so far. */
+  readonly count: number;
+}
+
+const ranLine = (n: number) => `Ran ${n === 1 ? "once" : `${n} times`}.`;
 
 export const FILTERS: ReadonlyArray<{ value: TrustFilter; label: string }> = [
   { value: "all", label: "Everything" },
@@ -280,14 +291,27 @@ export const trustControls = (data: TrustData, now: number): ReadonlyArray<HomeC
         }))),
   );
   rows.push(
-    ...data.playbooks.map((p): HomeControl => ({
-      id: `trust.playbook:${p.id}`,
-      section: PLAYS,
-      label: p.title,
-      hint: `${p.what} At most ${p.perDay} a day. Never sends, posts or spends. Off until you turn it on.`,
-      kind: "toggle",
-      on: p.on,
-    })),
+    ...data.standing.map((j): HomeControl => {
+      const counted = j.kind === "schedule" ? `Used ${j.count} turns so far.` : ranLine(j.count);
+      const hint = `${j.what} ${j.owner}'s standing job. ${counted}`.trim();
+      return j.on === null
+        ? {
+            id: `trust.schedule:${j.id}`,
+            section: PLAYS,
+            label: j.title,
+            hint,
+            kind: "action",
+            button: "Take off",
+          }
+        : {
+            id: `trust.${j.kind === "rule" ? "rule" : "standing"}:${j.id}`,
+            section: PLAYS,
+            label: j.title,
+            hint: `${hint}${j.kind === "built_in" ? " Never sends, posts or spends. Off until you turn it on." : ""}`,
+            kind: "toggle",
+            on: j.on,
+          };
+    }),
   );
   rows.push({
     id: "trust.filter",
@@ -328,15 +352,22 @@ export type TrustAction =
   | { readonly kind: "revoke"; readonly what: Permission }
   | { readonly kind: "grant"; readonly jobId: string; readonly channel: string }
   | { readonly kind: "filter"; readonly filter: TrustFilter }
-  | { readonly kind: "playbook"; readonly id: string; readonly on: boolean };
+  | {
+      readonly kind: "standing" | "rule";
+      readonly id: string;
+      readonly on: boolean;
+    }
+  | { readonly kind: "unschedule"; readonly jobId: string };
 
 export const trustAction = (id: string, value: unknown): TrustAction | null => {
   if (id === "trust.filter") {
     const f = FILTERS.find((x) => x.value === value);
     return f === undefined ? null : { kind: "filter", filter: f.value };
   }
-  const pb = /^trust\.playbook:([a-z_]+)$/.exec(id);
-  if (pb !== null) return { kind: "playbook", id: pb[1]!, on: value === true };
+  const sj = /^trust\.(standing|rule):(.+)$/.exec(id);
+  if (sj !== null) return { kind: sj[1] as "standing" | "rule", id: sj[2]!, on: value === true };
+  const un = /^trust\.schedule:(.+)$/.exec(id);
+  if (un !== null) return { kind: "unschedule", jobId: un[1]! };
   const m = /^trust\.revoke:(screen|chrome|social|vault|act|remote)$/.exec(id);
   if (m !== null) return { kind: "revoke", what: m[1] as Permission };
   const g = /^trust\.revoke:grant:(.+):([a-z_]+)$/.exec(id);
@@ -361,11 +392,14 @@ export const describeTrust = (data: TrustData, now: number): string => {
     data.grants.length === 0
       ? "No job holds a standing permission."
       : `Standing permissions: ${data.grants.map((g) => `${g.title} (${CHANNEL_WORDS[g.channel] ?? g.channel})`).join("; ")}.`,
-    `By itself: ${
-      data.playbooks
-        .filter((p) => p.on)
-        .map((p) => p.title)
-        .join("; ") || "nothing, all playbooks are off"
+    `Standing jobs: ${
+      data.standing
+        .filter((j) => j.on !== false)
+        .map(
+          (j) =>
+            `${j.title} (${j.owner}, ${j.kind === "schedule" ? `${j.count} turns` : `ran ${j.count}`})`,
+        )
+        .join("; ") || "none on"
     }.`,
   ].join(" ");
 };

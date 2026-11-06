@@ -1,5 +1,5 @@
 /* oxlint-disable t3code/no-low-value-comments, t3code/prefer-effect-fn -- Baton file predating upstream's rule (D82) */
-// @effect-diagnostics effectFnOpportunity:off flatMapConditionalToFilterOrFail:off preferSchemaOverJson:off instanceOfSchema:off preferSucceedSomeOrNone:off
+// @effect-diagnostics nodeBuiltinImport:off effectFnOpportunity:off flatMapConditionalToFilterOrFail:off preferSchemaOverJson:off instanceOfSchema:off preferSucceedSomeOrNone:off
 /**
  * What a rule is allowed to do when it fires.
  *
@@ -14,18 +14,27 @@
  * `BatonEngine`), the path a client's new thread takes, and is attached to the work session with `origin: created`, so the timeline
  * shows that a rule made it rather than a person.
  */
+import * as NodePath from "node:path";
+
 import {
   isProviderAvailable,
   type OrchestrationAction,
+  type OrchestrationFiring,
+  type OrchestrationRule,
   type ThreadId,
   type WorkSessionId,
 } from "@t3tools/baton-contracts";
+import { standingVerdict } from "@t3tools/baton-shared/trust";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 
+import * as ServerConfig from "../config.ts";
 import * as ProviderInstanceRegistryModule from "../provider/ProviderInstanceRegistry.ts";
 import { BatonEngine } from "./BatonEngine.ts";
+import { BatonRecordService } from "./BatonRecordService.ts";
+import { readPack } from "./OperatingSystemPack.ts";
 import { OrchestrationEffectsService } from "./OrchestrationReactor.ts";
 import { WorkSessionService } from "./WorkSessionService.ts";
 
@@ -36,6 +45,13 @@ export const make = Effect.gen(function* () {
   const engine = yield* BatonEngine;
   const workSessions = yield* WorkSessionService;
   const providerInstances = yield* ProviderInstanceRegistryModule.ProviderInstanceRegistry;
+  const userdata = NodePath.dirname((yield* ServerConfig.ServerConfig).dbPath);
+  const record = yield* Effect.serviceOption(BatonRecordService);
+  /** A rule hands work out, which only the lead does: it is the lead's standing job. */
+  const lead = () => {
+    const personas = readPack(userdata).personas;
+    return personas.find((p) => p.lead) ?? personas[0]!;
+  };
 
   const startProviderSession = (input: {
     readonly workSessionId: WorkSessionId;
@@ -98,7 +114,32 @@ export const make = Effect.gen(function* () {
       });
     }).pipe(Effect.ignoreCause({ log: true }));
 
-  return { startProviderSession, messageThread, notify };
+  /** The one Baton tool each action is, as One Trust knows it. */
+  const TOOL: Record<OrchestrationAction["kind"], string> = {
+    start_provider_session: "job_start",
+    message_active_implementation_session: "session_send",
+    notify: "watch_report",
+    confirmation_gate: "plan_show",
+  };
+  const refusal = (action: OrchestrationAction) =>
+    Effect.sync(() => {
+      const verdict = standingVerdict(TOOL[action.kind], lead());
+      return verdict.verdict === "allow" ? null : verdict.why;
+    });
+
+  const noteRun = (rule: OrchestrationRule, firing: OrchestrationFiring) =>
+    Option.isNone(record)
+      ? Effect.void
+      : record.value.append({
+          kind: "standing_job",
+          actor: lead().name,
+          ref: rule.workSessionId,
+          subject: rule.source === "" ? `Rule ${rule.id}` : rule.source,
+          outcome: firing.outcome,
+          detail: firing.detail,
+        });
+
+  return { startProviderSession, messageThread, notify, refusal, noteRun };
 });
 
 export const layer = Layer.effect(OrchestrationEffectsService, make);
