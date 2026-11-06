@@ -9,9 +9,10 @@ set -uo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 failed=()
-for ws in packages/baton-contracts packages/baton-shared packages/baton-voice apps/server apps/desktop apps/web; do
+for ws in packages/baton-contracts packages/baton-shared packages/baton-voice packages/client-runtime \
+  apps/server apps/desktop apps/web; do
   files="$(git ls-files "$ws" | grep -E '\.test\.tsx?$' | grep -vE '\.browser\.test\.' |
-    grep -E '(baton|Baton|Tessaya)' | sed "s|^$ws/||" || true)"
+    grep -E '(baton|Baton|Tessaya|Phone|Intent|WorkSession|Fleet)' | sed "s|^$ws/||" || true)"
   [ -n "$files" ] || continue
   echo "== $ws: $(printf '%s\n' "$files" | wc -l | tr -d ' ') test files"
   # shellcheck disable=SC2086 # one argument per file

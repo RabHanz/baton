@@ -66,7 +66,7 @@ if [ "$tests" -eq 1 ]; then
     lock=()
     if [ "$pkg" = apps/web ]; then
       extra+=(--retry 2 --maxWorkers 1)
-      [ -n "$heavy_lock" ] && lock=(flock "$heavy_lock")
+      [ -n "$heavy_lock" ] && lock=(flock -w 3600 "$heavy_lock")
     fi
     (cd "$pkg" && nice -n 10 "${lock[@]}" pnpm -s test "${extra[@]}")
   done

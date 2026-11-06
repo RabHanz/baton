@@ -29,15 +29,21 @@ jobs:
         run: |
           cargo test --release --locked --manifest-path native/baton-dictation/Cargo.toml
           cargo build --release --locked --manifest-path native/baton-dictation/Cargo.toml
-          if grep -aqiE 'MSVCP140|VCRUNTIME140' native/baton-dictation/target/release/baton-dictation.exe; then
-            echo "baton-dictation.exe still imports the VC++ runtime" >&2
+          if grep -aqiE 'MSVCP140|VCRUNTIME140' native/baton-dictation/target/release/tessaya-voice.exe; then
+            echo "tessaya-voice.exe still imports the VC++ runtime" >&2
             exit 1
           fi
+      - name: Windows names the process Tessaya
+        shell: pwsh
+        run: |
+          $v = (Get-Item native/baton-dictation/target/release/tessaya-voice.exe).VersionInfo
+          $v | Format-List FileDescription, ProductName, CompanyName, FileVersion
+          if ($v.FileDescription -ne 'Tessaya voice' -or $v.ProductName -ne 'Tessaya') { exit 1 }
       - uses: actions/upload-artifact@v4
         with:
           name: baton-dictation-win-x64
           path: |
-            native/baton-dictation/target/release/baton-dictation.exe
+            native/baton-dictation/target/release/tessaya-voice.exe
             native/baton-dictation/Cargo.lock
 
   linux:
@@ -55,12 +61,12 @@ jobs:
         run: |
           cargo test --release --locked --manifest-path native/baton-dictation/Cargo.toml
           cargo build --release --locked --manifest-path native/baton-dictation/Cargo.toml
-          ldd native/baton-dictation/target/release/baton-dictation | tee ldd.txt
+          ldd native/baton-dictation/target/release/tessaya-voice | tee ldd.txt
       - uses: actions/upload-artifact@v4
         with:
           name: baton-dictation-linux-x64
           path: |
-            native/baton-dictation/target/release/baton-dictation
+            native/baton-dictation/target/release/tessaya-voice
             ldd.txt
 
   macos:
@@ -88,10 +94,10 @@ jobs:
         run: |
           if [ "${{ matrix.arch }}" = arm64 ]; then cargo test --release --locked --manifest-path native/baton-dictation/Cargo.toml --target ${{ matrix.target }}; fi
           cargo build --release --locked --manifest-path native/baton-dictation/Cargo.toml --target ${{ matrix.target }}
-          otool -L native/baton-dictation/target/${{ matrix.target }}/release/baton-dictation | tee otool.txt
+          otool -L native/baton-dictation/target/${{ matrix.target }}/release/tessaya-voice | tee otool.txt
       - uses: actions/upload-artifact@v4
         with:
           name: baton-dictation-macos-${{ matrix.arch }}
           path: |
-            native/baton-dictation/target/${{ matrix.target }}/release/baton-dictation
+            native/baton-dictation/target/${{ matrix.target }}/release/tessaya-voice
             otool.txt

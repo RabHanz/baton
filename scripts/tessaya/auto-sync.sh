@@ -149,7 +149,7 @@ set -e
 if [ "$rc" -ne 0 ]; then
   what=$([ "$rc" -eq 2 ] && echo "a patch no longer applies" || echo "the gates failed")
   # A write that ran out of room mid-run (VentureOS CI took the space after the check) is not a code problem.
-  grep -q "No space left on device" "$log" && what="the volume ran out of space mid-run"
+  [ "$rc" -ne 2 ] && grep -q "No space left on device" "$log" && what="the volume ran out of space mid-run"
   body="$(mktemp)"
   { printf 'The daily sync stopped: %s (exit %s). The volume has %s GB free now.\n\n' "$what" "$rc" "$(free_gb)"
     cat "$report" 2> /dev/null || true
@@ -175,7 +175,8 @@ if [ "$rc" -ne 0 ]; then
     printf 'Commit on %s, push it, open the PR, and stop. Report and log: %s, %s.\n' "$branch" "$report" "$log"
   } > "$prompt"
   # The worktree is kept for the fix session; the next run starts it fresh.
-  bash scripts/tessaya/start-fix-session.sh "$work" "$prompt" || echo "could not start the fix session"
+  # The fix session runs gates.sh itself, often under a lane's own lock: passing ours would nest it.
+  BATON_HEAVY_LOCK= bash scripts/tessaya/start-fix-session.sh "$work" "$prompt" || echo "could not start the fix session"
   exit "$rc"
 fi
 
