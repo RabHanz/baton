@@ -5,7 +5,7 @@ upstream's reactors. ws.ts merges BatonRpcGroup onto the socket's group, adds it
 its own scope middleware (upstream's throws for methods its table does not list).
 
 diff --git a/apps/server/src/auth/EnvironmentAuth.test.ts b/apps/server/src/auth/EnvironmentAuth.test.ts
-index 3c05047e4a4c3ed60ced53af81026dadfdd77a60..c431d3c627a53cc61523b571a7a8bb54314ffc89 100644
+index 3c05047e4a4c3ed60ced53af81026dadfdd77a60..e1f7b6f8857d7a5835902c7748201733619f260c 100644
 --- a/apps/server/src/auth/EnvironmentAuth.test.ts
 +++ b/apps/server/src/auth/EnvironmentAuth.test.ts
 @@ -337,6 +337,51 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodePlatformCrypto.layer))(
@@ -60,11 +60,53 @@ index 3c05047e4a4c3ed60ced53af81026dadfdd77a60..c431d3c627a53cc61523b571a7a8bb54
      it.effect("preserves pairing grants after rejecting scopes they do not grant", () =>
        Effect.gen(function* () {
          const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
+@@ -406,6 +451,25 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodePlatformCrypto.layer))(
+       }).pipe(Effect.provide(layerEnvironmentAuth())),
+     );
+ 
++    it.effect(
++      "gives a sync-only credential a year, so his servers need not be paired again each month",
++      () =>
++        Effect.gen(function* () {
++          const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
++          const lifetime = (scopes: ReadonlyArray<"orchestration:read" | "baton:memory-sync">) =>
++            Effect.flatMap(serverAuth.issuePairingCredential({ scopes }), (pairing) =>
++              serverAuth.exchangeBootstrapCredentialForAccessToken(
++                pairing.credential,
++                undefined,
++                requestMetadata,
++              ),
++            ).pipe(Effect.map((token) => token.expires_in / 86_400));
++
++          expect(yield* lifetime(["baton:memory-sync"])).toBeGreaterThan(360);
++          expect(yield* lifetime(["orchestration:read"])).toBeLessThanOrEqual(30);
++        }).pipe(Effect.provide(layerEnvironmentAuth())),
++    );
++
+     it.effect(
+       "preserves a rejected MCP pairing code for exactly one concurrent lower-access retry",
+       () =>
 diff --git a/apps/server/src/auth/EnvironmentAuth.ts b/apps/server/src/auth/EnvironmentAuth.ts
-index b6bf63792bf62b2e6bfe47b886d0c354f1683155..30c18cf29467610658b0c298bdd5c682fc7183cd 100644
+index b6bf63792bf62b2e6bfe47b886d0c354f1683155..8edbf6348227227085ea077f77b56cd26d2aca17 100644
 --- a/apps/server/src/auth/EnvironmentAuth.ts
 +++ b/apps/server/src/auth/EnvironmentAuth.ts
-@@ -85,6 +85,34 @@ export interface McpClientSession {
+@@ -1,5 +1,6 @@
+ import {
+   AuthAccessTokenType,
++  AuthBatonMemorySyncScope,
+   AuthAccessWriteScope,
+   AuthOrchestrationOperateScope,
+   AuthStandardClientScopes,
+@@ -76,6 +77,8 @@ export interface IssuedBearerSession {
+ // MCP client tokens are restricted to /mcp; HTTP API and WebSocket RPC would bypass their access cap.
+ const MCP_CLIENT_SUBJECT = "mcp-client";
+ const MCP_CLIENT_SESSION_TTL = Duration.days(30);
++// Sync-only and revocable, and nobody is there to re-pair his servers every month.
++const MEMORY_SYNC_SESSION_TTL = Duration.days(365);
+ 
+ export interface McpClientSession {
+   readonly sessionId: AuthSessionId;
+@@ -85,6 +88,34 @@ export interface McpClientSession {
    readonly peerLink: boolean;
  }
  
@@ -99,7 +141,7 @@ index b6bf63792bf62b2e6bfe47b886d0c354f1683155..30c18cf29467610658b0c298bdd5c682
  export interface AuthenticatedSession {
    readonly sessionId: AuthSessionId;
    readonly subject: string;
-@@ -494,6 +522,7 @@ export class EnvironmentAuth extends Context.Service<
+@@ -494,6 +525,7 @@ export class EnvironmentAuth extends Context.Service<
      >;
      readonly issuePairingCredential: (
        input?: AuthCreatePairingCredentialInput,
@@ -107,7 +149,18 @@ index b6bf63792bf62b2e6bfe47b886d0c354f1683155..30c18cf29467610658b0c298bdd5c682
      ) => Effect.Effect<
        AuthPairingCredentialResult,
        ServerAuthInternalError | ManagedLimits.ManagedPolicyRefusedError
-@@ -1130,10 +1159,13 @@ export const make = Effect.gen(function* () {
+@@ -978,7 +1010,9 @@ export const make = Effect.gen(function* () {
+                       proofKeyThumbprint: input.proofKeyThumbprint,
+                       ttl: Duration.hours(1),
+                     }
+-                  : {}),
++                  : grantedScopes.length === 1 && grantedScopes[0] === AuthBatonMemorySyncScope
++                    ? { ttl: MEMORY_SYNC_SESSION_TTL }
++                    : {}),
+                 replaceActiveForSubjectAndMethod: grant.method === "desktop-bootstrap",
+                 client: {
+                   ...requestMetadata,
+@@ -1130,10 +1164,13 @@ export const make = Effect.gen(function* () {
        Effect.withSpan("EnvironmentAuth.revokeOtherSessionsExcept"),
      );
  

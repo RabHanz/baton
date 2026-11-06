@@ -1,5 +1,6 @@
 import {
   AuthAccessTokenType,
+  AuthBatonMemorySyncScope,
   AuthAccessWriteScope,
   AuthOrchestrationOperateScope,
   AuthStandardClientScopes,
@@ -76,6 +77,8 @@ export interface IssuedBearerSession {
 // MCP client tokens are restricted to /mcp; HTTP API and WebSocket RPC would bypass their access cap.
 const MCP_CLIENT_SUBJECT = "mcp-client";
 const MCP_CLIENT_SESSION_TTL = Duration.days(30);
+// Sync-only and revocable, and nobody is there to re-pair his servers every month.
+const MEMORY_SYNC_SESSION_TTL = Duration.days(365);
 
 export interface McpClientSession {
   readonly sessionId: AuthSessionId;
@@ -1007,7 +1010,9 @@ export const make = Effect.gen(function* () {
                       proofKeyThumbprint: input.proofKeyThumbprint,
                       ttl: Duration.hours(1),
                     }
-                  : {}),
+                  : grantedScopes.length === 1 && grantedScopes[0] === AuthBatonMemorySyncScope
+                    ? { ttl: MEMORY_SYNC_SESSION_TTL }
+                    : {}),
                 replaceActiveForSubjectAndMethod: grant.method === "desktop-bootstrap",
                 client: {
                   ...requestMetadata,
