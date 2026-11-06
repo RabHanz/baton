@@ -7,7 +7,7 @@
  * what the hell even is the point of this if it isn't smart or sentient!"* This
  * is the answer to that, and it is deliberately the *second* answer:
  *
- *   grammar → learned phrasing → model
+ *   grammar → model
  *
  * The grammar stays first because it is instant, free and identical every time,
  * and it stays as the verifier because everything a model returns is checked
@@ -33,7 +33,6 @@ import {
   interpretIntentModelReply,
   type IntentModelReply,
 } from "@t3tools/baton-shared/intentModel";
-import { BRAIN_ROUTER_PROMPT } from "@t3tools/baton-shared/brain";
 import type { IntentVocabulary } from "@t3tools/baton-shared/intentParser";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
@@ -42,7 +41,7 @@ import * as Layer from "effect/Layer";
 
 import * as Schema from "effect/Schema";
 
-import { BatonOneShot, BatonOneShotError } from "./BatonOneShot.ts";
+import { BatonOneShot } from "./BatonOneShot.ts";
 
 /**
  * The tier that reads a sentence against a list of names.
@@ -85,13 +84,7 @@ export class BatonIntentInterpreter extends Context.Service<
     readonly interpret: (input: {
       readonly sentence: string;
       readonly vocabulary: IntentVocabulary;
-      readonly learned: ReadonlyArray<{ readonly text: string; readonly description: string }>;
     }) => Effect.Effect<IntentInterpretation | null>;
-    /** The one brain's question (D100), as the JSON it answers in. Fails when no account can. */
-    readonly route: (input: {
-      readonly turn: string;
-      readonly vocabulary: IntentVocabulary;
-    }) => Effect.Effect<string, BatonOneShotError>;
   }
 >()("t3/baton/IntentInterpreter/BatonIntentInterpreter") {}
 
@@ -131,16 +124,12 @@ export const chooseInterpreterInstance = (
 export const make = Effect.gen(function* () {
   const oneShot = yield* BatonOneShot;
 
-  const interpret: BatonIntentInterpreter["Service"]["interpret"] = ({
-    sentence,
-    vocabulary,
-    learned,
-  }) =>
+  const interpret: BatonIntentInterpreter["Service"]["interpret"] = ({ sentence, vocabulary }) =>
     Effect.gen(function* () {
       const chosen = chooseInterpreterInstance(vocabulary);
       if (chosen === null) return null;
 
-      const prompt = buildIntentModelPrompt({ sentence, vocabulary, learned });
+      const prompt = buildIntentModelPrompt({ sentence, vocabulary });
       const reply = yield* oneShot
         .run({
           prompt,
@@ -192,21 +181,7 @@ export const make = Effect.gen(function* () {
       return { resolution, model: chosen.model } satisfies IntentInterpretation;
     });
 
-  const route: BatonIntentInterpreter["Service"]["route"] = ({ turn, vocabulary }) =>
-    Effect.gen(function* () {
-      if (chooseInterpreterInstance(vocabulary) === null) {
-        return yield* new BatonOneShotError({ detail: "No Claude account is signed in here." });
-      }
-      const reply = yield* oneShot.run({
-        prompt: `${BRAIN_ROUTER_PROMPT}\n\n${turn}`,
-        model: INTENT_MODEL_SLUG,
-        outputSchema: Schema.Struct({ route: Schema.String, text: Schema.String }),
-      });
-      // @effect-diagnostics-next-line globalJsonInEffect:off - a decoded reply, always serialisable.
-      return JSON.stringify(reply);
-    });
-
-  return { interpret, route } satisfies BatonIntentInterpreter["Service"];
+  return { interpret } satisfies BatonIntentInterpreter["Service"];
 });
 
 export const layer = Layer.effect(BatonIntentInterpreter, make);

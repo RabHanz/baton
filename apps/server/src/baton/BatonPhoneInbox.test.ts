@@ -5,7 +5,7 @@ import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
 
 import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
-import { BatonPhoneInbox, layer as inboxLayer } from "./BatonPhoneInbox.ts";
+import { BatonPhoneInbox, layer as inboxLayer, phoneCall } from "./BatonPhoneInbox.ts";
 
 const layer = it.layer(inboxLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)));
 
@@ -24,6 +24,28 @@ layer("BatonPhoneInbox", (it) => {
       assert.strictEqual((yield* inbox.take)?.id, "client-aaaa-0001");
       assert.strictEqual((yield* inbox.take)?.id, "client-aaaa-0002");
       assert.isNull(yield* inbox.take);
+    }),
+  );
+
+  it.effect("the web intent bar leaves words for the lead and reads where they stand", () =>
+    Effect.gen(function* () {
+      const inbox = yield* BatonPhoneInbox;
+      const made = yield* phoneCall({
+        op: "ask",
+        args: { id: "web-dddd-0001", text: "plan my week" },
+      });
+      // The line depends on whether the desktop took anything lately; the layer is shared across cases.
+      assert.include(made.value, { ok: true, status: "queued" });
+      assert.strictEqual((yield* inbox.take)?.text, "plan my week");
+      yield* inbox.answer("web-dddd-0001", "Done.", "Three things this week.");
+      assert.deepEqual((yield* phoneCall({ op: "askGet", args: { id: "web-dddd-0001" } })).value, {
+        status: "answered",
+        line: "Three things this week.",
+      });
+      assert.deepEqual(
+        (yield* phoneCall({ op: "ask", args: { id: "web-dddd-0002", text: " " } })).value,
+        { ok: false, line: "Say something." },
+      );
     }),
   );
 

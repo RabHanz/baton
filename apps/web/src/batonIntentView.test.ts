@@ -66,11 +66,23 @@ describe("previewResolution", () => {
     expect(preview.weighty).toBe(true);
   });
 
-  it("shows the words it could not place, separately from the explanation", () => {
+  it("hands words the grammar cannot place to the lead", () => {
     const preview = previewResolution({
       outcome: "refused",
       refusal: {
         reason: "unknown_target",
+        unplaced: "the deploy pipeline",
+        message: 'I could not place "the deploy pipeline". Say the work by name.',
+      },
+    });
+    expect(preview).toEqual({ tone: "will", line: "Ask Tessaya", unplaced: null, weighty: false });
+  });
+
+  it("shows the words it could not place, separately from the explanation", () => {
+    const preview = previewResolution({
+      outcome: "refused",
+      refusal: {
+        reason: "rule_not_understood",
         unplaced: "the deploy pipeline",
         message: 'I could not place "the deploy pipeline". Say the work by name.',
       },

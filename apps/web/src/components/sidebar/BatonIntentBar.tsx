@@ -1,4 +1,3 @@
-/* oxlint-disable shadcn/no-raw-colors, shadcn/no-unknown-classes -- Baton file predating the rule (D82) */
 /* oxlint-disable t3code/no-low-value-comments, t3code/no-unreasoned-state-sync -- Baton file predating upstream's rule (D82) */
 /**
  * One line, above the Fleet: say what you want.
@@ -34,28 +33,17 @@ import {
 } from "@t3tools/baton-contracts";
 import { classifyDictation } from "@t3tools/baton-shared/dictation";
 
-import { cn } from "~/lib/utils";
+import { cn, randomUUID } from "~/lib/utils";
 import { dictationModeLabel, dictationRefusal } from "../../batonContextView";
-import { previewResolution } from "../../batonIntentView";
+import { goesToLead, previewResolution } from "../../batonIntentView";
 import { batonWorkSessions } from "../../state/batonWorkSessions";
 import { Input } from "../ui/input";
 import { useAtomCommand } from "../../state/use-atom-command";
 
 /** Long enough that typing does not round-trip per keystroke. */
 const PREVIEW_DEBOUNCE_MS = 400;
-
-/**
- * Grammar refusals a model is allowed to read a second time (D50).
- *
- * The same list the environment enforces; it is repeated here only so the
- * client knows when to offer the second reading, and a client that gets it
- * wrong is refused by the server rather than obeyed.
- */
-const OPEN_TO_MODEL: ReadonlySet<string> = new Set([
-  "unrecognised",
-  "rule_not_understood",
-  "unknown_target",
-]);
+/** How often an ask left for the lead is re-read until it is answered. */
+const LEAD_POLL_MS = 1_500;
 
 export interface BatonIntentBarProps {
   readonly environmentId: EnvironmentId;
@@ -88,16 +76,8 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
   } | null>(null);
   const [reply, setReply] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
-  /**
-   * A model's reading of the current sentence, once it has been asked for.
-   * Carries its own text for the same reason the grammar preview does: a
-   * reading of a sentence the user has since changed must never be what runs.
-   */
-  const [modelReading, setModelReading] = useState<{
-    readonly text: string;
-    readonly resolution: BatonIntentResolution;
-  } | null>(null);
-  const [reading, setReading] = useState(false);
+  /** An ask left for the lead (the one assistant), re-read until it settles. */
+  const [leadAsk, setLeadAsk] = useState<string | null>(null);
   /** §12.3's mode. While it is on, ordinary words are text, not instructions. */
   const [dictating, setDictating] = useState(false);
   const resolveIntent = useAtomCommand(batonWorkSessions.intentResolve, { reportFailure: false });
@@ -245,52 +225,42 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
       return;
     }
 
-    const grammar = resolution?.text === trimmed ? resolution.resolution : null;
-    const alreadyRead = modelReading?.text === trimmed ? modelReading.resolution : null;
-
-    // First Enter on a sentence the grammar could not place: ask a model to
-    // read it, and show what it understood. Nothing runs yet — the reading is
-    // the confirmation step, and it is the whole reason a model on this path is
-    // safe rather than a shortcut.
-    if (
-      alreadyRead === null &&
-      !reading &&
-      grammar !== null &&
-      grammar.outcome === "refused" &&
-      OPEN_TO_MODEL.has(grammar.refusal.reason)
-    ) {
-      setReading(true);
-      void resolveIntent({
-        environmentId: props.environmentId,
-        input: {
-          text: trimmed,
-          focusedWorkSessionId: props.focusedWorkSessionId as never,
-          allowModel: true,
-        },
-      }).then((result) => {
-        setReading(false);
-        if (result._tag !== "Success") {
-          setReply("That could not be read.");
-          return;
-        }
-        setModelReading({ text: trimmed, resolution: result.value.resolution });
-      });
-      return;
-    }
-
     setRunning(true);
-    void runIntent({
-      environmentId: props.environmentId,
-      input: {
-        text: trimmed,
-        focusedWorkSessionId: props.focusedWorkSessionId as never,
-      },
-    }).then((result) => {
+    void (async () => {
+      // The grammar checks every sentence: what it places runs here, what it cannot place goes to the lead.
+      const grammar =
+        resolution?.text === trimmed
+          ? resolution.resolution
+          : await resolveIntent({
+              environmentId: props.environmentId,
+              input: { text: trimmed, focusedWorkSessionId: props.focusedWorkSessionId as never },
+            }).then((result) => (result._tag === "Success" ? result.value.resolution : null));
+      if (grammar !== null && goesToLead(grammar)) {
+        const id = `web-${randomUUID()}`;
+        const made = (await props
+          .onPhone?.({ kind: "phone", op: "ask", args: { id, text: trimmed } })
+          .catch(() => null)) as { ok?: boolean; line?: string } | null | undefined;
+        setRunning(false);
+        setReply(made?.line ?? "Tessaya is not reachable from here.");
+        if (made?.ok !== true) return;
+        setText("");
+        setResolution(null);
+        setLeadAsk(id);
+        return;
+      }
+      if (grammar?.outcome === "refused") {
+        setRunning(false);
+        setReply(grammar.refusal.message);
+        return;
+      }
+      const result = await runIntent({
+        environmentId: props.environmentId,
+        input: { text: trimmed, focusedWorkSessionId: props.focusedWorkSessionId as never },
+      });
       setRunning(false);
       if (result._tag === "Success") {
         setReply(result.value.reply);
         setResolution(null);
-        setModelReading(null);
         setText("");
         props.onRan();
         return;
@@ -298,35 +268,33 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
       // The sentence resolved and the command failed. Saying so beats an empty
       // input that looks like it worked.
       setReply("That could not be done. Nothing changed.");
-    });
+    })();
   };
 
-  // A model's reading of these exact words wins over the grammar's refusal of
-  // them: it is newer, it is what the next Enter will run, and it is what the
-  // user asked for by pressing Enter once already.
+  const { onPhone: askPhone } = props;
+  // Reads the lead's answer from the server until it settles.
+  useEffect(() => {
+    if (leadAsk === null || askPhone === undefined) return;
+    const timer = setInterval(() => {
+      void askPhone({ kind: "phone", op: "askGet", args: { id: leadAsk } })
+        .then((value) => {
+          const got = value as { status?: string; line?: string } | null;
+          if (got === null) return setLeadAsk(null);
+          if (got.line !== undefined) setReply(got.line);
+          if (got.status !== "queued" && got.status !== "taken") setLeadAsk(null);
+        })
+        .catch(() => undefined);
+    }, LEAD_POLL_MS);
+    return () => clearInterval(timer);
+  }, [leadAsk, askPhone]);
+
   const trimmedText = text.trim();
   const shown =
-    modelReading !== null && modelReading.text === trimmedText
-      ? modelReading.resolution
-      : resolution !== null && resolution.text === trimmedText
-        ? resolution.resolution
-        : null;
+    resolution !== null && resolution.text === trimmedText ? resolution.resolution : null;
   const preview = shown === null ? null : previewResolution(shown);
-  const awaitingSecondEnter =
-    modelReading !== null && modelReading.text === trimmedText && shown?.outcome === "resolved";
 
   return (
     <div className="px-2 pb-1 pt-1">
-      {reading ? (
-        <p
-          data-testid="sidebar-intent-reading"
-          className="pb-0.5 text-2xs leading-4 text-sidebar-muted-foreground"
-        >
-          {/* A model read takes seconds, not milliseconds. Saying so beats an
-              input that looks like it ignored the keypress. */}
-          Reading that…
-        </p>
-      ) : null}
       {dictating ? (
         <p
           data-testid="sidebar-intent-dictating"
@@ -366,10 +334,6 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
         onChange={(event) => {
           setText(event.target.value);
           setReply(null);
-          // A reading belongs to the words it read. Changing them discards it,
-          // so the next Enter asks again rather than running something the user
-          // is no longer looking at.
-          setModelReading(null);
         }}
         onKeyDown={(event) => {
           if (event.key !== "Enter") return;
@@ -378,31 +342,16 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
         }}
       />
       {preview === null ? null : (
-        <>
-          {awaitingSecondEnter ? (
-            // Its own line, the way a fleet row gives its heading and its
-            // detail a line each: at 256px the marker and the description
-            // cannot share one without the description — the half that matters
-            // — being the half that truncates.
-            <p
-              data-testid="sidebar-intent-marker"
-              className="truncate pt-0.5 text-2xs leading-4 text-sidebar-muted-foreground"
-            >
-              ↵ again to run
-            </p>
-          ) : null}
-          <p
-            data-testid="sidebar-intent-preview"
-            className={cn(
-              "truncate text-2xs leading-4",
-              awaitingSecondEnter ? "" : "pt-0.5",
-              preview.tone === "refused" ? "text-destructive" : "text-sidebar-muted-foreground",
-              preview.weighty && "text-sidebar-foreground",
-            )}
-          >
-            {preview.tone === "will" && !awaitingSecondEnter ? `↵ ${preview.line}` : preview.line}
-          </p>
-        </>
+        <p
+          data-testid="sidebar-intent-preview"
+          className={cn(
+            "truncate pt-0.5 text-2xs leading-4",
+            preview.tone === "refused" ? "text-destructive" : "text-sidebar-muted-foreground",
+            preview.weighty && "text-sidebar-foreground",
+          )}
+        >
+          {preview.tone === "will" ? `↵ ${preview.line}` : preview.line}
+        </p>
       )}
       {preview?.unplaced === null || preview === null ? null : (
         <p className="truncate text-2xs leading-4 text-sidebar-muted-foreground">

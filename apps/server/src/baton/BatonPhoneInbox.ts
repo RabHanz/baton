@@ -10,6 +10,7 @@ import {
   CLIENT_ID,
   PROMPT_TTL_MS,
   QUEUE_MAX,
+  askLine,
   isConnected,
   type AskStatus,
   type PhoneAsk,
@@ -287,6 +288,29 @@ export const phoneCall = Effect.fn("BatonPhoneInbox.call")(function* (input: Bat
   const bad = () => new BatonPhoneError({ reason: "That phone call was not understood." });
   const id = str(a["id"], 80);
   switch (input.op) {
+    // The web intent bar leaves words for the lead the same way the phone page does, and reads where they stand.
+    case "ask": {
+      const made = yield* inbox.post({
+        id: id ?? "",
+        text: typeof a["text"] === "string" ? a["text"] : "",
+      });
+      if (!made.ok) return { value: { ok: false, line: made.why } };
+      return {
+        value: {
+          ok: true,
+          status: made.ask.status,
+          line: askLine(made.ask, yield* inbox.connected),
+        },
+      };
+    }
+    case "askGet": {
+      if (id === null) return yield* bad();
+      const ask = yield* inbox.get(id);
+      return {
+        value:
+          ask === null ? null : { status: ask.status, line: askLine(ask, yield* inbox.connected) },
+      };
+    }
     case "take": {
       const ask = yield* inbox.take;
       return { value: ask === null ? null : { id: ask.id, text: ask.text, source: ask.source } };

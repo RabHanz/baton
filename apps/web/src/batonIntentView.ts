@@ -33,25 +33,33 @@ export interface IntentPreview {
 
 const WEIGHTY: ReadonlySet<BatonIntentRisk> = new Set(["medium", "high"]);
 
+/** Words the grammar cannot place are the lead's to read; a high-risk, ambiguous or rule refusal stays a refusal. */
+const FOR_THE_LEAD: ReadonlySet<string> = new Set(["unrecognised", "unknown_target"]);
+
+export const goesToLead = (resolution: BatonIntentResolution): boolean =>
+  resolution.outcome === "refused" && FOR_THE_LEAD.has(resolution.refusal.reason);
+
 export const previewResolution = (resolution: BatonIntentResolution): IntentPreview =>
-  resolution.outcome === "resolved"
-    ? {
-        tone: "will",
-        line: resolution.description,
-        unplaced: null,
-        weighty: WEIGHTY.has(resolution.risk),
-      }
-    : {
-        tone: "refused",
-        line: resolution.refusal.message,
-        // Shown separately so the user can see which words to change, rather
-        // than re-reading their own sentence looking for the problem.
-        unplaced:
-          resolution.refusal.unplaced.trim().length === 0
-            ? null
-            : resolution.refusal.unplaced.trim(),
-        weighty: false,
-      };
+  goesToLead(resolution)
+    ? { tone: "will", line: "Ask Tessaya", unplaced: null, weighty: false }
+    : resolution.outcome === "resolved"
+      ? {
+          tone: "will",
+          line: resolution.description,
+          unplaced: null,
+          weighty: WEIGHTY.has(resolution.risk),
+        }
+      : {
+          tone: "refused",
+          line: resolution.refusal.message,
+          // Shown separately so the user can see which words to change, rather
+          // than re-reading their own sentence looking for the problem.
+          unplaced:
+            resolution.refusal.unplaced.trim().length === 0
+              ? null
+              : resolution.refusal.unplaced.trim(),
+          weighty: false,
+        };
 
 export interface IntentRow {
   readonly id: string;

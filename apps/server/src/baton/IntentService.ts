@@ -14,11 +14,8 @@
  *   2. **Resolve — deterministically first, and deterministically last.**
  *      `resolveBatonIntent` is a pure function of the sentence and that
  *      vocabulary: no model, no clock, no network, the same command every
- *      time. When it cannot place a sentence, two more things are tried in
- *      order, and only in this order (D50):
+ *      time. When it cannot place a sentence, a model reads it (D50):
  *
- *        - **a phrasing the user has already confirmed**, replayed from the
- *          vocabulary table. Still no model, still instant, still identical.
  *        - **a model**, running as one of the user's own accounts, answering in
  *          the same schema and naming ids it was shown. Everything it returns
  *          is then checked by the same deterministic rules — the ids have to
@@ -37,7 +34,6 @@
  * told about, or "tell it to stop" means one thing on screen and another here.
  */
 import {
-  BatonIntentCommand as BatonIntentCommandSchema,
   DEFAULT_INTENT_LIST_LIMIT,
   DEFAULT_RETENTION,
   BatonIntentExecutionError,
@@ -50,8 +46,6 @@ import {
   type BatonIntentRecord,
   type BatonIntentResolution,
   type WorkSessionId,
-  type BatonBrainInput,
-  type BatonBrainResult,
 } from "@t3tools/baton-contracts";
 import { expiredRecords } from "@t3tools/baton-shared/retention";
 import {
@@ -61,15 +55,12 @@ import {
   type IntentProvider,
   type IntentVocabulary,
 } from "@t3tools/baton-shared/intentParser";
-import { decide } from "@t3tools/baton-shared/brain";
 import { Hostname as HostProcessHostname } from "@t3tools/shared/HostProcess";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
-import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
 
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
@@ -81,10 +72,6 @@ import {
 } from "./IntentRepository.ts";
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { BatonIntentInterpreter, layer as intentInterpreterLayer } from "./IntentInterpreter.ts";
-import {
-  BatonIntentVocabularyRepository,
-  layer as intentVocabularyRepositoryLayer,
-} from "./IntentVocabularyRepository.ts";
 import { OrchestrationRuleService } from "./OrchestrationRuleService.ts";
 import { BatonEngine } from "./BatonEngine.ts";
 import { WorkSessionService } from "./WorkSessionService.ts";
@@ -119,11 +106,9 @@ export class BatonIntentService extends Context.Service<
     readonly resolve: (input: {
       readonly text: string;
       readonly focusedWorkSessionId: WorkSessionId | null;
-      /** Absent or false: grammar and learned phrasings only, never a model. */
+      /** Absent or false: the grammar only, never a model. */
       readonly allowModel?: boolean | undefined;
     }) => Effect.Effect<BatonIntentResolution, BatonIntentError>;
-    /** The one brain's decision for a sentence (D100). Decides and does nothing. */
-    readonly decide: (input: BatonBrainInput) => Effect.Effect<BatonBrainResult, BatonIntentError>;
     readonly run: (input: {
       readonly text: string;
       readonly focusedWorkSessionId: WorkSessionId | null;
@@ -145,19 +130,11 @@ export class BatonIntentService extends Context.Service<
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 
-const encodeLearnedCommand = Schema.encodeEffect(Schema.fromJsonString(BatonIntentCommandSchema));
-
-const TARGET_FREE_KINDS: ReadonlySet<BatonIntentCommand["kind"]> = new Set([
-  "status_fleet",
-  "switch_account",
-]);
-
 const firstWord = (text: string): string => text.trim().split(/\s+/)[0] ?? text;
 
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* () {
   const repository = yield* BatonIntentRepository;
-  const vocabularyMemory = yield* BatonIntentVocabularyRepository;
   const interpreter = yield* BatonIntentInterpreter;
   const engine = yield* BatonEngine;
   const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
@@ -284,15 +261,11 @@ export const make = Effect.gen(function* () {
       return vocabulary;
     });
 
-  /** How many confirmed phrasings the prompt carries as examples. */
-  const LEARNED_EXAMPLES = 8;
-
   /**
    * Readings shown to the user but not yet acted on.
    *
    * Small and short-lived on purpose: this is the gap between "here is what I
-   * think you said" and "yes, do that", which is seconds. Anything longer
-   * belongs in the learned table, and gets there by being run.
+   * think you said" and "yes, do that", which is seconds.
    */
   const RECENT_READING_LIMIT = 16;
   const recentReadings = new Map<
@@ -311,17 +284,11 @@ export const make = Effect.gen(function* () {
     }
   };
 
-  const decodeLearnedCommand = Schema.decodeUnknownOption(
-    Schema.fromJsonString(BatonIntentCommandSchema),
-  );
-
   /**
    * Resolve, and say which of the three answered.
    *
-   * Everything downstream needs that: the record keeps it, the learning step
-   * only fires for a model reading, and a reader asking "why did that happen?"
-   * gets "the grammar did", "you have said that before", or "a model read it,
-   * and here is which one".
+   * The record keeps it, so a reader asking "why did that happen?" gets "the
+   * grammar did" or "a model read it, and here is which one".
    */
   const resolveWithSource = ({
     text,
@@ -333,19 +300,7 @@ export const make = Effect.gen(function* () {
     readonly allowModel?: boolean | undefined;
   }) =>
     Effect.gen(function* () {
-      const normalisedForLookup = normaliseIntentText(text);
-      // Side by side: the fleet read and the memory read answer different
-      // questions, and the second does not depend on the first. On a machine
-      // with work on it the fleet read is the slower of the two.
-      const [vocabulary, learnedRow] = yield* Effect.all(
-        [
-          buildVocabulary(focusedWorkSessionId),
-          vocabularyMemory
-            .find(normalisedForLookup)
-            .pipe(Effect.catchCause(() => Effect.succeed(null))),
-        ],
-        { concurrency: 2 },
-      );
+      const vocabulary = yield* buildVocabulary(focusedWorkSessionId);
       const grammar = resolveBatonIntent(text, vocabulary);
 
       // Which refusals get a second reader, and which are final.
@@ -372,28 +327,7 @@ export const make = Effect.gen(function* () {
         return { resolution: grammar, source: "grammar" as const, model: null, normalised: null };
       }
 
-      const normalised = normalisedForLookup;
-      const learned = learnedRow;
-      if (learned !== null) {
-        const command = decodeLearnedCommand(learned.commandJson);
-        // Only a reading that names no session, firing or instance replays as it was: "tell it to stop"
-        // learned once must not stay bound to the session that was in view that day. The rest goes
-        // to the model, with the learned phrasing as an example.
-        if (Option.isSome(command) && TARGET_FREE_KINDS.has(command.value.kind)) {
-          return {
-            resolution: {
-              outcome: "resolved",
-              command: command.value,
-              description: learned.description,
-              risk: learned.risk,
-              workSessionId: learned.workSessionId,
-            } satisfies BatonIntentResolution,
-            source: "learned" as const,
-            model: null,
-            normalised,
-          };
-        }
-      }
+      const normalised = normaliseIntentText(text);
 
       // A reading the user was just shown is the reading that runs. Without
       // this the same sentence could be read differently on the second call,
@@ -413,17 +347,7 @@ export const make = Effect.gen(function* () {
         return { resolution: grammar, source: "grammar" as const, model: null, normalised };
       }
 
-      const examples = yield* vocabularyMemory
-        .list(LEARNED_EXAMPLES)
-        .pipe(Effect.catchCause(() => Effect.succeed([])));
-      const read = yield* interpreter.interpret({
-        sentence: text.trim(),
-        vocabulary,
-        learned: examples.map((entry) => ({
-          text: entry.text,
-          description: entry.description,
-        })),
-      });
+      const read = yield* interpreter.interpret({ sentence: text.trim(), vocabulary });
       if (read === null) {
         return { resolution: grammar, source: "grammar" as const, model: null, normalised };
       }
@@ -438,26 +362,6 @@ export const make = Effect.gen(function* () {
 
   const resolve: BatonIntentService["Service"]["resolve"] = (input) =>
     Effect.map(resolveWithSource(input), (read) => read.resolution);
-
-  const decideSaid: BatonIntentService["Service"]["decide"] = (input) =>
-    Effect.gen(function* () {
-      const vocabulary = yield* buildVocabulary(null);
-      const context = yield* Effect.context<never>();
-      const decision = yield* Effect.promise(() =>
-        decide(input.said, input, {
-          ask: (turn) => Effect.runPromiseWith(context)(interpreter.route({ turn, vocabulary })),
-          grammarPlaces: async (said) =>
-            resolveBatonIntent(said, vocabulary).outcome === "resolved",
-        }),
-      );
-      return {
-        route: decision.route,
-        text: "text" in decision ? decision.text : null,
-        control: "control" in decision ? decision.control : null,
-        source: decision.source,
-        ...("restated" in decision && decision.restated === true ? { restated: true } : {}),
-      } satisfies BatonBrainResult;
-    });
 
   const record = (row: BatonIntentRow) =>
     repository
@@ -511,7 +415,7 @@ export const make = Effect.gen(function* () {
         model: read.model,
       });
       yield* publish({ kind: "fabric.intent.resolved", record: row });
-      yield* learnFromReading({ read, text: trimmed, resolution, failed: execution.failed, at });
+      if (read.normalised !== null) recentReadings.delete(read.normalised);
       yield* prune;
       if (execution.failed) {
         // Recorded first, then raised: the caller gets an error, and the log
@@ -523,54 +427,6 @@ export const make = Effect.gen(function* () {
       }
       return { resolution, reply: execution.reply, record: row };
     });
-
-  /**
-   * Remember a phrasing the user actually meant.
-   *
-   * Only on a model reading that *ran* and did not fail: a resolution the user
-   * previewed and walked away from is the closest thing to a "no" this surface
-   * gets, and a failed execution says nothing about whether the reading was
-   * right. A learned phrasing that was already there has its use count bumped
-   * instead, which is what makes "used once" and "used daily" distinguishable
-   * later.
-   */
-  const learnFromReading = ({
-    read,
-    text,
-    resolution,
-    failed,
-    at,
-  }: {
-    readonly read: {
-      readonly source: string;
-      readonly model: string | null;
-      readonly normalised: string | null;
-    };
-    readonly text: string;
-    readonly resolution: BatonIntentResolution;
-    readonly failed: boolean;
-    readonly at: string;
-  }) =>
-    Effect.gen(function* () {
-      if (read.normalised !== null) recentReadings.delete(read.normalised);
-      if (read.normalised === null || resolution.outcome !== "resolved") return;
-      if (read.source === "learned") {
-        yield* vocabularyMemory.markUsed({ normalisedText: read.normalised, at });
-        return;
-      }
-      if (read.source !== "model" || read.model === null || failed) return;
-      const commandJson = yield* encodeLearnedCommand(resolution.command);
-      yield* vocabularyMemory.learn({
-        normalisedText: read.normalised,
-        text,
-        commandJson,
-        description: resolution.description,
-        risk: resolution.risk,
-        workSessionId: resolution.workSessionId,
-        model: read.model,
-        learnedAt: at,
-      });
-    }).pipe(Effect.ignoreCause({ log: true }));
 
   /**
    * §26's horizon, applied where the log grows rather than on a timer.
@@ -604,7 +460,6 @@ export const make = Effect.gen(function* () {
 
   return {
     resolve,
-    decide: decideSaid,
     run,
     list,
     subscribe: PubSub.subscribe(events),
@@ -613,7 +468,6 @@ export const make = Effect.gen(function* () {
 
 export const layer = Layer.effect(BatonIntentService, make).pipe(
   Layer.provideMerge(intentRepositoryLayer),
-  Layer.provideMerge(intentVocabularyRepositoryLayer),
   // The interpreter is provided here rather than merged: nothing else needs it,
   // and leaving it in the requirement channel would push a Baton detail into
   // every place that builds the routes.

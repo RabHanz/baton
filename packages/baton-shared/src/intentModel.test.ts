@@ -298,7 +298,6 @@ describe("the prompt says only what the model is allowed to know", () => {
   const prompt = buildIntentModelPrompt({
     sentence: "poke the scheduler",
     vocabulary,
-    learned: [{ text: "what's cooking", description: "Say what needs you." }],
   });
 
   it("lists every id the model may use, and marks what the user is looking at", () => {
@@ -308,10 +307,6 @@ describe("the prompt says only what the model is allowed to know", () => {
     expect(prompt).toContain("firing-1");
     expect(prompt).toContain("[the user is looking at this one]");
     expect(prompt).toContain("[waiting for approval]");
-  });
-
-  it("teaches it the user's own confirmed phrasings", () => {
-    expect(prompt).toContain('"what\'s cooking" → Say what needs you.');
   });
 
   it("carries no thread contents, and says so by carrying only names", () => {
