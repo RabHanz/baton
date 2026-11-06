@@ -4,7 +4,7 @@ Two hooks: the spawn candidates gain `herdr --session <name>`, and closing a ter
 Herdr session. Not a PtyAdapter, because the adapter is not told which thread and terminal.
 
 diff --git a/apps/server/src/terminal/Manager.ts b/apps/server/src/terminal/Manager.ts
-index c881dbd7b19a8f2a47bf0a9adfef2473981a09e1..471e5c23dc5355a88a1682b2653fbcade94df48b 100644
+index 6a661db4e09d6362e29f5d4086edd88ad9f7708b..a7f0d78841f2540d637ab4e25f18ab294dc6e9e8 100644
 --- a/apps/server/src/terminal/Manager.ts
 +++ b/apps/server/src/terminal/Manager.ts
 @@ -71,6 +71,7 @@ import * as ServerSettings from "../serverSettings.ts";
@@ -15,7 +15,7 @@ index c881dbd7b19a8f2a47bf0a9adfef2473981a09e1..471e5c23dc5355a88a1682b2653fbcad
  import * as PortScanner from "../preview/PortScanner.ts";
  import * as NativeTelemetryClient from "../resourceTelemetry/NativeTelemetryClient.ts";
  import { terminalOutputStream } from "./OutputProtocol.ts";
-@@ -2470,7 +2471,12 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
+@@ -2436,7 +2437,12 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
        increment(terminalSessionsTotal, { lifecycle: eventType }).pipe(
          Effect.andThen(
            Effect.gen(function* () {
@@ -29,7 +29,7 @@ index c881dbd7b19a8f2a47bf0a9adfef2473981a09e1..471e5c23dc5355a88a1682b2653fbcad
              const terminalEnv = createTerminalSpawnEnv(
                baseEnv,
                session.runtimeEnv,
-@@ -2616,6 +2622,14 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
+@@ -2582,6 +2588,14 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
      if (Option.isSome(session)) {
        yield* stopProcess(session.value);
        yield* unregisterTerminal({ threadId, terminalId });

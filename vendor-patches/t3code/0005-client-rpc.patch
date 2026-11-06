@@ -3,7 +3,7 @@ Subject: client-runtime: Baton's RPC group on the client protocol
 The fabric.* group rides the same socket, and its work-session stream is a subscription tag.
 
 diff --git a/packages/client-runtime/src/rpc/client.ts b/packages/client-runtime/src/rpc/client.ts
-index 2832a4e231556c8734f77f8c26b4ac70279fe0f4..2a4c82a6fa25623c77fc8234dab68c078ccf42ac 100644
+index e74abde6a2c593b23e3215f37146265a6f3557b1..7f67e1e01abe2cf55c483cb8c2f3d15f702ed63d 100644
 --- a/packages/client-runtime/src/rpc/client.ts
 +++ b/packages/client-runtime/src/rpc/client.ts
 @@ -1,3 +1,4 @@
@@ -37,10 +37,10 @@ index e8aea66d3d897d19cbc5a8a5dbb79c5642602eeb..49490d5542856898889747cebc6a3b34
  export type WsRpcProtocolClient =
    RpcClientFactory extends Effect.Effect<infer Client, any, any> ? Client : never;
 diff --git a/packages/client-runtime/src/state/threadRequests.test.ts b/packages/client-runtime/src/state/threadRequests.test.ts
-index d9aaf9fdca71a2c2ef275772741c28afbcddd390..ae8b0cc32c1ab2a21f885ecf4ed6b82792527261 100644
+index c2e1024e232ae00acacc1f63e48684a253c1d2b0..820d8c0e9945cc00159d529bfce4b879fb353e07 100644
 --- a/packages/client-runtime/src/state/threadRequests.test.ts
 +++ b/packages/client-runtime/src/state/threadRequests.test.ts
-@@ -306,6 +306,13 @@ describe("pending v2 questions", () => {
+@@ -309,6 +309,13 @@ describe("pending v2 questions", () => {
      ]);
    });
  
@@ -55,10 +55,10 @@ index d9aaf9fdca71a2c2ef275772741c28afbcddd390..ae8b0cc32c1ab2a21f885ecf4ed6b827
      const live = {
        ...projection,
 diff --git a/packages/client-runtime/src/state/threadRequests.ts b/packages/client-runtime/src/state/threadRequests.ts
-index a010018c5051d13b3c6953acb55297c6b2fc014e..72f60181f9b809aef44f3f1cf803d2a88f2b5c6f 100644
+index 6cbad534cba1df13bc77b3db668cf9e7083d6146..d01bdd5a8333aed23483756aad92a1caa9678559 100644
 --- a/packages/client-runtime/src/state/threadRequests.ts
 +++ b/packages/client-runtime/src/state/threadRequests.ts
-@@ -225,6 +225,19 @@ export function pendingRuntimeRequestIds(
+@@ -226,6 +226,19 @@ export function pendingRuntimeRequestIds(
    );
  }
  
@@ -78,7 +78,7 @@ index a010018c5051d13b3c6953acb55297c6b2fc014e..72f60181f9b809aef44f3f1cf803d2a8
  export function derivePendingThreadRequests(
    projection: Pick<ThreadStructure, "runtimeRequests" | "turnItems">,
  ): PendingThreadRequests {
-@@ -239,7 +252,19 @@ export function derivePendingThreadRequests(
+@@ -240,7 +253,19 @@ export function derivePendingThreadRequests(
          (candidate) =>
            candidate.type === "user_input_request" && candidate.requestId === request.id,
        );
