@@ -23,7 +23,31 @@ describe("warming the voice models before the microphone opens", () => {
     release();
     await done;
     expect(frames).toBeGreaterThan(50);
-    expect(order).toEqual(["scored", "transcribe 16000 true", "recogniser loaded", "ready"]);
+    expect(order.slice(0, 3)).toEqual(["scored", "transcribe 16000 true", "recogniser loaded"]);
+    expect(order).toContain("ready");
+  });
+
+  it("then runs longer clips, one at a time, so the first real sentence is not the first long one", async () => {
+    const lengths: number[] = [];
+    const longer: number[] = [];
+    let last!: () => void;
+    const finished = new Promise<void>((resolve) => (last = resolve));
+    const ready = await warmUpVoice({
+      pushFrame: () => {},
+      transcribe: async (pcm) => {
+        lengths.push(pcm.length / 16_000);
+        return "";
+      },
+      settled: async () => {},
+      onLonger: (seconds) => {
+        longer.push(seconds);
+        if (longer.length === 2) last();
+      },
+    });
+    expect(ready).toBe(true);
+    await finished;
+    expect(lengths).toEqual([1, 4, 8]);
+    expect(longer).toEqual([4, 8]);
   });
 
   it("reports each stage as it finishes, so a slow start can say how far it is", async () => {
