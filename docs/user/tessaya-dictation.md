@@ -8,6 +8,7 @@ Hold **Ctrl+Alt+Space**, speak, release. The text is typed where your cursor is.
 
 ## Good to know
 
+- With **Listen for my wake word** off, the dictation key is ready about 15 seconds after Tessaya starts, so it does not slow the start; with it on, at once.
 - **Tidy what I said** removes filler words and fixes punctuation. Turn it off on the Dictation page if you want your words exactly.
 - **Writing style per app** lets chat apps stay casual and documents stay formal.
 - It learns words from your edits; they are listed on the Dictation page.

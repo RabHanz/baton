@@ -264,33 +264,61 @@ index c640198524af0d22ed57fa96a66157ab2fce2dcb..5ba58ebdf158683a74d6ba14addf6cd7
        standby = undefined;
        inFlight = current;
 diff --git a/apps/desktop/src/snapShot/SnapShotAccessibilityProcess.test.ts b/apps/desktop/src/snapShot/SnapShotAccessibilityProcess.test.ts
-index e4e80c6c4db647c08bdec136e9cf98e6f189548e..a4fc06f58dabe9cb3646572a649a0341a44beba0 100644
+index e4e80c6c4db647c08bdec136e9cf98e6f189548e..3d67a9590e3c3b00982b90f93eed85888ae9cb35 100644
 --- a/apps/desktop/src/snapShot/SnapShotAccessibilityProcess.test.ts
 +++ b/apps/desktop/src/snapShot/SnapShotAccessibilityProcess.test.ts
-@@ -70,9 +70,12 @@ it("replaces a warm helper that exits before capture", async () => {
+@@ -61,18 +61,37 @@ it("returns immediately when accessibility crashes before the screenshot is read
+   assert.isUndefined(await read.result);
+ });
+ 
++it("starts no standby helper before the first read, so start-up spawns nothing", () => {
++  vi.useFakeTimers();
++  const pool = makeSnapShotAccessibilityProcessPool("accessibility.cjs");
++  pool.warm();
++  vi.advanceTimersByTime(10_000);
++  vi.useRealTimers();
++  assert.lengthOf(forkMock.mock.calls, 0);
++  pool.close();
++});
++
+ it("replaces a warm helper that exits before capture", async () => {
++  const firstWorker = makeWorker();
+   const exitedWorker = makeWorker();
+   const captureWorker = makeWorker();
+-  const replacementWorker = makeWorker();
+   forkMock
+     .mockReset()
++    .mockReturnValueOnce(firstWorker)
      .mockReturnValueOnce(exitedWorker)
      .mockReturnValueOnce(captureWorker)
-     .mockReturnValueOnce(replacementWorker);
+-    .mockReturnValueOnce(replacementWorker);
++    .mockReturnValue(makeWorker());
 +  vi.useFakeTimers();
    const pool = makeSnapShotAccessibilityProcessPool("accessibility.cjs");
  
-   pool.warm();
-+  assert.lengthOf(forkMock.mock.calls, 0);
+-  pool.warm();
++  const first = pool.read(request);
++  firstWorker.emit("message", "ready");
++  firstWorker.emit("message", "started");
++  firstWorker.emit("message", { type: "result", context: { accessibleText: "First" } });
++  assert.deepEqual(await first.result, { accessibleText: "First" });
++  // After the first read, the standby starts once things settle.
 +  vi.advanceTimersByTime(2_000);
++  assert.lengthOf(forkMock.mock.calls, 2);
    exitedWorker.emit("exit", 1);
    const read = pool.read(request);
    captureWorker.emit("message", "ready");
-@@ -80,6 +83,8 @@ it("replaces a warm helper that exits before capture", async () => {
+@@ -80,7 +99,7 @@ it("replaces a warm helper that exits before capture", async () => {
    captureWorker.emit("message", { type: "result", context: { accessibleText: "Recovered" } });
  
    assert.deepEqual(await read.result, { accessibleText: "Recovered" });
-+  vi.advanceTimersByTime(2_000);
+-  assert.lengthOf(forkMock.mock.calls, 3);
 +  vi.useRealTimers();
-   assert.lengthOf(forkMock.mock.calls, 3);
    assert.deepEqual(captureWorker.send.mock.calls[0]?.[0], request);
    pool.close();
+ });
 diff --git a/apps/desktop/src/snapShot/SnapShotAccessibilityProcess.ts b/apps/desktop/src/snapShot/SnapShotAccessibilityProcess.ts
-index 542e3f13c08dc6a5df34de1737130db0b7313c16..3ee8f80f9bd9439068bb3b1fe96c7fc7a1252721 100644
+index 542e3f13c08dc6a5df34de1737130db0b7313c16..bfc84d21276db4636bfe44fab332c3d3031c179b 100644
 --- a/apps/desktop/src/snapShot/SnapShotAccessibilityProcess.ts
 +++ b/apps/desktop/src/snapShot/SnapShotAccessibilityProcess.ts
 @@ -10,6 +10,7 @@ import type {
@@ -301,20 +329,29 @@ index 542e3f13c08dc6a5df34de1737130db0b7313c16..3ee8f80f9bd9439068bb3b1fe96c7fc7
  
  export type AccessibilityRead = {
    readonly started: Promise<void>;
-@@ -136,12 +137,20 @@ export function makeSnapShotAccessibilityProcessPool(workerPath: string): Access
+@@ -132,16 +133,28 @@ export function startSnapShotAccessibilityProcess(workerPath: string): Accessibi
+   };
+ }
+ 
+-export function makeSnapShotAccessibilityProcessPool(workerPath: string): AccessibilityProcessPool {
++export function makeSnapShotAccessibilityProcessPool(
++  workerPath: string,
++  start: (workerPath: string) => AccessibilityProcess = startSnapShotAccessibilityProcess,
++): AccessibilityProcessPool {
    let standby: AccessibilityProcess | undefined;
    const active = new Set<AccessibilityProcess>();
    let closed = false;
 +  let warmTimer: ReturnType<typeof setTimeout> | undefined;
  
-+  // Spawning blocks the main thread, so the standby starts once things settle, not mid-read or at startup.
++  // Spawning blocks the main thread: no standby until the first read asked for one, then once things settle.
++  let used = false;
    const warm = () => {
 -    if (closed || standby?.alive) return;
 -    standby = startSnapShotAccessibilityProcess(workerPath);
-+    if (closed || standby?.alive || warmTimer !== undefined) return;
++    if (!used || closed || standby?.alive || warmTimer !== undefined) return;
 +    warmTimer = setTimeout(() => {
 +      warmTimer = undefined;
-+      if (!closed && !standby?.alive) standby = startSnapShotAccessibilityProcess(workerPath);
++      if (!closed && !standby?.alive) standby = start(workerPath);
 +    }, HELPER_WARM_DELAY_MS);
 +    warmTimer.unref?.();
    };
@@ -324,6 +361,18 @@ index 542e3f13c08dc6a5df34de1737130db0b7313c16..3ee8f80f9bd9439068bb3b1fe96c7fc7
      standby?.close();
      standby = undefined;
    };
+@@ -151,9 +164,8 @@ export function makeSnapShotAccessibilityProcessPool(workerPath: string): Access
+     cool,
+     read: (request) => {
+       if (closed) return completedRead();
+-      const workerProcess = standby?.alive
+-        ? standby
+-        : startSnapShotAccessibilityProcess(workerPath);
++      used = true;
++      const workerProcess = standby?.alive ? standby : start(workerPath);
+       standby = undefined;
+       warm();
+       active.add(workerProcess);
 diff --git a/apps/desktop/src/window/DesktopWindow.test.ts b/apps/desktop/src/window/DesktopWindow.test.ts
 index 4f8949823e354618ba1eaf12694de9561cac99f7..e74d257e36fc4ab5e8f16885b58d1cb77544c830 100644
 --- a/apps/desktop/src/window/DesktopWindow.test.ts

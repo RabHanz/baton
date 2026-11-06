@@ -133,18 +133,22 @@ export function startSnapShotAccessibilityProcess(workerPath: string): Accessibi
   };
 }
 
-export function makeSnapShotAccessibilityProcessPool(workerPath: string): AccessibilityProcessPool {
+export function makeSnapShotAccessibilityProcessPool(
+  workerPath: string,
+  start: (workerPath: string) => AccessibilityProcess = startSnapShotAccessibilityProcess,
+): AccessibilityProcessPool {
   let standby: AccessibilityProcess | undefined;
   const active = new Set<AccessibilityProcess>();
   let closed = false;
   let warmTimer: ReturnType<typeof setTimeout> | undefined;
 
-  // Spawning blocks the main thread, so the standby starts once things settle, not mid-read or at startup.
+  // Spawning blocks the main thread: no standby until the first read asked for one, then once things settle.
+  let used = false;
   const warm = () => {
-    if (closed || standby?.alive || warmTimer !== undefined) return;
+    if (!used || closed || standby?.alive || warmTimer !== undefined) return;
     warmTimer = setTimeout(() => {
       warmTimer = undefined;
-      if (!closed && !standby?.alive) standby = startSnapShotAccessibilityProcess(workerPath);
+      if (!closed && !standby?.alive) standby = start(workerPath);
     }, HELPER_WARM_DELAY_MS);
     warmTimer.unref?.();
   };
@@ -160,9 +164,8 @@ export function makeSnapShotAccessibilityProcessPool(workerPath: string): Access
     cool,
     read: (request) => {
       if (closed) return completedRead();
-      const workerProcess = standby?.alive
-        ? standby
-        : startSnapShotAccessibilityProcess(workerPath);
+      used = true;
+      const workerProcess = standby?.alive ? standby : start(workerPath);
       standby = undefined;
       warm();
       active.add(workerProcess);
