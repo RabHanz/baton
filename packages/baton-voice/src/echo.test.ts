@@ -88,6 +88,7 @@ describe("silence after a wake word", () => {
   /** The rig, with the VAD and the recogniser under the test's control. */
   const scripted = (transcript = "Yeah.", stopStt?: SttProvider) => {
     let failing = false;
+    let holding: Array<() => void> | null = null;
     let fire = false;
     let speech = false;
     const heard: number[] = [];
@@ -109,6 +110,10 @@ describe("silence after a wake word", () => {
         name: "fake",
         transcribe: async (pcm) => {
           heard.push(pcm.length);
+          if (holding !== null) {
+            const held = holding;
+            await new Promise<void>((resolve) => held.push(resolve));
+          }
           if (failing) {
             failing = false;
             throw new Error("recogniser crashed");
@@ -129,6 +134,15 @@ describe("silence after a wake word", () => {
       for (let i = 0; i < frames(seconds); i += 1) core.pushAudio(new Int16Array(FRAME));
     };
     return {
+      /** Recognition waits until `release`. */
+      hold: () => {
+        holding = [];
+      },
+      release: () => {
+        const held = holding ?? [];
+        holding = null;
+        held.forEach((resolve) => resolve());
+      },
       failNext: () => {
         failing = true;
       },
@@ -318,6 +332,32 @@ describe("silence after a wake word", () => {
       expect(r.events.find((e) => e.type === "dropped")).toMatchObject({
         reason: "recognition failed",
       });
+    });
+
+    it("keeps his latest words for when a busy recogniser is free, and lets only an older wait go", async () => {
+      const r = scripted("Stop.");
+      r.core.noteSpoken("A sentence.");
+      r.hold();
+      r.core.setSpeaking(true);
+      r.push(0.5);
+      for (let i = 0; i < 3; i += 1) {
+        r.speech(true);
+        r.push(0.5);
+        r.speech(false);
+        r.push(0.6);
+      }
+      await settled();
+      // The first is being recognised, the third waits, and the second, overtaken, is let go.
+      expect(r.heard).toHaveLength(1);
+      expect(r.events.filter((e) => e.type === "dropped")).toEqual([
+        { type: "dropped", text: "", reason: "recogniser busy" },
+      ]);
+      r.release();
+      await settled();
+      r.release();
+      await settled();
+      expect(r.heard).toHaveLength(2);
+      expect(r.events.filter((e) => e.type === "stop_heard")).toHaveLength(2);
     });
 
     it("takes a clip that is only the command, even when her sentence has the word", async () => {

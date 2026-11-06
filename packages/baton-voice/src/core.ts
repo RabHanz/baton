@@ -646,7 +646,16 @@ export const createVoiceCore = (input: {
     const spoken = stopSpeech;
     clearStop();
     if (spoken < msToSamples(STOP_MIN_SPEECH_MS)) return;
-    if (stopBusy) return emit({ type: "dropped", text: "", reason: "recogniser busy" });
+    // Busy: the newest clip waits its turn, so his latest words are heard; only an older waiting one goes.
+    if (stopBusy) {
+      if (stopWaiting !== null) emit({ type: "dropped", text: "", reason: "recogniser busy" });
+      stopWaiting = parts;
+      return;
+    }
+    recogniseStop(parts);
+  };
+  let stopWaiting: Int16Array[] | null = null;
+  const recogniseStop = (parts: Int16Array[]) => {
     stopBusy = true;
     void (input.stopStt ?? input.stt)
       .transcribe(joined(parts))
@@ -680,6 +689,9 @@ export const createVoiceCore = (input: {
       .catch(() => emit({ type: "dropped", text: "", reason: "recognition failed" }))
       .finally(() => {
         stopBusy = false;
+        const next = stopWaiting;
+        stopWaiting = null;
+        if (next !== null && !disposed) recogniseStop(next);
       });
   };
   const watchForStop = (frame: Int16Array) => {
