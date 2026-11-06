@@ -500,7 +500,7 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
       }
     }
     open.webContents.send(THEME, theme());
-    showTaskbarIcon(NodePath.join(art, taskbarIconFile(look().palette, theme())));
+    showTaskbarIcon(NodePath.join(art, taskbarIconFile(look().palette, theme())), process.platform);
   };
   Electron.nativeTheme.on("updated", applyTheme);
   /** The classes on the page's root, and the window's material: live, no reload. */

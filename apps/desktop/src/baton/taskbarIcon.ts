@@ -21,8 +21,8 @@ const apply = (window: Electron.BrowserWindow): void => {
 };
 
 /** Windows only: the .ico files. Cheap to call on every refresh: it does nothing unless the file changed. */
-export const showTaskbarIcon = (file: string): void => {
-  if (process.platform !== "win32") return;
+export const showTaskbarIcon = (file: string, platform: string): void => {
+  if (platform !== "win32") return;
   if (!watching) {
     watching = true;
     Electron.app.on("browser-window-created", (_event, window) => apply(window));
