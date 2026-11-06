@@ -77,6 +77,8 @@ export type VoiceEvent =
   | { readonly type: "dismiss"; readonly at: number }
   | { readonly type: "set_direct_session"; readonly enabled: boolean; readonly at: number }
   | { readonly type: "set_target"; readonly workSessionId: string | null; readonly at: number }
+  /** The assistant's dictation_start/stop: the same mode as "Tessaya, dictate", without the words. */
+  | { readonly type: "set_dictation"; readonly on: boolean; readonly at: number }
   | {
       readonly type: "request_confirmation";
       readonly token: string;
@@ -252,6 +254,20 @@ export const reduceVoice = (
 
     case "set_target":
       return step({ ...s, conversationTarget: event.workSessionId }, carry);
+
+    case "set_dictation":
+      if (event.on === (s.mode === "dictation")) return step(s, carry);
+      if (!event.on)
+        return step(
+          { ...s, mode: "conversation", deadline: event.at + timings.conversationMs },
+          carry,
+        );
+      return step({ ...s, mode: "dictation", deadline: null, pending: null }, [
+        ...carry,
+        ...(s.pending === null
+          ? []
+          : [{ kind: "cancelled", token: s.pending.token, reason: "superseded" } as const]),
+      ]);
 
     case "request_confirmation": {
       const superseded: VoiceEffect[] =

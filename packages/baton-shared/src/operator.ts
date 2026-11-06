@@ -77,6 +77,8 @@ export interface JudgeContext {
   readonly weaveStanding?: boolean;
   /** The window that has the keyboard is a command line, or cannot be told apart from one. */
   readonly focusedShell?: boolean;
+  /** The click lands on a text box (from the accessibility tree): it only moves the cursor there. */
+  readonly pointerField?: boolean;
   /** The text is his own words or Baton's own earlier reply, found in the conversation. */
   readonly textIsHis?: boolean;
   /** His own Chrome (Claude in Chrome): what the gate knows about the page and the accounts. */
@@ -268,7 +270,7 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
   if (dangerousCommand(text))
     return { verdict: "ask", why: "This is a destructive command.", risky: true };
   if (BATON_POINTER.has(name)) {
-    return sensitiveAction(text)
+    return sensitiveAction(text) && context.pointerField !== true
       ? { verdict: "ask", why: "It deletes, sends, pays or publishes." }
       : { verdict: "allow" };
   }

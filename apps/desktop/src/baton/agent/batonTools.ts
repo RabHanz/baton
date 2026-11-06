@@ -222,6 +222,38 @@ export interface FocusState {
   readonly focus: string | null;
 }
 
+/** A tree line's kind and name, without its value, states or "(focused)". */
+const lineParts = (line: string): { readonly kind: string; readonly name: string } | null => {
+  const m = /^(?:\[\d+\] )?([^:]+): (.*)$/.exec(line);
+  if (m === null) return null;
+  const name = m[2]!.replace(/ \(focused\)$/, "").replace(/ (?:= "|\[).*$/, "");
+  return { kind: m[1]!.toLowerCase(), name };
+};
+
+const FIELD_KINDS = new Set(["edit", "document", "combo box"]);
+
+/**
+ * click_element on a text box of the last tree, by its line number: it only focuses. Never by name: a
+ * name can be a button's as well as a box's.
+ */
+export const clickTargetsField = (
+  controls: ReadonlyArray<string>,
+  call: Readonly<Record<string, unknown>>,
+): boolean => {
+  const id = call["id"];
+  if (typeof id !== "number") return false;
+  return controls.some((line) => {
+    const parts = lineParts(line);
+    return parts !== null && FIELD_KINDS.has(parts.kind) && line.startsWith(`[${id}] `);
+  });
+};
+
+/** Whether the focused control (a tree line) is the one named; null when there is no name to tell by. */
+export const focusIsOn = (focus: string | null | undefined, name: string): boolean | null => {
+  if (name.trim() === "" || focus === null || focus === undefined) return null;
+  return lineParts(focus)?.name === name;
+};
+
 /** A tree as the model reads it, saying so when the list was cut. */
 export const treeText = (tree: {
   readonly window?: string | undefined;

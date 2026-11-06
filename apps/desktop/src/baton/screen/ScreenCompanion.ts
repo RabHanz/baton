@@ -107,6 +107,8 @@ import type { HandsResult } from "@t3tools/baton-shared/remoteHands";
 import { sessionWithOwnMcp, startBatonMcp, type BatonMcp } from "../agent/batonMcp.ts";
 import {
   buildBatonTools,
+  clickTargetsField,
+  focusIsOn,
   treeText,
   typeByValue,
   type FocusState,
@@ -269,6 +271,8 @@ export interface AssistantFocus {
 export interface AssistantActions {
   /** Which window has the keyboard right now. */
   readonly focus?: () => Promise<AssistantFocus | null>;
+  /** The window he was in when he said the name, before anything of Tessaya's showed. */
+  readonly wakeFocus?: () => Promise<AssistantFocus | null>;
   /** The real element for a label near a point, from the accessibility tree. */
   readonly locate?: (
     label: string,
@@ -1692,6 +1696,8 @@ export const startScreenCompanion = (input: {
   // Cleared each turn: a tool that failed twice in one turn may work in the next.
   const toolFailures = new Map<string, number>();
   let chromeRelaunched = false;
+  /** The last ui_tree's lines: a click on a text box there only moves the cursor. */
+  let lastControls: ReadonlyArray<string> = [];
   const agentGate = createAgentGate({
     actWithoutAsking: () => settings.actWithoutAsking,
     chrome: {
@@ -1708,6 +1714,7 @@ export const startScreenCompanion = (input: {
       ),
     outside: () => outsideTurn,
     focusedWindow: gateWindow,
+    pointerField: (tool, call) => tool === "click_element" && clickTargetsField(lastControls, call),
     confirm: async (p) =>
       (await askHandsFree(
         {
@@ -2080,6 +2087,7 @@ export const startScreenCompanion = (input: {
         throw new Error("The window's controls can't be read here. Take a screenshot instead.");
       }
       lastTree = tree.tree;
+      lastControls = tree.controls;
       return treeText(tree);
     },
     focusWindow: async (title) => {
@@ -2240,6 +2248,19 @@ export const startScreenCompanion = (input: {
         throw new Error(
           `No control is named "${label}" in the window with the keyboard. Take a screenshot and click by position.`,
         );
+      }
+      if (found.invoked === "focus") {
+        // A text box, given the keyboard by UI Automation and checked. No blind click after: it could land
+        // on a dialog or move the caret in his draft, so the model decides what next.
+        void showAct({ kind: "click", name: found.name }, found);
+        const now = (await actions?.focusState?.().catch(() => null))?.focus;
+        const there = focusIsOn(now, found.name);
+        await followOwnClick();
+        return there === null
+          ? `Focused ${found.name}; where the keyboard is could not be checked.`
+          : there
+            ? `The keyboard is in ${found.name}.`
+            : `Focused ${found.name}, but the keyboard is in ${now}.`;
       }
       if (found.invoked !== undefined) {
         // A press by pattern has already happened: her cursor follows it rather than lead it.
@@ -2656,7 +2677,9 @@ export const startScreenCompanion = (input: {
     // A stop never waits on the sidecar, and needs no window.
     const busy = runningMode() !== null || answering > 0 || speech.busy();
     if (instantDecision(text, busy)?.route !== "control") {
-      focus = askFocus ?? (await focusSoon());
+      // His own spoken turn from a wake: the window he had then. Typed, phone and outside turns read it now.
+      const atWake = typed || outside ? null : await actions?.wakeFocus?.().catch(() => null);
+      focus = askFocus ?? atWake ?? (await focusSoon());
     }
     askFocus = null;
     // Stop and its kin never wait on a model; everything else goes to the one assistant.
