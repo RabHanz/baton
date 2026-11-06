@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import {
   buildBatonTools,
   clickTargetsField,
+  focusIsOn,
   treeText,
   type FocusState,
   type ToolHost,
@@ -79,6 +80,14 @@ describe("the assistant's tool table", () => {
     expect(typed).toEqual([["hello world", "Notepad"]]);
   });
 
+  it("tells the keyboard is in the named box only by its whole name, and not without a name", () => {
+    expect(focusIsOn('edit: Message t3code-a2 = "hi"', "Message t3code-a2")).toBe(true);
+    expect(focusIsOn("edit: Message t3code-a2 (focused)", "Message t3code-a2")).toBe(true);
+    expect(focusIsOn("button: Send a message", "Send")).toBe(false);
+    expect(focusIsOn("edit: Notes", "")).toBe(null);
+    expect(focusIsOn(null, "Notes")).toBe(null);
+  });
+
   it("knows a click on a text box from the last tree", () => {
     const tree = [
       "[1] button: Send",
@@ -88,6 +97,9 @@ describe("the assistant's tool table", () => {
     expect(clickTargetsField(tree, { id: 2 })).toBe(true);
     expect(clickTargetsField(tree, { label: "Message t3code-a2" })).toBe(true);
     expect(clickTargetsField(tree, { id: 1 })).toBe(false);
+    // Only the whole name: "Send" is not the box "Send a message".
+    expect(clickTargetsField(["[4] edit: Send a message"], { label: "Send" })).toBe(false);
+    expect(clickTargetsField(['[5] edit: Notes = "draft"'], { label: "notes" })).toBe(true);
     expect(clickTargetsField(tree, { label: "Send" })).toBe(false);
     expect(clickTargetsField(tree, { x: 1, y: 2 })).toBe(false);
   });

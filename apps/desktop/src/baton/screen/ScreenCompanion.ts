@@ -100,6 +100,7 @@ import { startBatonMcp, type BatonMcp } from "../agent/batonMcp.ts";
 import {
   buildBatonTools,
   clickTargetsField,
+  focusIsOn,
   treeText,
   typeByValue,
   type FocusState,
@@ -229,6 +230,8 @@ const LOOK_MEMORY_MS = 15 * 60_000;
 const OPERATOR_TURN_MS = 30 * 60_000;
 /** He said stop or the box must open: neither waits for a sidecar that is restarting. */
 const FOCUS_WAIT_MS = 400;
+/** Longer than Windows' double-click time (500 ms by default). */
+const DOUBLE_CLICK_GAP_MS = 600;
 const KEYBOARD_WAIT_MS = 1_500;
 const REMOTE_QUIET_MS = 4_000;
 const TEACH_MAX_STEPS = 30;
@@ -1654,7 +1657,7 @@ export const startScreenCompanion = (input: {
       ),
     outside: () => outsideTurn,
     focusedWindow: gateWindow,
-    pointerField: (call) => clickTargetsField(lastControls, call),
+    pointerField: (tool, call) => tool === "click_element" && clickTargetsField(lastControls, call),
     confirm: async (p) =>
       (await askHandsFree(
         {
@@ -2176,23 +2179,39 @@ export const startScreenCompanion = (input: {
     },
     clickElement: async (target, double) => {
       const label = typeof target === "number" ? `line ${target}` : target;
-      // A text box is clicked to put the cursor in it, which a press by its pattern never does.
-      const field = clickTargetsField(
-        lastControls,
-        typeof target === "number" ? { id: target } : { label: target },
-      );
       // Its own pattern first: his pointer and the focus stay where they are (CU-6).
       const found = await actions?.locate?.(
         label,
         Electron.screen.getCursorScreenPoint(),
         true,
-        !double && !field,
+        !double,
         typeof target === "number" ? { line: target, tree: lastTree ?? 0 } : undefined,
       );
       if (found === null || found === undefined) {
         throw new Error(
           `No control is named "${label}" in the window with the keyboard. Take a screenshot and click by position.`,
         );
+      }
+      if (found.invoked === "focus") {
+        // A text box, given the keyboard by UI Automation: checked, and clicked once if that did not take.
+        void showAct({ kind: "click", name: found.name }, found);
+        const inBox = async () =>
+          focusIsOn((await actions?.focusState?.().catch(() => null))?.focus, found.name);
+        let there = await inBox();
+        if (there === false) {
+          // Past the double-click time, so the click cannot select a word of what is in the box.
+          await sleep(DOUBLE_CLICK_GAP_MS);
+          const to = { x: found.x, y: found.y };
+          await mouse.need();
+          await pointerAction(to, () => driverFor().clickAt(to, "left", 1));
+          there = await inBox();
+        }
+        await followOwnClick();
+        return there === null
+          ? `Focused ${found.name}; where the keyboard is could not be checked.`
+          : there
+            ? `The keyboard is in ${found.name}.`
+            : `Focused and then clicked ${found.name}, but the keyboard is not in it.`;
       }
       if (found.invoked !== undefined) {
         // A press by pattern has already happened: her cursor follows it rather than lead it.
@@ -2213,16 +2232,6 @@ export const startScreenCompanion = (input: {
         why: double ? "double click" : "no pattern",
       });
       await pointerAction(to, () => driverFor().clickAt(to, "left", double ? 2 : 1));
-      if (field) {
-        const inBox = async () =>
-          (await actions?.focusState?.().catch(() => null))?.focus?.includes(found.name) === true;
-        // Once more if the first click did not take: a box that was still drawing misses it.
-        if (!(await inBox())) await pointerAction(to, () => driverFor().clickAt(to, "left", 1));
-        await followOwnClick();
-        return (await inBox())
-          ? `The cursor is in ${found.name}.`
-          : `Clicked ${found.name} twice, but the cursor is not in it.`;
-      }
       await followOwnClick();
       return `Clicked ${found.name} (pointer: it has no pattern to act on).`;
     },
@@ -2606,7 +2615,9 @@ export const startScreenCompanion = (input: {
     // A stop never waits on the sidecar, and needs no window.
     const busy = runningMode() !== null || answering > 0 || speech.busy();
     if (instantDecision(text, busy)?.route !== "control") {
-      focus = askFocus ?? (await actions?.wakeFocus?.().catch(() => null)) ?? (await focusSoon());
+      // His own spoken turn from a wake: the window he had then. Typed, phone and outside turns read it now.
+      const atWake = typed || outside ? null : await actions?.wakeFocus?.().catch(() => null);
+      focus = askFocus ?? atWake ?? (await focusSoon());
     }
     askFocus = null;
     // Stop and its kin never wait on a model; everything else goes to the one assistant.

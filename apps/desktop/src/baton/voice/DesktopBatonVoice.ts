@@ -1484,12 +1484,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       const raw = w.getNativeWindowHandle();
       return (raw.length >= 8 ? Number(raw.readBigUInt64LE()) : raw.readUInt32LE()) === app.window;
     });
-    const label =
+    const note =
       own === undefined
-        ? `${app.exe}: ${app.title}`
+        ? ""
         : isCompanionWindow(own)
-          ? `Tessaya's own window (${app.title}), not one of his`
-          : `his sessions window, where his session panes and their message boxes are: ${app.title}`;
+          ? " (Tessaya's own window, not one of his)"
+          : " (his sessions window: his session panes and their message boxes)";
+    const label = `${app.exe}: ${app.title}${note}`;
     return {
       label,
       ...(app.window === undefined ? {} : { window: app.window }),
@@ -1616,8 +1617,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         (await wakeTarget) ?? (await sidecar.foreground().catch(() => null)) ?? focusedApp;
       const { text } = await writeClean(request.text, app);
       const fitted = await fitToCaret(text, app);
-      if (app.window !== undefined) return void (await sidecar.pasteInto(fitted, app.window));
-      return sidecar.paste(fitted);
+      if (app.window === undefined) return sidecar.paste(fitted);
+      if (await sidecar.pasteInto(fitted, app.window).catch(() => false)) return;
+      // As the hold key does: the words stay on the pill and in the tray, and the router hears inserted: false.
+      keepText("Not pasted", fitted);
+      throw new Error("Not pasted");
     },
   };
   // Only where this desktop can paste is the focused field a dictation target.
@@ -2177,7 +2181,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       return dictating ? "Dictating. He says stop dictating to end it." : "Stopped dictating.";
     },
     focus: async () => asFocus(await sidecar?.foreground()),
-    wakeFocus: async () => asFocus((await wakeTarget) ?? undefined),
+    // Once per wake: a follow-up with no new wake reads where the keyboard is now.
+    wakeFocus: async () => {
+      const target = wakeTarget;
+      wakeTarget = null;
+      return asFocus((await target) ?? undefined);
+    },
     windowAt: async (point) => {
       if (sidecar === null) return null;
       const physical = Electron.screen.dipToScreenPoint(point);
@@ -2701,15 +2710,27 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     })().catch(() => undefined);
   }, 3_000).unref();
   let dictatingByVoice = false;
+  /** Esc ends voice dictation while it is on, as it ends a hold-key recording. */
+  let releaseDictatingEscape: (() => void) | null = null;
   const stateTurn = (next: VoiceState, target: string | null): TurnEvent | null => {
     const wasDictating = dictatingByVoice;
     dictatingByVoice = next === "dictation";
     if (dictatingByVoice) {
+      // Where he is as dictation starts; the turn that started it may have used the wake's.
+      if (!wasDictating && sidecar !== null) wakeTarget = sidecar.foreground().catch(() => null);
+      releaseDictatingEscape ??= input.holdEscape(
+        () => void core?.setDictation(false),
+        "recording",
+      );
       if (!wasDictating) void duck.start(settings.duckWhileDictating);
       if (!wasDictating && (settings["dictation.delivery"] ?? "oneshot") === "oneshot")
         collecting = true;
       pill.on({ type: "window_open" });
       return { type: "dictating", caption: STOP_DICTATING_HINT };
+    }
+    if (wasDictating && !dictatingByVoice) {
+      releaseDictatingEscape?.();
+      releaseDictatingEscape = null;
     }
     if (wasDictating) {
       void duck.stop();
@@ -2717,7 +2738,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       // The last chunk is still on its way through the core: flush once everything has landed.
       if (collecting) void core?.idle().then(flushDictation);
     }
-    if (next === "sleeping" || next === "direct_session") return { type: "window_closed" };
+    if (next === "sleeping" || next === "direct_session") {
+      if (!collecting) wakeTarget = null;
+      return { type: "window_closed" };
+    }
     if (next !== "command_window" && next !== "conversation") return null;
     pill.on({ type: "window_open" });
     return target === null ? null : { type: "target", name: `to ${target}` };

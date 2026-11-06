@@ -132,7 +132,7 @@ export const createAgentGate = (input: {
   }>;
   readonly confirm: (prompt: ConfirmPrompt) => Promise<boolean>;
   /** A click's target is a text box in the last tree read. */
-  readonly pointerField?: (input: Readonly<Record<string, unknown>>) => boolean;
+  readonly pointerField?: (tool: string, input: Readonly<Record<string, unknown>>) => boolean;
   readonly record: (entry: Readonly<Record<string, unknown>>) => void;
   /** He approved a plan for this turn (plan_show): its hands steps need no box each, except what stays risky. */
   readonly inPlan?: () => ReadonlyArray<string> | null;
@@ -206,7 +206,7 @@ export const createAgentGate = (input: {
       tainted:
         outside || (input.taint.on() && !(scope !== null && input.taint.typingAllowedFor(scope))),
       ...(focus === null ? {} : { focusedShell: focus.shell }),
-      ...(input.pointerField?.(call.input) === true ? { pointerField: true } : {}),
+      ...(input.pointerField?.(name, call.input) === true ? { pointerField: true } : {}),
       textIsHis:
         !outside &&
         (name === "type_text" ||

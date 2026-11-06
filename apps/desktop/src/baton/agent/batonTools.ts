@@ -220,20 +220,36 @@ export interface FocusState {
   readonly focus: string | null;
 }
 
-const FIELD_LINE = /^\[(\d+)\] (?:edit|document|combo box): (.*?)(?: \(focused\))?$/i;
+/** A tree line's kind and name, without its value, states or "(focused)". */
+const lineParts = (line: string): { readonly kind: string; readonly name: string } | null => {
+  const m = /^(?:\[\d+\] )?([^:]+): (.*)$/.exec(line);
+  if (m === null) return null;
+  const name = m[2]!.replace(/ \(focused\)$/, "").replace(/ (?:= "|\[).*$/, "");
+  return { kind: m[1]!.toLowerCase(), name };
+};
 
-/** A click_element or labelled click whose control is a text box in this tree's lines: it only focuses. */
+const FIELD_KINDS = new Set(["edit", "document", "combo box"]);
+
+/** click_element on a text box of the last tree, by its line number or its whole name: it only focuses. */
 export const clickTargetsField = (
   controls: ReadonlyArray<string>,
   call: Readonly<Record<string, unknown>>,
-): boolean =>
-  controls.some((line) => {
-    const field = FIELD_LINE.exec(line);
-    if (field === null) return false;
-    if (typeof call["id"] === "number") return Number(field[1]) === call["id"];
-    const label = typeof call["label"] === "string" ? call["label"].trim().toLowerCase() : "";
-    return label !== "" && field[2]!.toLowerCase().startsWith(label);
+): boolean => {
+  const id = call["id"];
+  const label = typeof call["label"] === "string" ? call["label"].trim().toLowerCase() : "";
+  return controls.some((line) => {
+    const parts = lineParts(line);
+    if (parts === null || !FIELD_KINDS.has(parts.kind)) return false;
+    if (typeof id === "number") return line.startsWith(`[${id}] `);
+    return label !== "" && parts.name.toLowerCase() === label;
   });
+};
+
+/** Whether the focused control (a tree line) is the one named; null when there is no name to tell by. */
+export const focusIsOn = (focus: string | null | undefined, name: string): boolean | null => {
+  if (name.trim() === "" || focus === null || focus === undefined) return null;
+  return lineParts(focus)?.name === name;
+};
 
 /** A tree as the model reads it, saying so when the list was cut. */
 export const treeText = (tree: {
