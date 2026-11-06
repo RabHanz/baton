@@ -20,6 +20,18 @@ An agent you connect to this computer's MCP URL, as described in [Outside agents
 - `weave_list` shows those messages, newest first: whether each arrived, and what the session wrote back.
 - Add `environmentId` to reach a session on a linked environment. A link paired below **Full access** cannot send.
 
+## Agents messaging each other
+
+An agent messages another agent's thread with `t3_thread_send`, here or on a linked environment (`environmentId`). To reach a session in a terminal pane that has no thread, use `weave_send`.
+
+- A message from another agent starts with a line saying where it came from: the thread on this computer that sent it (and how to answer it), the linked computer, or the outside agent by name. Messages you send yourself never get that line, and neither do messages between a thread and the tasks it started on the same computer.
+- A message from this computer, or from a computer linked with **Full access**, such as your own, goes through.
+- A computer linked below **Full access** may message only the threads it started. Anything else is refused, and the refusal names the link. To let it through, pair it again with **Full access**.
+- Nothing waits for your approval: a message goes through or is refused.
+- Each sender may send 30 `t3_thread_send` and `weave_send` messages a minute. A sender is one thread together with the tasks it started, one linked computer, or one outside agent. Messages between a thread and its own tasks do not count.
+- Every message and every refusal is written to the Record of the computer that received it.
+- An outside agent, such as Codex in your terminal, sends with `t3_thread_send` and reads replies with `t3_thread_read` or `t3_thread_wait`. It has no inbox of its own: to receive messages, run it inside T3 Code or in a Herdr pane.
+
 ## Good to know
 
 - Through Tessaya's tools an agent cannot approve, grant or widen anything, and it cannot act as you. Every request still waits for your yes; a `weave_send` message is signed with the agent's own name instead.
