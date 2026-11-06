@@ -17,13 +17,14 @@ import {
   modelOf,
   personaFor,
 } from "../../packages/baton-shared/src/osPack.ts";
+import { chooseTurnBrain } from "../../packages/baton-shared/src/turnTier.ts";
 import { assistantCases, type AssistantCase } from "./cases.ts";
 import { casePasses, firstTool, type Sample } from "./grade.ts";
 
 const { values } = NodeUtil.parseArgs({
   options: {
     out: { type: "string" },
-    // Unset: each case runs on the model and effort its persona's pack file names, as it ships.
+    // Unset: each case runs on the model and effort a live turn would pick, as it ships.
     model: { type: "string" },
     effort: { type: "string" },
     case: { type: "string", multiple: true },
@@ -48,10 +49,12 @@ const sample = async (c: AssistantCase): Promise<Sample> => {
     c.wake === undefined
       ? undefined
       : personaFor(DEFAULT_OS_PACK.personas, { wake: c.wake, text: c.said });
-  const brain = modelOf(DEFAULT_OS_PACK, face?.id ?? "executive");
-  return replayTurn({
+  // As a live turn picks it: the persona's model is the most this sentence gets.
+  const brain = chooseTurnBrain(c.said, modelOf(DEFAULT_OS_PACK, face?.id ?? "executive")).brain;
+  const model = values.model ?? brain.model;
+  const ran = await replayTurn({
     claudeBinary: values.claude!,
-    brain: { model: values.model ?? brain.model, effort: values.effort ?? brain.effort },
+    brain: { model, effort: values.effort ?? brain.effort },
     said: c.said,
     where: {
       window: c.window ?? "Notepad",
@@ -76,6 +79,7 @@ const sample = async (c: AssistantCase): Promise<Sample> => {
     // oxlint-disable-next-line t3code/no-global-process-runtime -- a plain script, not Effect code
     platform: process.platform,
   });
+  return { ...ran, model };
 };
 
 NodeFS.mkdirSync(out, { recursive: true });

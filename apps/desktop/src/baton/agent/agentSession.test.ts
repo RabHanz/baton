@@ -215,7 +215,7 @@ describe("the one assistant's session", () => {
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 
-  it("never replaces a live session when it warms, even one on another persona's model", async () => {
+  it("never replaces a live session when it warms another model beside it", async () => {
     const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-agent-"));
     const conversation = createConversationLog({ file: NodePath.join(dir, "c.ndjson") });
     const started: string[] = [];
@@ -245,12 +245,55 @@ describe("the one assistant's session", () => {
     });
     await inAsk;
     // A wake word warms the lead while Freya is still answering.
-    agent.warm({ model: "opus", effort: "medium" });
+    agent.warm([{ model: "opus", effort: "medium" }, sonnet]);
     release();
     expect(await freya).toBe("ok");
     await agent.say("and tomorrow", { window: null, session: null, brain: sonnet });
-    expect(started).toEqual(["sonnet"]);
+    expect(started).toEqual(["sonnet", "opus"]);
     expect(disposed).toBe(0);
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("keeps a warm session per model on one conversation, at most three", async () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-agent-"));
+    const conversation = createConversationLog({ file: NodePath.join(dir, "c.ndjson") });
+    const started: string[] = [];
+    const asked: Record<string, string[]> = {};
+    const disposed: string[] = [];
+    let tick = 0;
+    const agent = createAssistantAgent({
+      now: () => (tick += 1),
+      start: async (_prompt, brain) => {
+        const model = brain?.model ?? "none";
+        started.push(model);
+        asked[model] = [];
+        return {
+          ask: async (content) => {
+            asked[model]!.push(content.map((c) => (c.type === "text" ? c.text : "")).join(""));
+            return `${model} answer`;
+          },
+          alive: () => true,
+          dispose: () => void disposed.push(model),
+        };
+      },
+      conversation,
+      clockLine: () => "now",
+      beginTurn: () => undefined,
+    });
+    const haiku = { model: "haiku", effort: "low" };
+    const sonnet = { model: "sonnet", effort: "medium" };
+    const opus = { model: "opus", effort: "medium" };
+    agent.warm([haiku, sonnet, opus]);
+    await agent.say("what time is it", { window: null, session: null, brain: haiku });
+    await agent.say("plan my week", { window: null, session: null, brain: opus });
+    await agent.say("thanks", { window: null, session: null, brain: haiku });
+    expect(started).toEqual(["haiku", "sonnet", "opus"]);
+    // Each model hears what the others answered since it last spoke.
+    expect(asked["haiku"]![1]).toContain("plan my week");
+    expect(asked["haiku"]![1]).toContain("opus answer");
+    // A fourth model makes room by giving back the least recently used.
+    await agent.say("hello", { window: null, session: null, brain: { model: "x", effort: "low" } });
+    await vi.waitFor(() => expect(disposed).toEqual(["sonnet"]));
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 

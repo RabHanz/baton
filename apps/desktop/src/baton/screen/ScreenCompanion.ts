@@ -26,6 +26,7 @@ import { createTransformStore } from "../writing/transformStore.ts";
 import { changedFrom, writeJsonFile } from "../writing/jsonStore.ts";
 import { PACK_FOLDER, readPack } from "../pack/packRows.ts";
 import { DEFAULT_ROUTING, parseRouting } from "@t3tools/baton-shared/costRouting";
+import { chooseTurnBrain, tierBrains, type TurnTier } from "@t3tools/baton-shared/turnTier";
 import { HOTKEY_PREFIX, hotkeyFor } from "../writing/transformRows.ts";
 import { redactFocusLabel } from "@t3tools/baton-shared/awareness";
 import { detectSecret } from "@t3tools/baton-shared/memory";
@@ -224,6 +225,8 @@ const settingsFrom = (saved: Partial<ScreenSettings> & { speak?: boolean }): Scr
 });
 
 const LOOK_MEMORY_MS = 15 * 60_000;
+/** A yes or thanks this soon after a turn answers it, on the same model. */
+const TIER_CARRY_MS = 2 * 60_000;
 /** Real work takes a while, and a question to him sits inside the turn. */
 const OPERATOR_TURN_MS = 30 * 60_000;
 /** He said stop or the box must open: neither waits for a sidecar that is restarting. */
@@ -900,6 +903,8 @@ export const startScreenCompanion = (input: {
   let faceModel: Brain = modelOf(DEFAULT_OS_PACK, "executive");
   const leadBrain = () =>
     modelOf(readPack(NodePath.join(input.stateDir, PACK_FOLDER)), "executive");
+  /** The last chat turn's tier, so a bare "go ahead" right after it is carried out on the same model. */
+  let lastTier: { readonly tier: TurnTier; readonly at: number } | null = null;
   /** Whose name the last answer carried, so a change of persona says its name. */
   let lastFace = face.name;
   let leadName = face.name;
@@ -2449,6 +2454,12 @@ export const startScreenCompanion = (input: {
     outside = false,
   ) => {
     answering += 1;
+    const brain = chooseTurnBrain(
+      text,
+      faceModel,
+      lastTier !== null && started - lastTier.at < TIER_CARRY_MS ? lastTier.tier : null,
+    );
+    lastTier = { tier: brain.tier, at: started };
     const mine = turns.ask();
     const record = mine.record;
     let firstTokenAt: number | null = null;
@@ -2475,7 +2486,7 @@ export const startScreenCompanion = (input: {
         window: windowLabel,
         answers: { ...record().answers },
         allowed: face.tools ?? buildBatonTools(toolHost).map((t) => t.name),
-        brain: faceModel,
+        brain: brain.brain,
       };
       // Kept two days on this machine for the nightly pass, only while it is on; the trace names it by `started`.
       try {
@@ -2490,8 +2501,10 @@ export const startScreenCompanion = (input: {
         wake: woke,
         persona: face.name,
         voice: voiceNow(),
-        model: faceModel.model,
-        effort: faceModel.effort,
+        model: brain.brain.model,
+        effort: brain.brain.effort,
+        tier: brain.tier,
+        why: brain.why,
       };
       input.onNote?.("agent_turn_start", { said: text, ...who });
       const introduce = face.name !== lastFace;
@@ -2514,7 +2527,7 @@ export const startScreenCompanion = (input: {
               ? {}
               : { lead: leadName }),
           },
-          brain: faceModel,
+          brain: brain.brain,
         },
         (delta) => {
           firstTokenAt ??= Date.now();
@@ -2553,8 +2566,9 @@ export const startScreenCompanion = (input: {
         wake: woke,
         persona: face.name,
         voice: voiceNow(),
-        model: faceModel.model,
-        effort: faceModel.effort,
+        model: brain.brain.model,
+        effort: brain.brain.effort,
+        tier: brain.tier,
         said: text,
         error: error instanceof Error ? error.message : String(error),
         totalMs: Date.now() - started,
@@ -2804,7 +2818,7 @@ export const startScreenCompanion = (input: {
           );
         });
       }
-      agentOf().warm(leadBrain());
+      agentOf().warm(tierBrains(leadBrain()));
       if (run?.mode !== "look" && spareLook?.alive() !== true) {
         spareLook?.dispose();
         spareLook = visionFor("look");

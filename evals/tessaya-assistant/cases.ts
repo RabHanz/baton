@@ -29,6 +29,8 @@ export interface AssistantCase {
   readonly goalArgs?: ReadonlyArray<string>;
   /** A paired device's or agent's words, not his: the turn says a paired device said it. */
   readonly outside?: boolean;
+  /** The model a run without `--model` must put this turn on: simple turns fast, planning strong. */
+  readonly model?: string;
 }
 
 /** An agreed job that needs an engineer and a researcher, as jobs_list reads it out. */
@@ -93,24 +95,28 @@ const overnight = describeAuditTrail(
 export const assistantCases: ReadonlyArray<AssistantCase> = [
   {
     id: "needs-me",
+    model: "haiku",
     source: "INT-4: the prompt sent 'what needs me' to fleet_status and needs_me at once",
     said: "what needs me?",
     first: ["needs_me"],
   },
   {
     id: "needs-my-approval",
+    model: "haiku",
     source: "INT-3/INT-4: the prompt's approvals rule",
     said: "what needs my approval?",
     first: ["approvals_list"],
   },
   {
     id: "everyone-working-on",
+    model: "haiku",
     source: "Help page: fleet_status",
     said: "what is everyone working on?",
     first: ["fleet_status", "sessions_list"],
   },
   {
     id: "tell-build-session",
+    model: "sonnet",
     source: "INT-4: prompt said weave_send, the Help page teaches session_send",
     said: "tell the build session to rerun the tests",
     first: ["sessions_list", "sessions_find", "session_send"],
@@ -151,18 +157,21 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
   },
   {
     id: "rule-once-done",
+    model: "opus",
     source: "INT-8: 'when X finishes, have Codex review it' had no tool on the assistant's path",
     said: "once the shop session's done, get Codex to review it and tell me",
     first: ["rule_create"],
   },
   {
     id: "anything-stuck",
+    model: "haiku",
     source: "agentPrompt status rules",
     said: "is anything stuck?",
     first: ["watch_report"],
   },
   {
     id: "remind-me",
+    model: "sonnet",
     source: "agentPrompt commitments rule",
     said: "remind me to check the deploy in an hour",
     first: ["commit_add"],
@@ -175,18 +184,21 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
   },
   {
     id: "take-a-job",
+    model: "opus",
     source: "INT-5 device proof sentence",
     said: "take on a job: tidy the README in the shop project",
     first: ["job_start"],
   },
   {
     id: "split-by-specialist",
+    model: "opus",
     source: "INT-5 control: an explicit split by specialist reaches the job tools",
     said: "the shop README job is agreed: give the copy to marketing and the code to engineering",
     first: ["job_split", "jobs_list"],
   },
   {
     id: "split-it",
+    model: "opus",
     source: "Spine step 6: the lead splits an agreed job between his own roster, by name",
     said: "split it",
     answers: { jobs_list: agreedShopJob },
@@ -207,12 +219,14 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
   },
   {
     id: "teach-me",
+    model: "sonnet",
     source: "agentPrompt teach rule (teach_start was missing from the tool roll-call)",
     said: "teach me how to change the font size in Notepad",
     first: ["teach_start"],
   },
   {
     id: "unnamed-button",
+    model: "sonnet",
     source:
       "CU-12 (2026-11-04 review): a control the tree cannot name invites a UI Automation script",
     said: "the button in that app has no name, just press it however you can",
@@ -221,6 +235,7 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
   },
   {
     id: "work-notepad",
+    model: "opus",
     source:
       "CU-7/CU-12 (2026-11-04 review): an app is worked through the tree, never a shell script",
     said: "type hello world into notepad and save it",
@@ -250,6 +265,7 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
   },
   {
     id: "other-monitor",
+    model: "sonnet",
     source:
       "CU-13 (2026-11-04 review): screen_capture now shows his window; the other monitor needs all",
     said: "what's on my other monitor?",
@@ -257,6 +273,7 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
   },
   {
     id: "do-it-for-me",
+    model: "opus",
     source: "CU-9 (2026-11-04 review): do it for me is the hands loop behind one plan card",
     said: "turn on word wrap in notepad for me",
     first: ["ui_tree", "plan_show"],
@@ -270,6 +287,7 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
   },
   {
     id: "look-discourse",
+    model: "haiku",
     source: "INT-9: a spoken 'Look, …' is a discourse marker, not a screen request",
     said: "look, what needs me today?",
     first: ["needs_me"],
@@ -277,6 +295,7 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
   },
   {
     id: "dictation-apps",
+    model: "sonnet",
     source: "INT-10: 'dictation' at the start of a question is not a request to dictate",
     said: "dictation apps, which one's best?",
     first: ["none", "WebSearch"],
@@ -291,13 +310,22 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     not: ["session_send", "weave_send"],
   },
   {
+    id: "time-lead",
+    model: "haiku",
+    source: "Speed: 'what time is it?' waited two seconds for Opus's first word on the lead",
+    said: "what time is it?",
+    first: ["none"],
+  },
+  {
     id: "capital-of-peru",
+    model: "haiku",
     source: "control: a plain question needs no tool",
     said: "what's the capital of Peru?",
     first: ["none", "WebSearch"],
   },
   {
     id: "freya-says-her-name",
+    model: "haiku",
     source: "Roster v0: a wake word picks the persona, which answers under its own name",
     said: "what time is it?",
     wake: "Freya",
@@ -306,6 +334,7 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
   },
   {
     id: "alfred-says-his-name",
+    model: "haiku",
     source: "Roster v0 device proof sentence",
     said: "what time is it?",
     wake: "Alfred",
@@ -314,6 +343,7 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
   },
   {
     id: "persona-keeps-its-tools",
+    model: "haiku",
     source: "Roster v0 control: a persona changes the name, not the tool",
     said: "what needs me?",
     wake: "Freya",
@@ -321,6 +351,7 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
   },
   {
     id: "what-happened-overnight",
+    model: "haiku",
     source: "One spine step 2: 'what happened overnight?' must name a session that crashed",
     said: "what happened overnight?",
     first: ["what_happened"],
