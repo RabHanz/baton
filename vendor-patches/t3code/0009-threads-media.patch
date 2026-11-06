@@ -1195,10 +1195,10 @@ index f79cd14c91981455a5eb4699beebdead0c129aff..3a8511bd7e998e427a88a21f34d6083f
 +  });
 +});
 diff --git a/packages/client-runtime/src/work-log/presentation.ts b/packages/client-runtime/src/work-log/presentation.ts
-index 9fa515e7939479358af4c11c00ee70bc4a2a0d2c..70f83d3d605be8fa7665e3621f525784401afd95 100644
+index 9fa515e7939479358af4c11c00ee70bc4a2a0d2c..0dea9c033d54a9c30f6f14dfe2bfa565d5a9851e 100644
 --- a/packages/client-runtime/src/work-log/presentation.ts
 +++ b/packages/client-runtime/src/work-log/presentation.ts
-@@ -653,8 +653,11 @@ export function toolGroupSummaryKind(
+@@ -653,8 +653,9 @@ export function toolGroupSummaryKind(
    return fallbackKinds.size === 1 ? fallbackKinds.values().next().value! : "mixed";
  }
  
@@ -1206,13 +1206,11 @@ index 9fa515e7939479358af4c11c00ee70bc4a2a0d2c..70f83d3d605be8fa7665e3621f525784
 -  const heading = /^\s*\*\*([^*\r\n]+)\*\*[ \t]*\r?(?:\n|$)/.exec(markdown)?.[1];
 +/** `full` keeps the whole thought (the live one stays open); otherwise only its title or first sentence. */
 +export function liveThoughtLine(markdown: string, full = false): string {
-+  const heading = full
-+    ? undefined
-+    : /^\s*\*\*([^*\r\n]+)\*\*[ \t]*\r?(?:\n|$)/.exec(markdown)?.[1];
++  const heading = full ? undefined : /^\s*\*\*([^*\r\n]+)\*\*[ \t]*\r?(?:\n|$)/.exec(markdown)?.[1];
    const text = (heading ?? markdown)
      .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
      .replace(/^[ \t]*(?:#{1,6}|[-*+]|\d+\.)[ \t]+/gm, "")
-@@ -662,7 +665,7 @@ export function liveThoughtLine(markdown: string): string {
+@@ -662,7 +663,7 @@ export function liveThoughtLine(markdown: string): string {
      .replace(/(^|[^\w*])[*_]([^*_\n]+)[*_](?![\w*])/g, "$1$2")
      .replace(/\s+/g, " ")
      .trim();

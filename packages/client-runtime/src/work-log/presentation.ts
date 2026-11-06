@@ -655,9 +655,7 @@ export function toolGroupSummaryKind(
 
 /** `full` keeps the whole thought (the live one stays open); otherwise only its title or first sentence. */
 export function liveThoughtLine(markdown: string, full = false): string {
-  const heading = full
-    ? undefined
-    : /^\s*\*\*([^*\r\n]+)\*\*[ \t]*\r?(?:\n|$)/.exec(markdown)?.[1];
+  const heading = full ? undefined : /^\s*\*\*([^*\r\n]+)\*\*[ \t]*\r?(?:\n|$)/.exec(markdown)?.[1];
   const text = (heading ?? markdown)
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/^[ \t]*(?:#{1,6}|[-*+]|\d+\.)[ \t]+/gm, "")

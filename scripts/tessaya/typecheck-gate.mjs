@@ -19,7 +19,9 @@ const baselineFile = NodePath.join(root, "scripts/tessaya/typecheck-baseline.txt
 
 const found = new Set();
 for (const dir of dirs) {
-  const run = NodeChildProcess.spawnSync("npx", ["tsc", "--noEmit"], {
+  // The same checker as each package's `typecheck`; `tsc` is no longer a workspace binary.
+  const tsgo = NodePath.join(root, "node_modules/.bin/effect-tsgo");
+  const run = NodeChildProcess.spawnSync(tsgo, ["tsrs", "--noEmit", "--pretty", "false"], {
     cwd: NodePath.join(root, dir),
     encoding: "utf8",
     maxBuffer: 1 << 28,
@@ -27,7 +29,7 @@ for (const dir of dirs) {
   const out = `${run.stdout}${run.stderr}`;
   const lines = out.split("\n").filter((l) => /\berror TS\d+/.test(l));
   if (run.status !== 0 && lines.length === 0) {
-    console.error(`${dir}: tsc failed without a diagnostic\n${out.slice(-2000)}`);
+    console.error(`${dir}: the typecheck failed without a diagnostic\n${out.slice(-2000)}`);
     process.exit(1);
   }
   for (const l of lines) found.add(`${dir}/${l.replace(/\(\d+,\d+\)/, "")}`);
