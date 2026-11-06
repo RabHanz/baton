@@ -2886,14 +2886,18 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const warmTicker = setInterval(showWarm, 1_000);
     const warming = core;
     const warmSidecar = sidecar;
+    let modelRead = false;
     const warm = startWarmUp({
       pushFrame: (frame) => warming.pushAudio(frame),
       // Read the model first, on its own call that waits as long as the sidecar says it is loading, so the first real
       // phrase never sits behind a load that a fixed timer gave up on.
       transcribe: async (pcm) => {
-        const loadMs = await warmSidecar.preload();
-        step("speech-model-ready", { loadMs, sinceWarmStartMs: Date.now() - warmStarted });
-        speechLoadMs = 0;
+        if (!modelRead) {
+          modelRead = true;
+          const loadMs = await warmSidecar.preload();
+          step("speech-model-ready", { loadMs, sinceWarmStartMs: Date.now() - warmStarted });
+          speechLoadMs = 0;
+        }
         return makeSidecarStt(warmSidecar).transcribe(pcm);
       },
       settled: () => warming.idle(),

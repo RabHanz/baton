@@ -27,11 +27,9 @@ describe("warming the voice models before the microphone opens", () => {
     expect(order).toContain("ready");
   });
 
-  it("then runs longer clips, one at a time, so the first real sentence is not the first long one", async () => {
+  it("then runs longer clips, one at a time, before the microphone opens", async () => {
     const lengths: number[] = [];
     const longer: number[] = [];
-    let last!: () => void;
-    const finished = new Promise<void>((resolve) => (last = resolve));
     const ready = await warmUpVoice({
       pushFrame: () => {},
       transcribe: async (pcm) => {
@@ -39,15 +37,39 @@ describe("warming the voice models before the microphone opens", () => {
         return "";
       },
       settled: async () => {},
-      onLonger: (seconds) => {
-        longer.push(seconds);
-        if (longer.length === 2) last();
-      },
+      onLonger: (seconds) => void longer.push(seconds),
     });
     expect(ready).toBe(true);
-    await finished;
     expect(lengths).toEqual([1, 4, 8]);
     expect(longer).toEqual([4, 8]);
+  });
+
+  it("starts no longer clip once the limit has passed, so none queues in front of his first sentence", async () => {
+    let giveUp!: () => void;
+    const limit = new Promise<void>((resolve) => (giveUp = resolve));
+    const lengths: number[] = [];
+    let finishFour!: () => void;
+    let fourStarted!: () => void;
+    const started = new Promise<void>((resolve) => (fourStarted = resolve));
+    const warm = startWarmUp({
+      pushFrame: () => {},
+      transcribe: async (pcm) => {
+        lengths.push(pcm.length / 16_000);
+        if (pcm.length === 4 * 16_000) {
+          fourStarted();
+          await new Promise<void>((resolve) => (finishFour = resolve));
+        }
+        return "";
+      },
+      settled: async () => {},
+      limit: () => limit,
+    });
+    await started;
+    giveUp();
+    expect(await warm.result).toBe(false);
+    finishFour();
+    await warm.complete;
+    expect(lengths).toEqual([1, 4]);
   });
 
   it("reports each stage as it finishes, so a slow start can say how far it is", async () => {
