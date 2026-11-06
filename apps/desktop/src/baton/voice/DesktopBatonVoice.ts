@@ -768,7 +768,7 @@ export interface VoiceCoreHooks {
   /** How long the command window and the conversation stay open. */
   readonly listening: () => { readonly commandWindowMs: number; readonly conversationMs: number };
   /** The second check before a wake from sleep: was the wake word really said. */
-  readonly verifyWake: (pcm: Int16Array, word: string | null) => Promise<boolean>;
+  readonly verifyWake: (pcm: Int16Array, word: string | null, score: number) => Promise<boolean>;
   /** The model is sure of this word past any doubt (see `wakeTrusted`). */
   readonly trustWake: (word: string, score: number) => boolean;
   /** Hears him over Baton's own voice through the speakers (docs/baton/BARGE_IN.md). */
@@ -2959,13 +2959,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       echo: settings.voiceBargeIn ? echoGuard : undefined,
       speakerMode: () => (settings.headphones ? "headphones" : "speakers"),
       trustWake: (word, score) => wakeTrusted(settings.wakeWords, word, score),
-      verifyWake: async (pcm, word) => {
+      verifyWake: async (pcm, word, score) => {
         // Unsure is a wake: the check only ever removes wakes it is sure were not the name.
         if (!settings.verifyWake || word === null || sidecar === null) return true;
         try {
           const heard = await makeSidecarStt(sidecar).transcribe(pcm);
           const ok = wakeWordHeard(heard, word);
-          if (!ok) input.onNote?.("wake_check", { word, heard });
+          if (!ok) input.onNote?.("wake_check", { word, heard, score });
           return ok;
         } catch {
           return true;

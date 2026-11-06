@@ -213,7 +213,7 @@ export const createVoiceCore = (input: {
    * The second check before a wake from sleep: the audio just before the model fired. False drops the
    * wake as if it never happened. Absent, the model alone decides.
    */
-  readonly verifyWake?: (pcm: Int16Array, word: string | null) => Promise<boolean>;
+  readonly verifyWake?: (pcm: Int16Array, word: string | null, score: number) => Promise<boolean>;
   /** The model is sure enough of this word that her saying the name too cannot make it her echo. */
   readonly trustWake?: (word: string, score: number) => boolean;
   /** Hears him over Baton's own voice through the speakers (docs/baton/BARGE_IN.md). Absent: only a wake or stop phrase gets through. */
@@ -808,22 +808,25 @@ export const createVoiceCore = (input: {
     const score = input.wake.process(frame);
     const wakeWord = score === null ? null : (input.wake.lastWord?.() ?? null);
     const firedAt = samples - Math.min(samples, input.wake.firedAgo?.() ?? 0);
+    // The model at its ceiling is his: unless she was speaking then, where her own clean "Tessaya" scores the
+    // same, and only his voice heard over hers around then makes it his.
+    const sure =
+      score !== null &&
+      wakeWord !== null &&
+      input.trustWake?.(wakeWord, score) === true &&
+      (!heardItselfAt(firedAt) || lastNearEndAt >= firedAt - msToSamples(WAKE_LOOKBACK_MS));
     if (
       score !== null &&
       heardItselfAt(firedAt) &&
       wakeWord !== null &&
       echoesSpeech(wakeWord, spokenLately) &&
-      // A sure score alone could be her own clean "Tessaya": only with his voice heard over hers around then.
-      !(
-        lastNearEndAt >= firedAt - msToSamples(WAKE_LOOKBACK_MS) &&
-        input.trustWake?.(wakeWord, score) === true
-      )
+      !sure
     ) {
       // The reply itself says the name: it is its own voice, never a barge-in.
       emit({ type: "dropped", text: wakeWord, reason: "own voice", score });
     } else if (score !== null) {
       // Over its own voice too: a barge-in needs the recogniser to hear the name, not just the model.
-      if (input.verifyWake !== undefined && machine.mode !== "dictation") {
+      if (input.verifyWake !== undefined && machine.mode !== "dictation" && !sure) {
         // The model alone is not enough, asleep or in a follow-up window (where a false fire would play the
         // cue, flash the pill and extend the window): recognise what was just said first.
         const checkFrom = samples;
@@ -838,6 +841,7 @@ export const createVoiceCore = (input: {
                   .map((r) => r.frame),
               ),
               wakeWord,
+              score,
             )
             .catch(() => true),
           made: false,

@@ -26,7 +26,8 @@ describe("the second check before a wake", () => {
   });
 
   it("hears Tessaya in the words a British voice comes back as, and not in near misses", () => {
-    const heard = ["To say yeah.", "Tessa yeah.", "tess a ya", "the saya"];
+    // "To say you." and "Тесая." are his real wakes from the 0.1.61 logs.
+    const heard = ["To say yeah.", "Tessa yeah.", "tess a ya", "the saya", "To say you.", "Тесая."];
     for (const text of heard) expect([text, wakeWordHeard(text, "Tessaya")]).toEqual([text, true]);
     // The wake lane's near misses (tessaya-ops/wake/gb_test.py).
     const near = [
@@ -48,6 +49,12 @@ describe("the second check before a wake", () => {
       "I just wanted to say you were right",
       "Tessa, you there?",
       "To say you can see that.",
+      "So to say you",
+      "Yeah.",
+      // The clip ends where the model fired, so near misses arrive cut short.
+      "Tessa, you.",
+      "To see you.",
+      "Do say you.",
       "I desire nothing",
       "the desired outcome",
       "Desiree called",
@@ -56,6 +63,8 @@ describe("the second check before a wake", () => {
     for (const [text, word] of [
       ["Set them free, you know", "Freya"],
       ["Set them free, you", "Freya"],
+      ["Free you.", "Freya"],
+      ["Fray you.", "Freya"],
       ["all fret", "Alfred"],
       ["I'll fret", "Alfred"],
     ] as const)

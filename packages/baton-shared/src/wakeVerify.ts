@@ -15,7 +15,74 @@ const ALIASES: Readonly<Record<string, ReadonlyArray<string>>> = {
   onyx: ["onix", "onyks", "onicks", "onyx"],
 };
 
-const letters = (text: string): string => text.toLowerCase().replace(/[^a-z ]/g, "");
+/** Recognition sometimes writes the name in Cyrillic or Greek ("Тесая"): read it in Latin letters (after NFD, so й is и). */
+const LATIN: Readonly<Record<string, string>> = {
+  а: "a",
+  б: "b",
+  в: "v",
+  г: "g",
+  д: "d",
+  е: "e",
+
+  ж: "zh",
+  з: "z",
+  и: "i",
+
+  к: "k",
+  л: "l",
+  м: "m",
+  н: "n",
+  о: "o",
+  п: "p",
+  р: "r",
+  с: "s",
+  т: "t",
+  у: "u",
+  ф: "f",
+  х: "h",
+  ц: "ts",
+  ч: "ch",
+  ш: "sh",
+  щ: "sh",
+  ы: "y",
+  э: "e",
+  ю: "yu",
+  я: "ya",
+  і: "i",
+  ї: "yi",
+  є: "ye",
+  α: "a",
+  β: "v",
+  γ: "g",
+  δ: "d",
+  ε: "e",
+  ζ: "z",
+  η: "i",
+  θ: "th",
+  ι: "i",
+  κ: "k",
+  λ: "l",
+  μ: "m",
+  ν: "n",
+  ξ: "x",
+  ο: "o",
+  π: "p",
+  ρ: "r",
+  σ: "s",
+  ς: "s",
+  τ: "t",
+  υ: "y",
+  φ: "f",
+  χ: "h",
+  ψ: "ps",
+  ω: "o",
+};
+
+const letters = (text: string): string =>
+  [...text.toLowerCase().normalize("NFD")]
+    .map((c) => LATIN[c] ?? c)
+    .join("")
+    .replace(/[^a-z ]/g, "");
 
 const editDistance = (a: string, b: string): number => {
   const row = Array.from({ length: b.length + 1 }, (_, i) => i);
@@ -60,19 +127,30 @@ const keyOf = (words: ReadonlyArray<string>): string =>
 
 /** A name split into words is trusted by sound only when it ends on its "-ya" ("to say yeah", "the saya"), never "you". */
 const YA_ENDING = /y(?:a|ah|eah)$/;
+/** "To say you." as the whole clip is how recognition writes his "Tessaya"; "Do say you", "To see you" are not. */
+const SAY_YOU = /^t\w* say you$/;
 
 /**
  * The name said in one, two or three recognised words: "Tessaia", "al fred", "to say yeah". Not `close`:
  * only the name, its listed spellings, or a split ending on "-ya", for words that are not a wake clip.
  */
-const matches = (words: ReadonlyArray<string>, target: string, close = true): boolean => {
+const matches = (
+  words: ReadonlyArray<string>,
+  target: string,
+  close = true,
+  /** The whole clip: then its "-ya" may be written "you" ("To say you."), never inside a sentence. */
+  whole = false,
+): boolean => {
   if (
     keyOf(words) === keyOf([target]) &&
-    (words.length === 1 ? close : YA_ENDING.test(words.at(-1)!))
+    (words.length === 1
+      ? close
+      : YA_ENDING.test(words.at(-1)!) || (whole && SAY_YOU.test(words.join(" "))))
   )
     return true;
   // Spelling closeness only within two words: across three, "to say a" is a letter away from "tesaya".
-  if (words.length > 2) return false;
+  // Never a split ending on "you": "tessa you" is a letter or two from "tessaya" and is Tessa.
+  if (words.length > 2 || (words.length === 2 && words[1] === "you")) return false;
   const piece = words.join("");
   return [target, ...(ALIASES[target] ?? [])].some((c) => {
     const flat = letters(c).replace(/ /g, "");
@@ -95,7 +173,7 @@ export const wakeWordHeard = (transcript: string, word: string): boolean => {
     (n) =>
       n <= spoken.length &&
       (n < MAX_WORDS || n === spoken.length) &&
-      matches(spoken.slice(-n), target),
+      matches(spoken.slice(-n), target, true, n === spoken.length),
   );
 };
 
