@@ -1,6 +1,6 @@
 // @effect-diagnostics globalConsole:off
 // Measures the barge-in detector in the synthetic room (docs/baton/BARGE_IN.md): false barge-ins on Tessaya's own voice per 10 minutes,
-// and recall of interruptions by how loud he is over the echo. node scripts/baton/bargein-eval.ts [seconds-per-room]
+// and recall of interruptions by how loud he is over the echo. node scripts/tessaya/bargein-eval.ts [seconds-per-room]
 import { evaluateGuard } from "../../packages/baton-voice/src/echoSim.ts";
 
 const result = evaluateGuard({ seconds: Number(process.argv[2] ?? 120), levelsDb: [-6, 0, 6, 12] });

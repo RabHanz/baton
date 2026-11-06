@@ -44,7 +44,7 @@ import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import { startScreenCompanion, type ScreenCompanion } from "./screen/ScreenCompanion.ts";
 import { startDesktopBatonVoice, type DesktopBatonVoice } from "./voice/DesktopBatonVoice.ts";
 import { createBridgeCatalogService } from "./sessions/catalogBridge.ts";
-import { createCatalog, mockCatalogService } from "./sessions/catalogRows.ts";
+import { createCatalog } from "./sessions/catalogRows.ts";
 import { createSessionsBridge } from "./sessions/sessionsBridge.ts";
 import { createEscapeKey } from "./screen/escapeKey.ts";
 import { createVoicePlayer } from "./voice/voicePlayer.ts";
@@ -493,21 +493,18 @@ export const startBatonDesktop = Effect.gen(function* () {
     Electron.app.on("second-instance", () => {
       setTimeout(() => voice?.openHome(), SECOND_LAUNCH_RAISE_MS).unref();
     });
-    // Every session on every connected environment, through the T3 sidebar; BATON_MOCK_CATALOG shows sample rows instead.
+    // Every session on every connected environment, through the T3 sidebar.
     const catalog = (catalogStore = createCatalog({
-      service:
-        (hostEnvironment["BATON_MOCK_CATALOG"] ?? "") === ""
-          ? createBridgeCatalogService({
-              bridge: sessions,
-              openMainWindow,
-              note: lifecycle.note,
-              saveCleanupList: (json) =>
-                NodeFS.writeFileSync(
-                  NodePath.join(environment.stateDir, `baton-cleanup-${Date.now()}.json`),
-                  json,
-                ),
-            })
-          : mockCatalogService(),
+      service: createBridgeCatalogService({
+        bridge: sessions,
+        openMainWindow,
+        note: lifecycle.note,
+        saveCleanupList: (json) =>
+          NodeFS.writeFileSync(
+            NodePath.join(environment.stateDir, `baton-cleanup-${Date.now()}.json`),
+            json,
+          ),
+      }),
       onChange: () => voice?.refresh(),
     }));
     // Asking the sidebar opens T3's window: a background refresh only runs while it is already up, or a closed T3 comes back.

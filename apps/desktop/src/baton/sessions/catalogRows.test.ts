@@ -7,10 +7,10 @@ import {
   createCatalog,
   INITIAL_VIEW,
   matches,
-  sampleCatalogRows,
   visibleRows,
   type CatalogService,
 } from "./catalogRows.ts";
+import { sampleCatalogRows } from "./sampleCatalog.ts";
 
 const NOW = Date.UTC(2026, 10, 2, 12);
 const rows = sampleCatalogRows(NOW);

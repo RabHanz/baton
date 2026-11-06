@@ -12,7 +12,8 @@ import * as NodePath from "node:path";
 import * as Electron from "electron";
 
 import { createBatonHome } from "../../home/batonHome.ts";
-import { createCatalog, mockCatalogService } from "../../sessions/catalogRows.ts";
+import { createCatalog } from "../../sessions/catalogRows.ts";
+import { mockCatalogService } from "../../sessions/sampleCatalog.ts";
 import { createInputDriver } from "../inputDriver.ts";
 
 const out = process.env["PROOF_OUT"] ?? NodePath.join(process.cwd(), "sessions-proof-out");
