@@ -69,7 +69,8 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_WS_METHODS.fleetGet]: AuthOrchestrationReadScope,
   [BATON_WATCH_WS_METHODS.watchGet]: AuthOrchestrationReadScope,
   [BATON_RECORD_WS_METHODS.list]: AuthOrchestrationReadScope,
-  [BATON_RECORD_WS_METHODS.append]: AuthOrchestrationOperateScope,
+  // Rows name their actor, so only the desktop app's own session (hands-host, which no grant can give) writes them.
+  [BATON_RECORD_WS_METHODS.append]: [AuthOrchestrationOperateScope, AuthBatonHandsHostScope],
   [BATON_JOB_WS_METHODS.jobList]: AuthOrchestrationReadScope,
   [BATON_JOB_WS_METHODS.jobStart]: AuthOrchestrationOperateScope,
   [BATON_JOB_WS_METHODS.jobAgree]: AuthOrchestrationOperateScope,
