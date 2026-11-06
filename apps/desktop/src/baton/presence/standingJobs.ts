@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off
+// @effect-diagnostics nodeBuiltinImport:off globalTimers:off
 /**
  * Built-in standing jobs: a trigger, an owning persona, one tool judged by One Trust, and a count. They
  * read jobs and the watch from this machine's server, so T3's window need not be up. Never capped: each
@@ -128,16 +128,23 @@ const DAY_MS = 86_400_000;
 const isDue = (state: StandingState, id: BuiltInId, key: string): boolean =>
   state.on[id] === true && !state.runs.some((r) => r.id === id && r.key === key);
 
+/**
+ * Each op gets the run's signal: aborted when the run timed out. An op checks it before every side effect (saying,
+ * showing, starting or writing anything), so a run that was ended does nothing late.
+ */
 export interface StandingOps {
   /** Starts a read-only job for a trigger and lets it begin; returns what happened. */
-  readonly look: (offer: Trigger) => Promise<string>;
-  readonly brief: () => Promise<string>;
+  readonly look: (offer: Trigger, signal: AbortSignal) => Promise<string>;
+  readonly brief: (signal: AbortSignal) => Promise<string>;
   readonly say: (text: string) => void;
   /** Writes into the job's record only; the worker is not woken. */
-  readonly note: (jobId: string, text: string) => Promise<void>;
+  readonly note: (jobId: string, text: string, signal: AbortSignal) => Promise<void>;
   /** The nightly learning pass; returns what it did, replays counted. */
-  readonly learn: () => Promise<string>;
+  readonly learn: (signal: AbortSignal) => Promise<string>;
 }
+
+/** Quiet unless it changed holds only this long after the last run on the same subject; then it reports again. */
+export const QUIET_WINDOW_MS = 6 * 3_600_000;
 
 export interface StandingInput {
   readonly state: StandingState;
@@ -172,7 +179,7 @@ const timeHasCome = (
   firstHourToday: number,
 ): boolean => hour >= at && (firstHourToday <= at || missedRunOf(state, id) === "once");
 
-class TimedOut extends Error {}
+const TIMED_OUT: unique symbol = Symbol("timed out");
 
 /** The latest run of each job that has run, newest first: what the Now page shows. */
 export const latestRuns = (state: StandingState): ReadonlyArray<StandingRun> => {
@@ -201,13 +208,18 @@ export const runStandingJobs = async (
   const attempt = async (
     id: BuiltInId,
     key: string,
-    work: () => Promise<string>,
+    work: (signal: AbortSignal) => Promise<string>,
     subject?: string,
+    /** The same subject is news again anyway (a build that was fixed and failed anew). */
+    changedSince?: () => boolean,
   ) => {
     if (!isDue(state, id, key)) return;
     const refused = input.refusal(BUILT_INS.find((j) => j.id === id)!);
     const about = subject === undefined ? {} : { subject };
-    const last = state.runs.findLast((r) => r.id === id);
+    const last =
+      subject === undefined
+        ? undefined
+        : state.runs.findLast((r) => r.id === id && r.subject === subject);
     let run: StandingRun;
     if (refused !== null) {
       run = {
@@ -221,9 +233,10 @@ export const runStandingJobs = async (
       };
     } else if (
       state.quiet?.[id] === true &&
-      subject !== undefined &&
-      last?.subject === subject &&
-      statusOf(last) === "ok"
+      last !== undefined &&
+      statusOf(last) === "ok" &&
+      input.now - last.at < QUIET_WINDOW_MS &&
+      changedSince?.() !== true
     ) {
       // Nothing new to report: the run is kept, quietly, and does nothing.
       run = {
@@ -237,27 +250,37 @@ export const runStandingJobs = async (
       };
     } else {
       let timer: ReturnType<typeof setTimeout> | undefined;
+      const stop = new AbortController();
       try {
         const text = await Promise.race([
-          work(),
-          new Promise<never>((_, reject) => {
-            timer = setTimeout(() => reject(new TimedOut()), limit);
+          work(stop.signal),
+          new Promise<typeof TIMED_OUT>((resolve) => {
+            timer = setTimeout(() => {
+              stop.abort();
+              resolve(TIMED_OUT);
+            }, limit);
           }),
         ]);
-        run = { id, key, at: input.now, outcome: "ran", status: "ok", text, ...about };
+        run =
+          text === TIMED_OUT
+            ? {
+                id,
+                key,
+                at: input.now,
+                outcome: "failed",
+                status: "timeout",
+                text: `Failed: Timed out after ${Math.round(limit / 60_000)} min.`,
+                ...about,
+              }
+            : { id, key, at: input.now, outcome: "ran", status: "ok", text, ...about };
       } catch (error) {
-        const timedOut = error instanceof TimedOut;
-        const why = timedOut
-          ? `Timed out after ${Math.round(limit / 60_000)} min.`
-          : error instanceof Error
-            ? error.message
-            : String(error);
+        const why = error instanceof Error ? error.message : String(error);
         run = {
           id,
           key,
           at: input.now,
           outcome: "failed",
-          status: timedOut ? "timeout" : "error",
+          status: "error",
           text: `Failed: ${why}`.slice(0, 200),
           ...about,
         };
@@ -277,27 +300,41 @@ export const runStandingJobs = async (
   };
 
   for (const t of triggersFromCi(input.ci, input.now)) {
-    await attempt("ci_look", t.id, async () => `${t.title}: ${await ops.look(t)}`, t.title);
+    const run = input.ci.find((r) => `ci:${r.repo}:${r.runId}` === t.id);
+    const branch = run?.branch ?? "";
+    await attempt(
+      "ci_look",
+      t.id,
+      async (signal) => `${t.title}: ${await ops.look(t, signal)}`,
+      `${t.title} (${branch})`,
+      // The run before this failure on the same workflow and branch was green: a fix that broke again, so it is news.
+      () =>
+        input.ci
+          .filter((r) => r.repo === run?.repo && r.branch === branch && r.name === run?.name)
+          .toSorted((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[1]?.conclusion ===
+        "success",
+    );
   }
   if (
     timeHasCome(state, "morning_brief", input.hour, BRIEF_HOUR, firstHour) &&
     input.quiet !== true &&
     state.brief?.day !== input.day
   ) {
-    await attempt("morning_brief", input.day, async () => {
-      const text = await ops.brief();
-      state = { ...state, brief: { day: input.day, text } };
+    await attempt("morning_brief", input.day, async (signal) => {
+      const text = await ops.brief(signal);
+      if (!signal.aborted) state = { ...state, brief: { day: input.day, text } };
       return "Built the morning brief.";
     });
   }
   if (timeHasCome(state, "nightly_learning", input.hour, LEARN_HOUR, firstHour))
-    await attempt("nightly_learning", input.day, ops.learn);
+    await attempt("nightly_learning", input.day, (signal) => ops.learn(signal));
   for (const f of input.findings) {
     if (f.kind !== "unanswered" || f.minutes < WAIT_MINUTES || input.quiet === true) continue;
     await attempt(
       "waiting_remind",
       `wait:${f.workSessionId}`,
-      async () => {
+      async (signal) => {
+        if (signal.aborted) return "Ended before it spoke.";
         ops.say(
           `${f.title} has been waiting for you for about ${Math.round(f.minutes / 60)} hour${f.minutes >= 120 ? "s" : ""}.`,
         );
@@ -310,7 +347,7 @@ export const runStandingJobs = async (
     if (job.group !== "done" || job.phase !== "approved") continue;
     // Only what finished lately: turning this on does not summarise last month.
     if (input.now - Date.parse(job.lastActivityAt) > DAY_MS) continue;
-    await attempt("job_summary", job.workSessionId, async () => {
+    await attempt("job_summary", job.workSessionId, async (signal) => {
       const u = job.usage;
       const used =
         u === undefined || u === null
@@ -319,6 +356,7 @@ export const runStandingJobs = async (
       await ops.note(
         job.workSessionId,
         `Finished: ${job.title}.${used} Summary written by Tessaya.`,
+        signal,
       );
       return `Summarised ${job.title}.`;
     });

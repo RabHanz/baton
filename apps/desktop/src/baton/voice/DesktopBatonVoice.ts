@@ -190,7 +190,13 @@ import { createCommitmentSync } from "../presence/commitmentSync.ts";
 import { createCommitmentStore } from "../presence/commitmentStore.ts";
 import { runCommitOp } from "../presence/commitTools.ts";
 import { presenceControls, presencePatch } from "../presence/presenceRows.ts";
-import { EMPTY_NOW, nowAction, nowControls, type NowData } from "../presence/nowRows.ts";
+import {
+  askWhyPrompt,
+  EMPTY_NOW,
+  nowAction,
+  nowControls,
+  type NowData,
+} from "../presence/nowRows.ts";
 import { collectNeeds } from "../presence/needsAnswer.ts";
 import { createAnomalySource } from "../presence/anomalySource.ts";
 import { createInitiative } from "../presence/initiativeEngine.ts";
@@ -826,6 +832,8 @@ export const resampleTo16k = (pcm: Int16Array, rate: number): Int16Array => {
 
 /** The assistant, as the voice side sees it: its tray entries (D84) and the one brain (D100). */
 export interface TrayExtras extends BrainVoiceHook {
+  /** A question about something that is not his words (a run's log): an ordinary turn, the text marked as not his. */
+  readonly askAbout?: (text: string) => void;
   /** The lead's nightly learning pass over the turns these Record rows trace. */
   readonly learnNightly?: (rows: ReadonlyArray<BatonRecordEntry>) => Promise<string>;
   /** The phone's words run as a typed ask; the reply comes back. "device" words are never his own. */
@@ -3955,9 +3963,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         jobs,
       },
       {
-        look: (offer) => startLook(offer, true),
+        look: (offer, signal) =>
+          signal.aborted ? Promise.reject(new Error("Ended.")) : startLook(offer, true),
         // The lead's standing job: kept on the Now page, and shown or said as the brief setting says.
-        brief: async () => {
+        brief: async (signal) => {
           const text = morningBrief({
             jobs,
             findings,
@@ -3965,13 +3974,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             guide: await guideNotes(),
             extra: briefExtra(),
           });
-          if (settings.briefMode !== "off")
+          if (settings.briefMode !== "off" && !signal.aborted)
             input.extras?.announce(text, settings.briefMode === "spoken");
           return text;
         },
         say: (text) => input.extras?.announce(text, true),
-        learn: async () => {
+        learn: async (signal) => {
           const learn = input.extras?.learnNightly;
+          if (signal.aborted) throw new Error("Ended.");
           if (learn === undefined || input.direct === undefined)
             throw new Error("Learning is not available here.");
           const value = (await input.direct("baton.record.list", {
@@ -3981,7 +3991,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           })) as { entries?: ReadonlyArray<BatonRecordEntry> } | null;
           return learn(value?.entries ?? []);
         },
-        note: async (id, text) => {
+        note: async (id, text, signal) => {
+          if (signal.aborted) return;
           await requestKept({
             kind: "job",
             op: "refine",
@@ -4200,6 +4211,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       loaded: true,
       brief: standingStore.load().brief?.text ?? null,
       runs: latestRuns(standingStore.load()).map((r) => ({
+        id: r.id,
         title: BUILT_INS.find((j) => j.id === r.id)?.title ?? r.id,
         at: r.at,
         status: statusOf(r),
@@ -5619,12 +5631,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         }
       } else if (act?.kind === "allow") initiative.allow(act.topic);
       else if (act?.kind === "why") {
-        const run = latestRuns(standingStore.load())[act.index];
+        const run = standingStore.load().runs.find((r) => r.id === act.job && r.at === act.at);
         const job = BUILT_INS.find((j) => j.id === run?.id);
         if (run !== undefined && job !== undefined)
-          input.extras?.askAbout(
-            `Read only: change nothing and start nothing. My standing job "${job.title}" ended ${statusOf(run)} at ${new Date(run.at).toLocaleString()}. Its log: "${run.text}". Why did it fail, and what would fix it?`,
-          );
+          input.extras?.askAbout?.(askWhyPrompt(job.title, statusOf(run), run.at, run.text));
       } else if (act?.kind === "continue") {
         interruptedNow = interruptedNow.filter((m) => m.id !== act.id);
         recovery.writeMarks(interruptedNow);

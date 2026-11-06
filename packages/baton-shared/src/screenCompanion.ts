@@ -388,3 +388,12 @@ export const needsCaptureApproval = (input: {
   readonly now: number;
 }): boolean =>
   input.policy !== "always" && !input.sessionApproved && input.now >= input.allowedUntil;
+
+/**
+ * Words that are not his (a paired device's, a run's log): remembered so nothing typed from them counts as his own text.
+ * The oldest go first past `cap`, so recent ones are never forgotten.
+ */
+export const rememberOutside = (said: Set<string>, text: string, cap = 200): void => {
+  said.add(text);
+  while (said.size > cap) said.delete(said.values().next().value!);
+};

@@ -18,13 +18,14 @@ const settings = {
 } as const;
 
 describe("the Presence settings", () => {
-  it("shows every switch off by default, none folded away, all on the Settings tab", () => {
+  it("shows every switch off by default, none folded away, each in a Settings category", () => {
     const rows = presenceControls(settings);
     expect(rows.filter((r) => r.kind === "toggle").every((r) => r.kind === "toggle" && !r.on)).toBe(
       true,
     );
     expect(rows.some((r) => r.more === true)).toBe(false);
-    for (const r of rows) expect(tabOf(r.id)).toBe("settings");
+    // What Tessaya notices is privacy; what she offers and watches is her work for him (#525).
+    for (const r of rows) expect(["privacy", "assistant"]).toContain(tabOf(r.id));
   });
   it("turns a control into a settings patch and refuses a value it does not offer", () => {
     expect(presencePatch("pr.awWindow", true, settings)).toEqual({ awarenessWindow: true });

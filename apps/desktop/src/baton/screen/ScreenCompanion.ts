@@ -54,6 +54,7 @@ import {
   LOOK_PROMPT,
   TEACH_PROMPT,
   needsCaptureApproval,
+  rememberOutside,
   parseReply,
   pointable,
   screensDifference,
@@ -2936,9 +2937,7 @@ export const startScreenCompanion = (input: {
   const askFromPhone = async (text: string, source: "phone" | "device") => {
     const mine: { spoken: string[]; card: string | null } = { spoken: [], card: null };
     if (source === "device") {
-      outsideSaid.add(text);
-      // The oldest goes first, so recent device sentences are never forgotten as not his.
-      if (outsideSaid.size > 200) outsideSaid.delete(outsideSaid.values().next().value!);
+      rememberOutside(outsideSaid, text);
       // The whole turn runs before the card is read: it may wait for his turn, and he may interrupt it.
       const result = await deviceTurn(text, { direct: false, typed: true }, mine);
       if (result.kind !== "handled") return { spoken: result.reply, card: result.reply };
@@ -3120,7 +3119,10 @@ export const startScreenCompanion = (input: {
       }
     },
     openAskBox,
-    askAbout: (text) => void typed(text, true).catch(fail),
+    askAbout: (text) => {
+      rememberOutside(outsideSaid, text);
+      void typed(text, true).catch(fail);
+    },
     askFromPhone,
     setPhoneMirror: (mirror) => {
       phoneMirror = mirror;
