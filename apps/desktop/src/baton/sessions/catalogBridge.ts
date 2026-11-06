@@ -52,6 +52,7 @@ export const rowsFromAnswer = (json: string): ReadonlyArray<CatalogRow> => {
       ...(raw["local"] === true ? { local: true } : {}),
       pane: asString(raw["pane"]),
       answeredBy: asString(raw["answeredBy"]),
+      ...(typeof raw["waiting"] === "number" ? { waiting: raw["waiting"] } : {}),
       ...(asString(raw["threadId"]) === null ? {} : { threadId: asString(raw["threadId"])! }),
     });
   }
@@ -209,6 +210,26 @@ export const createBridgeCatalogService = (input: {
       } catch {
         // The session is started either way.
       }
+    },
+    kept: async (row, discard) => {
+      const answer = await input.bridge.request(
+        {
+          kind: "catalogWaiting",
+          environmentId: row.environmentId,
+          sessionId: row.sessionId,
+          ...(discard === undefined ? {} : { discard }),
+        },
+        LIST_WAIT_MS,
+      );
+      if (answer === null || !answer.ok)
+        throw new Error(answer === null ? "The sessions view did not answer." : answer.detail);
+      const found = JSON.parse(answer.detail) as { messages?: unknown; sending?: unknown };
+      return {
+        messages: Array.isArray(found.messages)
+          ? found.messages.filter((m): m is string => typeof m === "string")
+          : [],
+        sending: found.sending === true,
+      };
     },
     folders: async (environmentId) => {
       const answer = await input.bridge.request(

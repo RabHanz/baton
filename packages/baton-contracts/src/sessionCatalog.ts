@@ -16,6 +16,7 @@ export const BATON_SESSIONS_WS_METHODS = {
   retireHandoff: "baton.sessions.retirehandoff",
   reattach: "baton.sessions.reattach",
   kept: "baton.sessions.kept",
+  waiting: "baton.sessions.waiting",
 } as const;
 
 export const BatonCatalogState = Schema.Literals(["running", "stopped", "resuming", "failed"]);
@@ -118,6 +119,19 @@ export const BatonCatalogSendResult = Schema.Struct({
   state: BatonCatalogState,
   delivered: Schema.Boolean,
   detail: Schema.NullOr(Schema.String),
+});
+
+/** The messages a session keeps until it can take them; `discard` drops one, named by place and text so a send in between cannot drop the wrong one. */
+export const BatonCatalogWaitingInput = Schema.Struct({
+  sessionId: Schema.String.check(Schema.isMaxLength(80)),
+  discard: Schema.optionalKey(
+    Schema.Struct({ index: Schema.Number, text: Schema.String.check(Schema.isMaxLength(65_536)) }),
+  ),
+});
+export const BatonCatalogWaitingResult = Schema.Struct({
+  messages: Schema.Array(Schema.String),
+  /** They are being sent right now, so nothing can be discarded until that ends. */
+  sending: Schema.Boolean,
 });
 
 /** Archives (reversibly) the threads that only mirror Tessaya's own helper sessions; without `apply` it only lists them. */

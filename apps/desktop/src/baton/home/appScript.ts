@@ -236,7 +236,13 @@ function catalogRow(c) {
   if (c.stopLabel) { const sb = $('button', 'btn quiet', c.stopLabel); sb.setAttribute('aria-label', c.stopLabel + ' ' + c.label); sb.onclick = () => set(c.id, 'stop'); r.appendChild(sb); }
   if (c.reattachLabel) { const ab = $('button', 'btn quiet', c.reattachLabel); ab.setAttribute('aria-label', c.reattachLabel + ' ' + c.label); ab.onclick = () => set(c.id, 'reattach'); r.appendChild(ab); }
   if (c.resumeLabel) { const b = $('button', 'btn', c.resumeLabel); b.setAttribute('aria-label', c.resumeLabel + ' ' + c.label); b.onclick = () => set(c.id, 'resume'); r.appendChild(b); }
-  return r;
+  if (!c.keptLabel) return r;
+  const kb = $('button', 'btn quiet', c.keptLabel); kb.setAttribute('aria-expanded', String(c.kept !== null)); kb.setAttribute('aria-label', c.keptLabel + ' for ' + c.label); kb.onclick = () => set(c.id, 'kept'); t.appendChild(kb);
+  if (c.kept === null) return r;
+  const w = $('div', 'rowwrap stack'); w.appendChild(r);
+  c.kept.forEach((text, i) => { const line = $('div', 'row'); line.appendChild($('div', 'text hint', text)); if (!c.keptNote) { const db = $('button', 'btn quiet', c.discardLabel); db.setAttribute('aria-label', c.discardLabel + ': ' + text.slice(0, 60)); db.onclick = () => set(c.id, 'discard:' + i); line.appendChild(db); } w.appendChild(line); });
+  if (c.keptNote) { const n = $('div', 'hint', c.keptNote); n.setAttribute('role', 'status'); w.appendChild(n); }
+  return w;
 }
 function memoryBar(c) {
   const w = $('div', 'rowwrap stack membar'), f = $('form', 'vocab'), q = $('input'); q.type = 'text'; q.id = 'in-m-q'; q.placeholder = 'Search what Tessaya remembers'; q.setAttribute('aria-label', 'Search memory'); q.value = drafts.has('m-q') ? drafts.get('m-q') : c.query;

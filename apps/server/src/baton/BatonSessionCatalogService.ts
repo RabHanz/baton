@@ -6,6 +6,8 @@ import type {
   BatonCatalogState,
   BatonReattachResult,
   BatonKeptResult,
+  BatonCatalogWaitingInput,
+  BatonCatalogWaitingResult,
   WatchFinding,
 } from "@t3tools/baton-contracts";
 import {
@@ -143,6 +145,9 @@ export class BatonSessionCatalogService extends Context.Service<
       readonly delivered: boolean;
       readonly detail: string | null;
     }>;
+    readonly waiting: (
+      input: typeof BatonCatalogWaitingInput.Type,
+    ) => Effect.Effect<typeof BatonCatalogWaitingResult.Type>;
   }
 >()("t3/baton/BatonSessionCatalogService") {}
 
@@ -857,6 +862,11 @@ export const layer = Layer.effect(
         cwd?: string;
       }) {
         return yield* Effect.promise(() => catalog.send(input));
+      }),
+      waiting: Effect.fn("BatonSessionCatalogService.waiting")(function* (
+        input: typeof BatonCatalogWaitingInput.Type,
+      ) {
+        return yield* Effect.sync(() => catalog.waitingFor(input.sessionId, input.discard));
       }),
     });
   }),

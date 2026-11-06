@@ -37,6 +37,14 @@ export interface CatalogRow {
   readonly pane?: string | null;
   /** The provider instance answering its thread; not `baton-live` means a handoff session. */
   readonly answeredBy?: string | null;
+  /** Messages it keeps until it can take them. */
+  readonly waiting?: number;
+}
+
+export interface KeptMessages {
+  readonly messages: ReadonlyArray<string>;
+  /** Being sent right now, so none can be discarded until that ends. */
+  readonly sending: boolean;
 }
 
 export interface CatalogService {
@@ -65,6 +73,11 @@ export interface CatalogService {
   readonly folders: (environmentId: string) => Promise<ReadonlyArray<string>>;
   /** Opens a live session's thread. */
   readonly open: (row: CatalogRow) => void | Promise<void>;
+  /** The messages it keeps; `discard` drops one, named by place and text. */
+  readonly kept?: (
+    row: CatalogRow,
+    discard?: { readonly index: number; readonly text: string },
+  ) => Promise<KeptMessages>;
 }
 
 export interface CleanupMachine {
@@ -157,6 +170,8 @@ const WORDS = {
   autoResume: "Auto-resume",
   autoResumeHint: "Brings back a session that stopped in the middle of a turn",
   stop: "Stop",
+  keptSending: "Being sent now; discard is back when that ends.",
+  discard: "Discard",
   tidyApply: "Archive them",
   resumeHint: "Continues this conversation with its full history",
   machine: "Machine",
@@ -181,6 +196,7 @@ export const catalogControls = (input: {
   readonly autoResume?: boolean | null;
   /** Rows whose Reattach found one other running pane and waits for his yes: row id -> pane. */
   readonly reattachOffers?: ReadonlyMap<string, string>;
+  readonly kept?: ReadonlyMap<string, KeptMessages>;
 }): ReadonlyArray<HomeControl> => {
   const { rows, view } = input;
   const reattachOffers = input.reattachOffers ?? new Map<string, string>();
@@ -272,6 +288,13 @@ export const catalogControls = (input: {
           ? `Reattach to ${reattachOffers.get(r.id)}?`
           : "Reattach"
         : null,
+    keptLabel:
+      (r.waiting ?? 0) > 0 || input.kept?.has(r.id) === true
+        ? `${r.waiting ?? 0} kept message${r.waiting === 1 ? "" : "s"}`
+        : null,
+    kept: input.kept?.get(r.id)?.messages ?? null,
+    keptNote: input.kept?.get(r.id)?.sending === true ? WORDS.keptSending : "",
+    discardLabel: WORDS.discard,
   }));
   return [bar, ...list];
 };
@@ -304,6 +327,18 @@ export const createCatalog = (input: {
   let tidyFound = 0;
   let autoResume: boolean | null = null;
   const reattachOffers = new Map<string, string>();
+  /** Rows whose kept messages are open, with what the server last said. */
+  const kept = new Map<string, KeptMessages>();
+  const readKept = (row: CatalogRow, discard?: { index: number; text: string }) =>
+    (input.service.kept?.(row, discard) ?? Promise.reject(new Error("no kept")))
+      .then((found) => {
+        kept.set(row.id, found);
+        set({ id: row.id, waiting: found.messages.length });
+      })
+      .catch(() => {
+        status = "Its kept messages could not be read.";
+        input.onChange();
+      });
   const now = input.now ?? (() => Date.now());
   const set = (patch: Partial<CatalogRow> & { id: string }) => {
     rows = rows.map((r) => (r.id === patch.id ? { ...r, ...patch } : r));
@@ -377,6 +412,7 @@ export const createCatalog = (input: {
         tidyFound,
         autoResume,
         reattachOffers,
+        kept,
       }),
     /** An action from the window; true when it was the catalog's. */
     apply: (id: string, value: string | boolean | null): boolean => {
@@ -496,6 +532,17 @@ export const createCatalog = (input: {
       } else if (id.startsWith("c:")) {
         const row = rows.find((r) => `c:${r.id}` === id);
         if (row === undefined) return true;
+        if (value === "kept") {
+          if (kept.delete(row.id)) input.onChange();
+          else void readKept(row);
+          return true;
+        }
+        if (typeof value === "string" && value.startsWith("discard:")) {
+          const index = Number(value.slice("discard:".length));
+          const text = kept.get(row.id)?.messages[index];
+          if (text !== undefined) void readKept(row, { index, text });
+          return true;
+        }
         if (value === null && row.state === "running") void openRow(row);
         else if (value === "stop" && row.state === "running") {
           void (input.service.stop?.(row) ?? Promise.resolve())
