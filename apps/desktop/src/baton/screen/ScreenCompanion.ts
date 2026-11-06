@@ -129,11 +129,12 @@ import { createNotesStore, notesBlock } from "../memory/memoryNotes.ts";
 import {
   assistantFrame,
   DEFAULT_OS_PACK,
-  leadsHere,
+  leadsProject,
   modelOf,
   personaFor,
   type Brain,
   type Persona,
+  type ProjectRef,
 } from "@t3tools/baton-shared/osPack";
 import { accountLabel, maskEmail, pickEnv } from "./assistantAccount.ts";
 import { createAssistantAccounts } from "./assistantAccounts.ts";
@@ -339,6 +340,12 @@ export interface AssistantActions {
   readonly sessionsList?: () => string;
   /** The project of a focused session ("<id> (<evidence>)"), for memory scoping; null when unknown. */
   readonly projectOf?: (session: string) => string | null;
+  /** The focused session's project and the computer it is on. */
+  readonly projectRefOf?: (session: string) => ProjectRef | null;
+  /** Every project his sessions are in, with the computer each is on, so a title shared by two is told apart. */
+  readonly projects?: () => ReadonlyArray<ProjectRef>;
+  /** The projects a job may work in, by its id; null when the jobs could not be read. */
+  readonly jobProjects?: (id: string) => Promise<ReadonlyArray<ProjectRef> | null>;
   /** The awareness state as a line for the assistant (D149); empty when every switch is off. */
   readonly presence?: () => Promise<string>;
   /** The job operations (D145), answered in a sentence for the assistant. */
@@ -916,7 +923,7 @@ export const startScreenCompanion = (input: {
   let lastFace = face.name;
   let leadName = face.name;
   /** The focused session's project this turn: a persona that leads it hands out its work. */
-  let turnProject: string | null = null;
+  let turnProject: ProjectRef | null = null;
   let woke: string | null = null;
   /** Quick and System are his choice for the whole machine; otherwise each persona speaks in its own voice. */
   const voiceNow = (): PocketVoice | "system" =>
@@ -1671,7 +1678,11 @@ export const startScreenCompanion = (input: {
         p.noOnExpiry,
       )) === 0,
     inPlan: () => planGrant?.steps ?? null,
-    agent: () => ({ ...face, lead: leadsHere(face, turnProject) }),
+    agent: () => ({
+      ...face,
+      leadsProject: (p: ProjectRef) => leadsProject(face, p, actions?.projects?.() ?? []),
+    }),
+    jobProjects: async (id) => (await actions?.jobProjects?.(id)) ?? null,
     keysAllowed: (at) => {
       const plan = planGrant;
       // Inside a plan, a paste may only paste what the clipboard held when he said go ahead.
@@ -2407,7 +2418,11 @@ export const startScreenCompanion = (input: {
     let firstTokenAt: number | null = null;
     let firstAudioAt: number | null = null;
     const project = focusedSession === null ? null : (actions?.projectOf?.(focusedSession) ?? null);
-    turnProject = project;
+    turnProject =
+      focusedSession === null
+        ? null
+        : (actions?.projectRefOf?.(focusedSession) ??
+          (project === null ? null : { title: project, computer: null }));
     const windowLabel = titlesAllowed() && focus !== null ? redactFocusLabel(focus.label) : null;
     /** The turn as the learning loop may see it, for "Learn from that". */
     const keepTurn = (error: unknown) => {
@@ -2451,7 +2466,10 @@ export const startScreenCompanion = (input: {
             name: face.name,
             role: face.role,
             introduce,
-            ...(leadsHere(face, project) ? {} : { lead: leadName }),
+            ...(face.lead ||
+            (turnProject !== null && leadsProject(face, turnProject, actions?.projects?.() ?? []))
+              ? {}
+              : { lead: leadName }),
           },
           brain: faceModel,
         },

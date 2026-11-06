@@ -216,13 +216,16 @@ it.effect(
         (yield* memory.recall({ text: "deploy key", agent: "operations" })).block,
         "site deploy key",
       );
-      // Freya's memory_search cannot reach it either; his own Memory page still sees it.
+      // Freya's memory_search cannot reach it either.
       const found = (agent?: string) =>
         memory
           .search({ text: "deploy key", ...(agent === undefined ? {} : { agent }) })
           .pipe(Effect.map((hits) => hits.some((h) => h.item.scopeRef === "shop")));
       assert.isFalse(yield* found("operations"));
-      assert.isTrue(yield* found());
+      // A search that names no persona fails closed; only his own view (admin) sees through.
+      assert.isFalse(yield* found());
+      const own = yield* memory.search({ text: "deploy key", admin: true });
+      assert.isTrue(own.some((h) => h.item.scopeRef === "shop"));
     }).pipe(
       Effect.provide(
         Layer.mergeAll(memoryLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)), config),

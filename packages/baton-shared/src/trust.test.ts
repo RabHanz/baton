@@ -102,6 +102,51 @@ describe("One Trust", () => {
     );
   });
 
+  it("a project's own lead hands out only that project's work, and never to the cloud", () => {
+    const ctx = CONTEXTS[1]!;
+    const alfred = {
+      name: "Alfred",
+      tools: null,
+      lead: false,
+      leadsProject: (p: { title: string; computer: string | null }) =>
+        p.title === "shop" && p.computer !== "laptop",
+    };
+    const call = (tool: string, input: Record<string, unknown>) => ({
+      tool: `mcp__baton__${tool}`,
+      input,
+    });
+    const refused = {
+      verdict: "deny",
+      why: "Only the lead hands out work, and Alfred is not the lead.",
+    };
+    const start = (input: Record<string, unknown>) =>
+      decideTrust({
+        call: call("job_start", { goal: "g", ...input }),
+        context: ctx,
+        agent: alfred,
+      });
+    const base = judgeToolCall(call("job_start", { goal: "g", project: "shop" }), ctx);
+    expect(start({ project: "shop" })).toEqual(base);
+    expect(start({ project: "shop", folders: [] })).toEqual(
+      judgeToolCall(call("job_start", { goal: "g", project: "shop", folders: [] }), ctx),
+    );
+    expect(start({ project: "shop", folders: ["C:/work"] })).toEqual(refused);
+    expect(start({ project: "site" })).toEqual(refused);
+    expect(start({ project: "shop", run_on: "laptop" })).toEqual(refused);
+    const onJob = (
+      tool: string,
+      jobProjects: ReadonlyArray<{ title: string; computer: null }> | null,
+    ) => decideTrust({ call: call(tool, { id: "j" }), context: ctx, agent: alfred, jobProjects });
+    const shop = { title: "shop", computer: null };
+    const site = { title: "site", computer: null };
+    for (const tool of ["job_split", "job_handoff", "job_schedule"]) {
+      expect(onJob(tool, [shop])).toEqual(judgeToolCall(call(tool, { id: "j" }), ctx));
+      expect(onJob(tool, [shop, site])).toEqual(refused);
+      expect(onJob(tool, null)).toEqual(refused);
+    }
+    expect(onJob("cloud_dispatch", [shop])).toEqual(refused);
+  });
+
   it("a plan he approved lifts only typing he approved and a drag, never a risky ask or a command line", () => {
     const plan = ['type "hello world" into the note', "drag the file"];
     const tainted = CONTEXTS[2]!;

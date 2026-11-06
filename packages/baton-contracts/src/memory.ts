@@ -66,6 +66,8 @@ export const BatonMemoryQuery = Schema.Struct({
   limit: Schema.optionalKey(Schema.Number),
   /** The persona asking (its pack id); a walled project's items then only reach its team. */
   agent: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(60))),
+  /** His own view (the Memory page): sees walled projects without a persona. */
+  admin: Schema.optionalKey(Schema.Boolean),
 });
 export type BatonMemoryQuery = typeof BatonMemoryQuery.Type;
 
@@ -140,6 +142,8 @@ export const BatonMemoryLearnInput = Schema.Struct({
   turnRef: Schema.optionalKey(Schema.String),
   /** The exchange before, so "yes, do that from now on" has a referent. */
   previous: Schema.optionalKey(Schema.String),
+  /** The persona whose turn it was (its pack id). */
+  agent: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(60))),
 });
 export const BatonMemoryLearnResult = Schema.Struct({
   stored: Schema.Number,

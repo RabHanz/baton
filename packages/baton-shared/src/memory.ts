@@ -71,6 +71,8 @@ export interface MemoryQuery {
   readonly limit?: number;
   /** The persona asking (its pack id); a walled project's items then only reach its team. */
   readonly agent?: string;
+  /** His own view (the Memory page): sees walled projects without a persona. */
+  readonly admin?: boolean;
 }
 
 export interface MemoryHit {

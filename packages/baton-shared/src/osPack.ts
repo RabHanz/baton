@@ -200,22 +200,65 @@ export const personaFor = (
   return personas.find((p) => p.name.toLowerCase() === first) ?? lead;
 };
 
-const named = (list: ReadonlyArray<string>, project: string) =>
-  list.some((p) => p.toLowerCase() === project.toLowerCase());
+const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
-/** The lead of everything, or of this project (a project may name its own lead). */
-export const leadsHere = (persona: Persona, project: string | null): boolean =>
-  persona.lead || (project !== null && named(persona.leads, project));
+/** A project as the roster names it: its title, and the computer it is on when that is known. */
+export interface ProjectRef {
+  readonly title: string;
+  readonly computer: string | null;
+}
+
+/** A `leads:` entry: "shop", or "shop@studio" for the shop project on the computer called studio. */
+const entryOf = (entry: string): ProjectRef => {
+  const at = entry.lastIndexOf("@");
+  return at > 0
+    ? { title: entry.slice(0, at).trim(), computer: entry.slice(at + 1).trim() }
+    : { title: entry.trim(), computer: null };
+};
+
+/** Whether a walled project, by title (memory is kept by project title). */
+export const isWalled = (pack: OsPack, project: string): boolean =>
+  pack.walled.some((w) => same(w, project));
+
+/**
+ * Whether this persona leads this project. Titles are not unique, so an entry matches by title and
+ * computer; where either computer is unknown it matches only a title that one known project has.
+ */
+export const leadsProject = (
+  persona: Persona,
+  project: ProjectRef,
+  known: ReadonlyArray<ProjectRef>,
+): boolean =>
+  persona.lead ||
+  persona.leads.map(entryOf).some((entry) => {
+    if (!same(entry.title, project.title)) return false;
+    if (entry.computer !== null && project.computer !== null)
+      return same(entry.computer, project.computer);
+    const computers = new Set(
+      known.filter((k) => same(k.title, project.title)).map((k) => k.computer?.toLowerCase()),
+    );
+    const only = [...computers][0];
+    return (
+      computers.size === 1 &&
+      (entry.computer === null || only === entry.computer.toLowerCase()) &&
+      (project.computer === null || only === project.computer.toLowerCase())
+    );
+  });
 
 /**
  * Whether an agent may recall a memory about this project (decision 6): any project that is not walled;
- * a walled one only for its team and its lead, and the overall lead sees through every wall. No agent
+ * a walled one only for its team and its leads, and the overall lead sees through every wall. No agent
  * (a block shared by every persona) recalls nothing walled.
  */
 export const mayRecall = (pack: OsPack, agent: string | undefined, project: string): boolean => {
-  if (!named(pack.walled, project)) return true;
+  if (!isWalled(pack, project)) return true;
   const persona = pack.personas.find((p) => p.id === agent);
-  return persona !== undefined && (leadsHere(persona, project) || named(persona.projects, project));
+  return (
+    persona !== undefined &&
+    (persona.lead ||
+      persona.projects.some((p) => same(p, project)) ||
+      persona.leads.some((l) => same(entryOf(l).title, project)))
+  );
 };
 
 /** The planning turn's frame, capped so a large personal pack cannot swamp the job. */

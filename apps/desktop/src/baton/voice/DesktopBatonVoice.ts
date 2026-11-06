@@ -1871,6 +1871,28 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     presence: () => awareness.describe(),
     projectOf: (session) =>
       input.sessions?.rows().find((r) => r.key === session.split(" ")[0])?.project || null,
+    projectRefOf: (session) => {
+      const row = input.sessions?.rows().find((r) => r.key === session.split(" ")[0]);
+      return row === undefined || row.project === ""
+        ? null
+        : { title: row.project, computer: row.box };
+    },
+    projects: () =>
+      (input.sessions?.rows() ?? [])
+        .filter((r) => r.project !== "")
+        .map((r) => ({ title: r.project, computer: r.box })),
+    jobProjects: async (id) => {
+      const value = (await requestKept({ kind: "job", op: "list", args: {} }).catch(
+        () => null,
+      )) as {
+        jobs?: ReadonlyArray<BatonJob>;
+      } | null;
+      const job = value?.jobs?.find((j) => j.workSessionId === id);
+      // A job's projects are named by title; the computer it runs on is not on its card.
+      return job === undefined
+        ? null
+        : job.terms.permissions.projects.map((title) => ({ title, computer: null }));
+    },
     sessionsList: () => {
       const rows = input.sessions?.rows() ?? [];
       return rows.length === 0

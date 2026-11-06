@@ -151,6 +151,7 @@ export const createDesktopMemory = (input: {
         said,
         reply,
         tainted,
+        ...agent(),
         ...(project === null ? {} : { project }),
         ...(previous === "" ? {} : { previous }),
         ...(lastTurnRef === null ? {} : { turnRef: lastTurnRef }),

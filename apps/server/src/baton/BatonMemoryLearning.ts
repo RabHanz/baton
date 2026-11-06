@@ -24,7 +24,8 @@ import * as ServerConfig from "../config.ts";
 import { BatonOneShot } from "./BatonOneShot.ts";
 import { dayOf } from "./BatonMemoryEpisode.ts";
 import { BatonMemoryService } from "./BatonMemoryService.ts";
-import { readRouting } from "./OperatingSystemPack.ts";
+import { readPack, readRouting } from "./OperatingSystemPack.ts";
+import { isWalled } from "@t3tools/baton-shared/osPack";
 
 const Proposals = Schema.Struct({
   items: Schema.Array(
@@ -72,9 +73,16 @@ export const make = Effect.gen(function* () {
       yield* memory.noteTalk(dayOf(yield* Clock.currentTimeMillis), input.said);
     }
     if (!worthLearningFrom(input)) return none;
-    const known = (yield* memory.search({ text: input.said, limit: KNOWN_SHOWN })).map(
-      (hit) => hit.item,
-    );
+    const known = (yield* memory.search({
+      text: input.said,
+      limit: KNOWN_SHOWN,
+      ...(input.agent === undefined ? {} : { agent: input.agent }),
+    })).map((hit) => hit.item);
+    // A turn in a walled project keeps what it learns behind that wall, whatever scope the model chose.
+    const walled =
+      input.project !== null && isWalled(readPack(NodePath.dirname(config.dbPath)), input.project)
+        ? input.project
+        : null;
     const proposals = yield* oneShot
       .run({
         prompt: extractionPrompt(input, known),
@@ -82,7 +90,12 @@ export const make = Effect.gen(function* () {
         model: readRouting(NodePath.dirname(config.dbPath)).cheap,
       })
       .pipe(Effect.orElseSucceed(() => ({ items: [] })));
-    const drafts = draftsFromProposals(proposals.items, input, yield* Clock.currentTimeMillis);
+    const drafts = draftsFromProposals(proposals.items, input, yield* Clock.currentTimeMillis).map(
+      (d) =>
+        walled === null
+          ? d
+          : { ...d, draft: { ...d.draft, scope: "project" as const, scopeRef: walled } },
+    );
     let stored = 0;
     let held = 0;
     for (const { draft, replaces } of drafts) {

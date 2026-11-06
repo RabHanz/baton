@@ -223,8 +223,8 @@ export const make = Effect.gen(function* () {
   const search = Effect.fn("BatonMemoryService.search")(function* (query: MemoryQuery) {
     const words = tokens(query.text ?? "");
     const limit = query.limit ?? DEFAULT_LIMIT;
-    // Only an agent's search is walled; his own Memory page sees everything.
-    const seen = query.agent === undefined ? () => true : yield* walls(query.agent);
+    // Walled unless it is his own view: a caller that forgets to name its persona sees nothing walled.
+    const seen = query.admin === true ? () => true : yield* walls(query.agent);
     if (words.length === 0) {
       const items = (yield* list(query)).filter(seen);
       return items.slice(0, limit).map((item) => ({ item, score: item.pinned ? 1 : 0.5 }));
@@ -421,6 +421,7 @@ export const make = Effect.gen(function* () {
         ? (yield* search({
             text: context.text!,
             ...(context.scopeRef === undefined ? {} : { scopeRef: context.scopeRef }),
+            ...(context.agent === undefined ? {} : { agent: context.agent }),
             limit: 40,
           })).filter((hit) => hit.score >= RECALL_FLOOR)
         : (yield* list({ kinds: ["note", "preference", "correction", "decision"] }))

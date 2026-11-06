@@ -1,3 +1,8 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -271,3 +276,62 @@ layer("BatonMemoryLearning", (it) => {
     }),
   );
 });
+
+it.effect(
+  "an outsider's turn is not shown a walled project's memories, and what a walled turn learns stays walled",
+  () => {
+    const userdata = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-learn-walls-"));
+    const pack = NodePath.join(userdata, "operating-system");
+    NodeFS.mkdirSync(pack, { recursive: true });
+    NodeFS.writeFileSync(NodePath.join(pack, "executive.md"), "---\nwalled: shop\n---\n");
+    const walledConfig = Layer.succeed(ServerConfig.ServerConfig, {
+      dbPath: NodePath.join(userdata, "statev2.sqlite"),
+    } as unknown as ServerConfig.ServerConfig["Service"]);
+    return Effect.gen(function* () {
+      const memory = yield* BatonMemoryService;
+      const learning = yield* BatonMemoryLearning;
+      const secret = yield* memory.add({
+        kind: "fact",
+        text: "The shop deploy key rotates on Fridays",
+        source: "user",
+        scope: "project",
+        scopeRef: "shop",
+      });
+      // The model tries to restate the walled fact globally, replacing the walled item.
+      reply = {
+        items: [
+          {
+            kind: "fact",
+            text: "Shop releases go out from the studio computer",
+            replaces: secret.id,
+          },
+        ],
+      };
+      prompts.length = 0;
+      yield* learning.learn(
+        turn({
+          said: "when does the shop deploy key rotate?",
+          project: "shop",
+          agent: "operations",
+        }),
+      );
+      assert.notInclude(prompts.join("\n"), secret.id);
+      // Not shown it, so it replaced nothing; what it learned in the walled project is kept behind the wall.
+      const all = yield* memory.list({ includeSuperseded: true, includeProposed: true });
+      assert.isNull(all.find((i) => i.id === secret.id)?.supersededBy);
+      const learned = all.find((i) => i.text === "Shop releases go out from the studio computer");
+      assert.strictEqual(learned?.scope, "project");
+      assert.strictEqual(learned?.scopeRef, "shop");
+    }).pipe(
+      Effect.provide(
+        learningLayer.pipe(
+          Layer.provideMerge(memoryLayer),
+          Layer.provideMerge(oneShot),
+          Layer.provideMerge(walledConfig),
+          Layer.provideMerge(SqlitePersistenceMemory),
+        ),
+      ),
+      Effect.ensuring(Effect.sync(() => NodeFS.rmSync(userdata, { recursive: true, force: true }))),
+    );
+  },
+);

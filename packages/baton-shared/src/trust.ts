@@ -12,6 +12,7 @@ import {
   type ToolCall,
   type ToolVerdict,
 } from "./operator.ts";
+import type { ProjectRef } from "./osPack.ts";
 
 /** Who is asking: a persona from the roster. `tools: null` is no list of its own, so only the base rules apply. */
 export interface TrustAgent {
@@ -19,6 +20,8 @@ export interface TrustAgent {
   readonly tools: ReadonlyArray<string> | null;
   /** Only the lead hands out work (decision 2026-11-05). */
   readonly lead: boolean;
+  /** Whether it leads this project (a project's own lead); absent is none. */
+  readonly leadsProject?: (project: ProjectRef) => boolean;
 }
 
 /** Tools that hand work to another agent: the lead's alone. */
@@ -36,6 +39,8 @@ export interface TrustAsk {
   readonly agent?: TrustAgent;
   /** The steps of a plan he approved this turn (plan_show). */
   readonly plan?: ReadonlyArray<string> | null;
+  /** The projects of the job a job_split, job_handoff or job_schedule names; null when it could not be read. */
+  readonly jobProjects?: ReadonlyArray<ProjectRef> | null;
 }
 
 export type TrustVerdict = ToolVerdict | { readonly verdict: "allow"; readonly inPlan: true };
@@ -104,6 +109,37 @@ const toolsUsed = (call: ToolCall): ReadonlyArray<string> => {
     : [name];
 };
 
+/** Tools a project's own lead may use on a job in a project it leads. */
+const PROJECT_JOB_TOOLS: ReadonlySet<string> = new Set([
+  "job_split",
+  "job_handoff",
+  "job_schedule",
+]);
+
+/**
+ * A project's own lead hands out that project's work only: a job_start in projects it leads with no
+ * folders of its own, or a split, handoff or schedule of a job whose projects it all leads. Never the cloud.
+ */
+const projectLeadMay = (ask: TrustAsk, agent: TrustAgent, tool: string): boolean => {
+  const leads = agent.leadsProject;
+  if (leads === undefined) return false;
+  if (tool === "job_start") {
+    const project = ask.call.input["project"];
+    const folders = ask.call.input["folders"];
+    const runOn = ask.call.input["run_on"];
+    return (
+      typeof project === "string" &&
+      (folders === undefined || (Array.isArray(folders) && folders.length === 0)) &&
+      leads({
+        title: project,
+        computer: typeof runOn === "string" && runOn.trim() !== "" ? runOn : null,
+      })
+    );
+  }
+  const projects = ask.jobProjects ?? [];
+  return PROJECT_JOB_TOOLS.has(tool) && projects.length > 0 && projects.every(leads);
+};
+
 export const decideTrust = (ask: TrustAsk): TrustVerdict => {
   const base = judgeToolCall(ask.call, ask.context);
   const verdict: TrustVerdict =
@@ -116,7 +152,9 @@ export const decideTrust = (ask: TrustAsk): TrustVerdict => {
   const agent = ask.agent;
   if (verdict.verdict === "deny" || agent === undefined) return verdict;
   if (!agent.lead) {
-    const delegates = toolsUsed(ask.call).find((t) => DELEGATING_TOOLS.has(t));
+    const delegates = toolsUsed(ask.call).find(
+      (t) => DELEGATING_TOOLS.has(t) && !projectLeadMay(ask, agent, t),
+    );
     if (delegates !== undefined)
       return {
         verdict: "deny",
