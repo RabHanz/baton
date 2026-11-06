@@ -40,6 +40,14 @@ describe("the assistant eval's grader", () => {
       ),
     ).toBe(false);
     expect(passes(recorded, s("mcp__baton__window_focus"))).toBe(false);
+    const split = { ...c, first: ["job_split"], goal: "job_split", goalArgs: ["Alfred"] };
+    const call = (role: string) => ({
+      calls: ["mcp__baton__job_split"],
+      inputs: [{ id: "j", parts: [{ title: "code", goal: "fix", role }] }],
+      reply: "",
+    });
+    expect(passes(split, call("alfred"))).toBe(true);
+    expect(passes(split, call("engineering"))).toBe(false);
   });
 
   it("fails a case when half or more of its samples fail", () => {

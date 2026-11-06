@@ -7,8 +7,16 @@ export const firstTool = (calls: ReadonlyArray<string>): string =>
 
 export interface Sample {
   readonly calls: ReadonlyArray<string>;
+  /** Each call's arguments, in the order of `calls`. */
+  readonly inputs?: ReadonlyArray<unknown>;
   readonly reply: string;
 }
+
+/** The arguments of the first call to the goal tool, as lower-case JSON. */
+const goalInput = (c: AssistantCase, sample: Sample): string => {
+  const at = sample.calls.findIndex((t) => t.replace(/^mcp__baton__/, "") === c.goal);
+  return at < 0 ? "" : JSON.stringify(sample.inputs?.[at] ?? null).toLowerCase();
+};
 
 export const passes = (c: AssistantCase, sample: Sample): boolean => {
   const first = firstTool(sample.calls);
@@ -16,7 +24,9 @@ export const passes = (c: AssistantCase, sample: Sample): boolean => {
     c.first.includes(first) &&
     !(c.not ?? []).includes(first) &&
     (c.says === undefined || sample.reply.toLowerCase().includes(c.says.toLowerCase())) &&
-    (c.goal === undefined || pathPasses({ goal: c.goal, maxCalls: c.maxCalls ?? 99 }, sample.calls))
+    (c.goal === undefined ||
+      pathPasses({ goal: c.goal, maxCalls: c.maxCalls ?? 99 }, sample.calls)) &&
+    (c.goalArgs ?? []).every((word) => goalInput(c, sample).includes(word.toLowerCase()))
   );
 };
 

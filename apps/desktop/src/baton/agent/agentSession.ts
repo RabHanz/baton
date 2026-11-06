@@ -9,7 +9,7 @@ import type { Brain } from "@t3tools/baton-shared/osPack";
 
 import type { ConversationLog } from "../conversation/conversationLog.ts";
 import { SessionClosed, type VisionSession } from "../screen/claudeVision.ts";
-import { agentSystemPrompt, contextLine } from "./agentPrompt.ts";
+import { agentSystemPrompt, contextLine, type TurnPersona } from "./agentPrompt.ts";
 
 /** About this many turns, and the session is replaced and re-seeded; a long one gets slow and costly. */
 export const RECYCLE_TURNS = 40;
@@ -42,7 +42,7 @@ export interface Where {
   /** The focused session's project, so its memories come back and another project's stay out. */
   readonly project?: string | null;
   /** The persona he woke: its name and line, and whether this turn is the first under that name. */
-  readonly persona?: { readonly name: string; readonly role: string; readonly introduce: boolean };
+  readonly persona?: TurnPersona;
   /** The persona's own model and effort; a change starts a session on it, seeded like any other. */
   readonly brain?: Brain;
 }

@@ -3,6 +3,8 @@
  * acceptable first tools ("none" means it should answer without a tool); `not` lists tools that are a
  * wrong first move. Sources: the 2026-11-04 review (INT-4) and the Help page's examples.
  */
+import { describeJobs } from "../../apps/desktop/src/baton/agent/jobText.ts";
+import type { BatonJob } from "../../packages/baton-contracts/src/jobs.ts";
 import type { BatonRecordEntry } from "../../packages/baton-contracts/src/record.ts";
 import { buildAuditTrail, describeAuditTrail } from "../../packages/baton-shared/src/audit.ts";
 
@@ -23,7 +25,22 @@ export interface AssistantCase {
   /** A recorded turn: it passes only when it reaches this tool within `maxCalls` calls. */
   readonly goal?: string;
   readonly maxCalls?: number;
+  /** Words the goal tool's arguments must contain, such as the persona a part goes to. */
+  readonly goalArgs?: ReadonlyArray<string>;
 }
+
+/** An agreed job that needs an engineer and a researcher, as jobs_list reads it out. */
+const agreedShopJob = describeJobs([
+  {
+    title:
+      "Shop README: fix the broken install steps and code samples, and research what three competitors' READMEs have that ours lacks",
+    workSessionId: "job-shop",
+    phase: "approved",
+    group: "running",
+    limitReached: null,
+    permissionsSummary: "read, edit and use the web in the shop folder.",
+  } as unknown as BatonJob,
+]);
 
 const row = (
   id: number,
@@ -134,6 +151,26 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     first: ["job_split", "jobs_list"],
   },
   {
+    id: "split-it",
+    source: "Spine step 6: the lead splits an agreed job between his own roster, by name",
+    said: "split it",
+    answers: { jobs_list: agreedShopJob },
+    first: ["jobs_list", "job_split"],
+    goal: "job_split",
+    maxCalls: 3,
+    goalArgs: ["Alfred", "Sebastian"],
+  },
+  {
+    id: "specialist-wont-split",
+    source: "Spine step 6: only the lead delegates; a specialist says so instead of trying",
+    wake: "Freya",
+    said: "split the shop README job between Alfred and Sebastian",
+    answers: { jobs_list: agreedShopJob },
+    first: ["none", "jobs_list"],
+    not: ["job_split", "job_start"],
+    says: "Tessaya",
+  },
+  {
     id: "teach-me",
     source: "agentPrompt teach rule (teach_start was missing from the tool roll-call)",
     said: "teach me how to change the font size in Notepad",
@@ -214,7 +251,8 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     id: "tell-it-to-stop",
     source: "INT-7: 'it' with no current target must be found or asked, never guessed",
     said: "tell it to stop",
-    first: ["none", "sessions_list", "fleet_status"],
+    // With the pack's frame in the turn, as it ships, a running job is a fair "it" to look for first.
+    first: ["none", "sessions_list", "fleet_status", "jobs_list"],
     not: ["session_send", "weave_send"],
   },
   {

@@ -10,6 +10,7 @@ Say or type what you want done as a job ("fix the failing build in the shop proj
 
 - **Approvals** is the one list of everything waiting for your yes: job plans, questions a session asked you, held memory suggestions, the vault asking to use a secret.
 - A job has limits (time, turns, optionally money). It stops at them and tells you; raise a limit to let it go on.
+- Only Tessaya, the lead, starts and splits jobs. Once you agree a plan, say "split it" and she hands each part to one of your personas by name (Alfred, Sebastian, Freya): each part runs in its own thread with that persona's brief, model and `tools` from its pack file, and its outcome goes to what happened under its name. Ask Freya to start a job and she will tell you to ask Tessaya.
 - Each persona's background turns are counted per day. The guide is 40 a persona and 120 for the team: passing it is noted once that day in what happened and in the next morning brief, and nothing is stopped. Talking with Tessaya is never counted.
 - **Stop** ends a running turn; the job and its notes stay. **Retry** is offered only for a job that failed and has retries left, and says why not otherwise.
 - A job that a restart interrupted shows a Continue button.

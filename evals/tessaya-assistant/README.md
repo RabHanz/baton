@@ -1,6 +1,6 @@
 # Tessaya assistant
 
-Runs Tessaya's one assistant as it ships: the real `AGENT_PROMPT`, the real tool list on the real MCP server, and a real `claude -p` session. It scores which tool the assistant reaches for first after one spoken sentence. Every tool call is recorded and refused, so nothing runs on your machine.
+Runs Tessaya's one assistant as it ships: the real `AGENT_PROMPT` with the default pack's frame, the real tool list on the real MCP server, and a real `claude -p` session. It scores which tool the assistant reaches for first after one spoken sentence. Every tool call is recorded and refused, so nothing runs on your machine.
 
 ## Run
 
@@ -18,4 +18,4 @@ pnpm tessaya-assistant --out runs/assistant-haiku --model haiku --case needs-me 
 
 ## Add a case
 
-Add an entry to `cases.ts` with an `id`, its `source`, the sentence `said`, and the acceptable `first` tools (`none` for a plain answer). Add `not` for a wrong first move the case guards against. A case with `wake` runs as that persona from the default roster; `says` lists words the reply must contain. `answers` lets named tools run with a fixed text, built from the shipped formatter, so a case can check what the reply says about it. `window` is the window he is using (Notepad when left out). A recorded turn adds `goal` and `maxCalls`: it passes only when it reaches the `goal` tool within that many calls (Learning v0 replays a slow turn this way).
+Add an entry to `cases.ts` with an `id`, its `source`, the sentence `said`, and the acceptable `first` tools (`none` for a plain answer). Add `not` for a wrong first move the case guards against. A case with `wake` runs as that persona from the default roster; `says` lists words the reply must contain. `answers` lets named tools run with a fixed text, built from the shipped formatter, so a case can check what the reply says about it. `window` is the window he is using (Notepad when left out). A recorded turn adds `goal` and `maxCalls`: it passes only when it reaches the `goal` tool within that many calls (Learning v0 replays a slow turn this way). `goalArgs` lists words that goal call's arguments must contain, such as the persona a part goes to.

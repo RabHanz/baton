@@ -202,6 +202,21 @@ export const packPrompt = (pack: OsPack): string => {
 /** The one assistant's frame is in every turn, so it is kept shorter than a planning turn's. */
 export const ASSISTANT_FRAME_CHARS = 3_000;
 
+/** A job part's role from what the lead wrote: a persona's name or a role's file stem, as the pack's role id. */
+export const roleFor = (pack: OsPack, said: string): string => {
+  const word = said.trim().toLowerCase();
+  return (
+    pack.personas.find((p) => !p.lead && p.name.toLowerCase() === word)?.id ??
+    Object.keys(pack.roles).find((r) => r === word) ??
+    said.trim()
+  );
+};
+
 /** The executive frame and the specialists' names, for the one assistant that decides and splits jobs. */
-export const assistantFrame = (pack: OsPack): string =>
-  `How he wants a job framed (his operating-system pack; use it when he hands you long work, asks for a plan or splits one):\n${pack.executive.slice(0, ASSISTANT_FRAME_CHARS)}\n\nSpecialists a job's parts can go to (job_split role): ${Object.keys(pack.roles).join(", ")}.`;
+export const assistantFrame = (pack: OsPack): string => {
+  const names = new Map(pack.personas.filter((p) => !p.lead).map((p) => [p.id, p.name]));
+  const specialists = Object.keys(pack.roles)
+    .map((r) => (names.has(r) ? `${names.get(r)} (${r})` : r))
+    .join(", ");
+  return `How he wants a job framed (his operating-system pack; use it when he hands you long work, asks for a plan or splits one):\n${pack.executive.slice(0, ASSISTANT_FRAME_CHARS)}\n\nSpecialists a job's parts can go to: ${specialists}. When you offer a split, name who takes each part by the name he knows, and set job_split role to that name.`;
+};

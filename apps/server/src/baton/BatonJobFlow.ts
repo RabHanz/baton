@@ -59,7 +59,7 @@ import { BatonEngine } from "./BatonEngine.ts";
 import { spendOf, type Spend } from "./BatonJobSpend.ts";
 import { planningFrame, readPack, readRouting } from "./OperatingSystemPack.ts";
 import { ROUTINE_EFFORT } from "@t3tools/baton-shared/costRouting";
-import { modelOf, type Brain } from "@t3tools/baton-shared/osPack";
+import { modelOf, roleFor, type Brain } from "@t3tools/baton-shared/osPack";
 import { BatonJobService } from "./BatonJobService.ts";
 import { BatonRecordService } from "./BatonRecordService.ts";
 import * as FleetQuery from "./FleetQuery.ts";
@@ -577,6 +577,8 @@ const launchPart = Effect.fn("BatonJobFlow.launchPart")(function* (input: {
   const shell =
     parentThread === null ? null : yield* (yield* BatonEngine).threadShell(parentThread);
   if (parent === null || shell === null) return null;
+  // A specialist's own tool list (its roster file) narrows the part's tools further; it never adds one.
+  const own = readPack(userdata).personas.find((p) => p.id === input.role)?.tools ?? null;
   const result = yield* startJob(
     {
       id: input.id,
@@ -584,7 +586,13 @@ const launchPart = Effect.fn("BatonJobFlow.launchPart")(function* (input: {
       title: input.title,
       goal: input.goal,
       // A part never has more than its parent: the same folders, projects and tools.
-      permissions: parent.permissions,
+      permissions:
+        own === null
+          ? parent.permissions
+          : {
+              ...parent.permissions,
+              tools: parent.permissions.tools.filter((t) => own.some((o) => o.toLowerCase() === t)),
+            },
       // Routine work on the cheap model. On the lead's own model, a specialist runs on the model its pack
       // file names; a model he picked for the job stays for its other parts.
       modelSelection: !(yield* routesByTable(shell.modelSelection.instanceId))
@@ -629,7 +637,10 @@ export const splitJob = Effect.fn("BatonJobFlow.split")(function* (input: BatonJ
   const workSession = yield* (yield* WorkSessionService).get(input.id);
   const started: Array<{ readonly id: WorkSessionId; readonly threadId: ThreadId }> = [];
   const partId = (n: number) => WorkSessionId.make(`${input.id}-part-${n}`);
-  for (const [i, part] of input.parts.slice(0, MAX_PARTS).entries()) {
+  const pack = readPack(NodePath.dirname((yield* ServerConfig.ServerConfig).dbPath));
+  for (const [i, said] of input.parts.slice(0, MAX_PARTS).entries()) {
+    // The lead names the specialist as he knows it (Sebastian) or by its file (research).
+    const part = said.role === undefined ? said : { ...said, role: roleFor(pack, said.role) };
     const id = partId(i + 1);
     // Only earlier parts can be waited on, so there is no cycle to find.
     const after = [...new Set(part.after ?? [])].filter((n) => n >= 1 && n <= i).map(partId);
@@ -834,11 +845,15 @@ export const recordJobChanges = Effect.fn("BatonJobFlow.recordJobChanges")(funct
   const changes = jobChanges(yield* (yield* BatonJobService).view({ entries }), seen);
   if (changes.length === 0) return;
   const projects = new Map((yield* (yield* BatonEngine).projects).map((p) => [p.id, p.title]));
+  const personas = yield* (yield* BatonJobService).personas();
+  const roster = readPack(NodePath.dirname((yield* ServerConfig.ServerConfig).dbPath)).personas;
   for (const { job, outcome } of changes) {
     const projectId = entries.find((e) => e.workSessionId === job.workSessionId)?.projectId;
+    const persona = personas.get(job.workSessionId);
     yield* record.value.append({
       kind: "job",
-      actor: "job",
+      // A specialist's outcome is its own line in the Record, under its name; it reports to no other agent.
+      actor: roster.find((p) => p.id === persona)?.name ?? persona ?? "job",
       project: projectId === undefined ? null : (projects.get(projectId) ?? null),
       ref: job.workSessionId,
       subject: job.title,
