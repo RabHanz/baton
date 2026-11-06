@@ -113,6 +113,7 @@ const METERED_ENV =
   /^(ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|ANTHROPIC_BASE_URL|CLAUDE_CODE_USE_BEDROCK|CLAUDE_CODE_USE_VERTEX|ANTHROPIC_BEDROCK_.*|ANTHROPIC_VERTEX_.*)$/;
 
 /** The session was closed on purpose, by Baton. Nothing went wrong. */
+// @effect-diagnostics-next-line extendsNativeError:off -- a Promise rejection, never in an Effect failure channel.
 export class SessionClosed extends Error {}
 
 /** The child's environment: his, minus anything that would bill the API instead of the plan. */

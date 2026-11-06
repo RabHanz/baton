@@ -52,6 +52,7 @@ export const make = Effect.gen(function* () {
 
   const run: BatonOneShot["Service"]["run"] = ({ prompt, outputSchema, model }) =>
     Effect.gen(function* () {
+      // @effect-diagnostics-next-line globalJsonInEffect:off - a JSON Schema object, always serialisable.
       const jsonSchema = JSON.stringify(toJsonSchemaObject(outputSchema));
       const command = ChildProcess.make(
         "claude",
@@ -66,6 +67,7 @@ export const make = Effect.gen(function* () {
           "--settings",
           // Thinking off: a structured one-shot needs no scratchpad, and his own settings may turn it on
           // (measured on one sentence and model: 10.0 s with thinking, 6.0 s without).
+          // @effect-diagnostics-next-line globalJsonInEffect:off - a fixed literal.
           JSON.stringify({ disableAllHooks: true, alwaysThinkingEnabled: false }),
           "--tools",
           "",

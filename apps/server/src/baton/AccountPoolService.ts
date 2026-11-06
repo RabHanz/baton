@@ -21,6 +21,7 @@
  *
  * @module baton/AccountPoolService
  */
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import {
   BatonAccountPoolUnavailableError,
   BatonAccountRotationFailedError,
@@ -242,10 +243,11 @@ export const makePoolReader =
         });
       }
       const activeNumber = listing.activeAccountNumber ?? null;
+      const env = yield* HostProcess.Environment;
       return {
         driver,
         source: "cswap" as const,
-        configDir: process.env.CLAUDE_CONFIG_DIR ?? `${process.env.HOME ?? "~"}/.claude`,
+        configDir: env.CLAUDE_CONFIG_DIR ?? `${env.HOME ?? "~"}/.claude`,
         accounts: listing.accounts.map((account) => toBatonAccount(account, activeNumber)),
         checkedAt: DateTime.formatIso(yield* DateTime.now),
       } as BatonAccountPool;

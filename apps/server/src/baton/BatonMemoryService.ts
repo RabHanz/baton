@@ -464,6 +464,7 @@ export const make = Effect.gen(function* () {
       SELECT value FROM fabric_memory_meta WHERE key = ${`talks:${day}`}
     `.pipe(Effect.orDie);
     try {
+      // @effect-diagnostics-next-line globalJsonInEffect:off - parse failure is caught below.
       return rows[0] === undefined ? [] : (JSON.parse(rows[0].value) as string[]);
     } catch {
       return [];
@@ -472,6 +473,7 @@ export const make = Effect.gen(function* () {
   const noteTalk = Effect.fn("BatonMemoryService.noteTalk")(function* (day: string, text: string) {
     const held = yield* talks(day);
     if (held.length >= MAX_TALKS) return;
+    // @effect-diagnostics-next-line globalJsonInEffect:off - an array of strings.
     yield* sql`INSERT OR REPLACE INTO fabric_memory_meta (key, value) VALUES (${`talks:${day}`}, ${JSON.stringify([...held, text.trim().replace(/\s+/g, " ").slice(0, 80)])})`.pipe(
       Effect.orDie,
     );
@@ -480,13 +482,11 @@ export const make = Effect.gen(function* () {
   const noteOnce = Effect.fn("BatonMemoryService.noteOnce")(function* (key: string, value: string) {
     const rows = yield* sql<{
       value: string;
-    }>`SELECT value FROM fabric_memory_meta WHERE key = ${`seen:${key}`}`.pipe(Effect.orDie);
+    }>`SELECT value FROM fabric_memory_meta WHERE key = ${`seen:${key}`}`;
     if (rows[0]?.value === value) return false;
-    yield* sql`INSERT OR REPLACE INTO fabric_memory_meta (key, value) VALUES (${`seen:${key}`}, ${value})`.pipe(
-      Effect.orDie,
-    );
+    yield* sql`INSERT OR REPLACE INTO fabric_memory_meta (key, value) VALUES (${`seen:${key}`}, ${value})`;
     return true;
-  });
+  }, Effect.orDie);
 
   const syncHello = Effect.gen(function* () {
     const rows = yield* sql<{ key: string; value: string }>`

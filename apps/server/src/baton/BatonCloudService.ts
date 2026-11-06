@@ -5,9 +5,16 @@
  * computer's own login, and keeps the waiting requests in a small file beside the server's state.
  * The rules live in `@t3tools/baton-shared/cloud`; this is only the door.
  */
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as NodePath from "node:path";
 
-import { BATON_CLOUD_ACT_OPS, BATON_CLOUD_APPROVE_OPS, BATON_CLOUD_READ_OPS, type BatonCloudCallInput, type BatonCloudCallResult } from "@t3tools/baton-contracts";
+import {
+  BATON_CLOUD_ACT_OPS,
+  BATON_CLOUD_APPROVE_OPS,
+  BATON_CLOUD_READ_OPS,
+  type BatonCloudCallInput,
+  type BatonCloudCallResult,
+} from "@t3tools/baton-contracts";
 import { buildLocalProviders, settingsFromEnv } from "@t3tools/baton-shared/cloud/build";
 import { serveCloudCall } from "@t3tools/baton-shared/cloud/hub";
 import { fileStores, nodeExec } from "@t3tools/baton-shared/cloud/nodeExec";
@@ -34,14 +41,22 @@ export const layer = Layer.effect(
     const providers = buildLocalProviders(
       nodeExec,
       fileStores(NodePath.join(NodePath.dirname(config.dbPath), "cloud")),
-      settingsFromEnv(process.env["BATON_CLOUD_CONFIG"]),
+      settingsFromEnv((yield* HostProcess.Environment)["BATON_CLOUD_CONFIG"]),
     );
     return BatonCloudService.of({
-      call: Effect.fn("BatonCloudService.call")(function* (input: BatonCloudCallInput, kind: "read" | "act" | "approve") {
+      call: Effect.fn("BatonCloudService.call")(function* (
+        input: BatonCloudCallInput,
+        kind: "read" | "act" | "approve",
+      ) {
         const allowed: ReadonlyArray<string> =
-          kind === "read" ? BATON_CLOUD_READ_OPS : kind === "approve" ? BATON_CLOUD_APPROVE_OPS : BATON_CLOUD_ACT_OPS;
+          kind === "read"
+            ? BATON_CLOUD_READ_OPS
+            : kind === "approve"
+              ? BATON_CLOUD_APPROVE_OPS
+              : BATON_CLOUD_ACT_OPS;
         // A read method never changes anything, whatever op it is sent.
-        if (!allowed.includes(input.op)) return { ok: false, error: "That request is not allowed here." } as BatonCloudCallResult;
+        if (!allowed.includes(input.op))
+          return { ok: false, error: "That request is not allowed here." } as BatonCloudCallResult;
         const out = yield* Effect.promise(() =>
           serveCloudCall(providers, {
             op: input.op,
@@ -49,7 +64,9 @@ export const layer = Layer.effect(
             ...(input.args === undefined ? {} : { args: input.args }),
           }),
         );
-        return (out.ok ? { ok: true, value: out.value } : { ok: false, error: out.error }) as BatonCloudCallResult;
+        return (
+          out.ok ? { ok: true, value: out.value } : { ok: false, error: out.error }
+        ) as BatonCloudCallResult;
       }),
     });
   }),

@@ -32,7 +32,7 @@ import {
 } from "@t3tools/contracts";
 import type { BatonSessionStateInput } from "@t3tools/baton-contracts";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -272,8 +272,8 @@ export const make = Effect.gen(function* () {
   const threads = yield* ThreadManagement.ThreadManagementService;
   const eventSink = yield* EventSink.EventSinkV2;
   const projectService = yield* Effect.serviceOption(ProjectService);
-  const crypto = yield* Crypto.Crypto;
-  const uuid = crypto.randomUUIDv4().pipe(Effect.orDie);
+  const random = yield* SecureRandom.SecureRandom;
+  const uuid = random.uuidV4();
   const commandId = (tag: string) => Effect.map(uuid, (id) => CommandId.make(`baton:${tag}:${id}`));
 
   const threadShells = orchestrator.getShellSnapshot().pipe(
