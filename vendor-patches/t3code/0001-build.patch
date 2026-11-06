@@ -328,7 +328,7 @@ index 02f19b07b4531a4cd2760c99e642f694f56ab138..257a15b13995c48a1ce7abf5b448bed9
 +  assert.include(batonSidecarBuild("mac", "x64")[0]!.cmake, "CMAKE_OSX_ARCHITECTURES=x86_64");
 +});
 diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
-index 599c6b809a18ff4ce320c9780c87bd244d94dad3..fa478f92902ac839e84e93dad8aad59268cfdad6 100644
+index 599c6b809a18ff4ce320c9780c87bd244d94dad3..cac3cad1340d4f92eb27f8bc9dbe91e89ad8dd66 100644
 --- a/scripts/build-desktop-artifact.ts
 +++ b/scripts/build-desktop-artifact.ts
 @@ -749,6 +749,7 @@ const WindowsPackagedPayloadValidationReason = Schema.Literals([
@@ -465,7 +465,7 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..fa478f92902ac839e84e93dad8aad592
 +  yield* fs.remove(destination, { recursive: true, force: true }).pipe(Effect.ignore);
 +  yield* fs.makeDirectory(destination, { recursive: true });
 +  yield* fs.copy(path.join(crate, "models"), path.join(destination, "models"));
-+  const exe = input.platform === "win" ? "tessaya-voice.exe" : "baton-dictation";
++  const exe = input.platform === "win" ? "tessaya-voice.exe" : "tessaya-voice";
 +  const built: string[] = [];
 +  for (const build of batonSidecarBuild(input.platform, input.arch ?? "x64")) {
 +    const spawnCommand = yield* resolveSpawnCommand("cargo", [
