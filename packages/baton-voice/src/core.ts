@@ -471,7 +471,10 @@ export const createVoiceCore = (input: {
     silenceSamples = 0;
     segmentSamples = 0;
     input.vad.reset();
-    if (parts === null || spoken < msToSamples(seg.minSpeechMs)) {
+    // Ended while its wake was still being checked (a busy machine): the detector may not have scored his
+    // command yet, so recognition decides whether there were words, once the wake is confirmed.
+    const checking = waitFor !== null;
+    if (parts === null || (spoken < msToSamples(seg.minSpeechMs) && !checking)) {
       if (parts !== null) after(() => emit({ type: "dropped", text: "", reason: "no speech" }));
       return show();
     }
