@@ -21,8 +21,15 @@ const OWW_CHUNK = 1280;
 const MEL_HISTORY = 480;
 const MEL_WINDOW = 76;
 const EMBED_WINDOW = 16;
-/** Audio further behind the newest frame than this is not scored. */
+/** Quiet audio further behind the newest frame than this is not scored. */
 const MAX_BEHIND = 4 * 16_000;
+/** Room tone, about -48 dBFS: no name in it. */
+const QUIET = 131;
+const quiet = (chunk: Int16Array) => {
+  let sum = 0;
+  for (const v of chunk) sum += v * v;
+  return Math.sqrt(sum / Math.max(1, chunk.length)) < QUIET;
+};
 
 // Loaded on first use, so a missing native binding disables voice instead of crashing the app.
 let ortModule: Promise<typeof Ort> | undefined;
@@ -157,9 +164,9 @@ export const streamingScorer = (input: {
       pending = pending.slice(input.chunkSamples);
       const end = fed - pending.length;
       queue = queue.then(async () => {
-        // A stall (models loading at launch, a busy computer) skips old audio and starts fresh, so the
-        // answers catch up with the microphone instead of trailing it by the whole stall.
-        if (fed - end > MAX_BEHIND) {
+        // Behind after a stall (launch, a busy computer), old quiet audio is skipped and the scorer starts fresh,
+        // so it catches up with the microphone. Old speech is still scored: a name said at launch may be in it.
+        if (fed - end > MAX_BEHIND && quiet(chunk)) {
           stale = true;
           return;
         }
