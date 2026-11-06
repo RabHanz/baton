@@ -509,7 +509,7 @@ export const gatePrompt = (
   who: { readonly agent?: string; readonly project?: string } = {},
 ) => {
   const agent = who.agent ?? "Tessaya";
-  const asks = `${agent} wants to do this${who.project === undefined ? "" : ` in ${who.project}`}`;
+  const asks = `${agent} wants to do this${who.project === undefined ? "" : ` in ${JSON.stringify(who.project.slice(0, 60))}`}`;
   return {
     title: judged.risky ? "This one is risky" : `${agent} wants to do this`,
     detail: `${asks}: ${action}\n\n${judged.why}`,
