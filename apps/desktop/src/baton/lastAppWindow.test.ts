@@ -5,6 +5,8 @@ import {
   pickRevealable,
   keepRunningForTray,
   markCompanionWindow,
+  setOverlaySafely,
+  syncsWithT3Appearance,
   shouldQuitOnAllClosed,
 } from "./lastAppWindow.ts";
 
@@ -39,5 +41,25 @@ describe("which window opening the sessions reveals", () => {
     expect(pickRevealable([baton], isAux)).toBeUndefined();
     expect(pickRevealable([baton, aux], isAux)).toBeUndefined();
     expect(pickRevealable([baton, aux, t3], isAux)).toBe(t3);
+  });
+});
+
+describe("the title-bar overlay on theme changes", () => {
+  it("skips Tessaya's own windows and never throws for a window made without an overlay", () => {
+    const calls: unknown[] = [];
+    const plain = { setTitleBarOverlay: (o: never) => void calls.push(o) };
+    const noOverlay = {
+      setTitleBarOverlay: () => {
+        throw new TypeError("Titlebar overlay is not enabled");
+      },
+    };
+    const own = { setTitleBarOverlay: (o: never) => void calls.push(o) };
+    markCompanionWindow(own);
+    expect(setOverlaySafely(plain, { height: 50 })).toBe(true);
+    expect(setOverlaySafely(noOverlay, { height: 50 })).toBe(false);
+    expect(setOverlaySafely(own, { height: 50 })).toBe(false);
+    expect(syncsWithT3Appearance(own)).toBe(false);
+    expect(syncsWithT3Appearance(plain)).toBe(true);
+    expect(calls).toEqual([{ height: 50 }]);
   });
 });

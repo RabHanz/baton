@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { compactQuiet, holdFramesUntil, startWarmUp, warmUpVoice } from "./warmUp.ts";
+import {
+  compactQuiet,
+  dictationAtLaunch,
+  holdFramesUntil,
+  startWarmUp,
+  warmUpVoice,
+} from "./warmUp.ts";
 
 describe("warming the voice models before the microphone opens", () => {
   it("scores silent frames and transcribes silence, and finishes only when both have", async () => {
@@ -238,5 +244,18 @@ describe("holding what is heard while the models load", () => {
     expect(out.length).toBe(2 + 60);
     expect(out[0]).toBe(speech);
     expect(out.at(-1)).toBe(speech);
+  });
+});
+
+describe("when dictation loads at launch", () => {
+  const base = { available: true, dictation: "baton", modelPresent: true, wakeOn: true };
+  it("loads at once only when the wake word needs it, after start-up when only the dictation key does", () => {
+    expect(dictationAtLaunch(base)).toBe("now");
+    expect(dictationAtLaunch({ ...base, wakeOn: false })).toBe("settled");
+  });
+  it("loads nothing without the sidecar, the model, or Tessaya as the dictation engine", () => {
+    expect(dictationAtLaunch({ ...base, available: false })).toBe("never");
+    expect(dictationAtLaunch({ ...base, modelPresent: false })).toBe("never");
+    expect(dictationAtLaunch({ ...base, dictation: "wispr" })).toBe("never");
   });
 });
