@@ -282,6 +282,11 @@ describe("silence after a wake word", () => {
       expect(r.events.find((e) => e.type === "dropped")).toMatchObject({ reason: "own voice" });
     });
 
+    it("takes his stop when she said a different command on its own", async () => {
+      const r = await talking("Stop.", "Wait. Next we stop the service.");
+      expect(r.events.some((e) => e.type === "stop_heard")).toBe(true);
+    });
+
     it("labels her own words heard back as her own voice", async () => {
       const r = await talking("the folder holds", "The folder holds three reports.");
       expect(r.events.find((e) => e.type === "dropped")).toMatchObject({ reason: "own voice" });

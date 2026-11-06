@@ -42,6 +42,7 @@ import {
   type SttProvider,
   type VoiceCoreEvent,
   type VoiceIntentClient,
+  OVER_HER_VOICE,
 } from "@t3tools/baton-voice";
 import type { EscapeRank } from "../screen/escapeKey.ts";
 import type { ConversationLog } from "../conversation/conversationLog.ts";
@@ -921,13 +922,6 @@ export interface DesktopBatonVoice {
 
 const wordName = (word: string | null): string | null =>
   word === null ? null : `${word[0]!.toUpperCase()}${word.slice(1)}`;
-
-const OVER_HER_VOICE: ReadonlySet<string> = new Set([
-  "own voice",
-  "not a stop, said over her voice",
-  "recogniser busy",
-  "recognition failed",
-]);
 
 export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBatonVoice => {
   // Legacy name (D71): existing settings live in this file, so it keeps "fabric".

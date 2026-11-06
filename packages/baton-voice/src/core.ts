@@ -30,6 +30,7 @@ import {
   isAffirmative,
   isFiller,
   isStopPhrase,
+  plainWords,
   stripWake,
 } from "./modeMachine.ts";
 import type { RouteOutcome, VoiceRouter } from "./router.ts";
@@ -62,6 +63,14 @@ export const DEFAULT_SEGMENTER: SegmenterConfig = {
   maxUtteranceMs: 15_000,
   preRollMs: 300,
 };
+
+/** Reasons a drop happened over her voice: none of them is his turn, so the pill and Home stay quiet. */
+export const OVER_HER_VOICE: ReadonlySet<string> = new Set([
+  "own voice",
+  "not a stop, said over her voice",
+  "recogniser busy",
+  "recognition failed",
+]);
 
 export type VoiceCoreEvent =
   | { readonly type: "state"; readonly state: VoiceState; readonly target: string | null }
@@ -658,7 +667,7 @@ export const createVoiceCore = (input: {
         const whole = isStopPhrase(stripWake(words.join(" "), timings.wakeWords));
         const sheSaidIt = hers
           .flatMap((sentence) => sentence.split(/(?<=[.!?])\s+/))
-          .some((part) => isStopPhrase(part));
+          .some((part) => isStopPhrase(part) && plainWords(part) === plainWords(said));
         if ((!whole || sheSaidIt) && echoesSpeech(said, hers)) {
           return emit({ type: "dropped", text: said, reason: "own voice" });
         }
@@ -720,6 +729,8 @@ export const createVoiceCore = (input: {
   const heardItselfAt = (at: number) =>
     !headphones() && at >= spokeFrom && (speaking || at < echoUntil);
   let bargeRun = 0;
+  /** The last sample the echo guard (or, on headphones, the detector) heard him over her voice. */
+  let lastNearEndAt = -Infinity;
   /** The detector's scored speech, as of the last frame. */
   let scoredSpeech = 0;
   let ducked = false;
@@ -800,8 +811,11 @@ export const createVoiceCore = (input: {
       heardItselfAt(firedAt) &&
       wakeWord !== null &&
       echoesSpeech(wakeWord, spokenLately) &&
-      // A sure score alone could be her own clean "Tessaya": only with his voice heard over hers too.
-      !((bargeRun > 0 || ducked) && input.trustWake?.(wakeWord, score) === true)
+      // A sure score alone could be her own clean "Tessaya": only with his voice heard over hers around then.
+      !(
+        lastNearEndAt >= firedAt - msToSamples(WAKE_LOOKBACK_MS) &&
+        input.trustWake?.(wakeWord, score) === true
+      )
     ) {
       // The reply itself says the name: it is its own voice, never a barge-in.
       emit({ type: "dropped", text: wakeWord, reason: "own voice", score });
@@ -880,6 +894,7 @@ export const createVoiceCore = (input: {
         : input.echo !== undefined &&
           ((v) => v.ready && v.nearEnd)(input.echo.process(frame, Date.now()));
       bargeRun = flagged ? bargeRun + frame.length : 0;
+      if (flagged) lastNearEndAt = samples;
       if (bargeRun >= msToSamples(BARGE_MS)) {
         const onset = bargeRun;
         bargeRun = 0;

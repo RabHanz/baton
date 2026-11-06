@@ -3,6 +3,8 @@
  * Home's history (D140), read from `voice-turns.ndjson` (D120). Dictated words are never in that
  * file, only a length, so the history says "Dictated" and how much, never what.
  */
+import { OVER_HER_VOICE } from "@t3tools/baton-voice";
+
 import type { HomeActivity } from "./batonHome.ts";
 
 interface Line {
@@ -49,6 +51,8 @@ const toItem = (l: Line): HomeActivity | null => {
     case "nothing_heard":
       return { at, kind: "quiet", text: "Heard the wake word, then nothing.", dim: true };
     case "dropped":
+      // Her own voice and what was heard over it are not his: Home would fill with them.
+      if (typeof l.reason === "string" && OVER_HER_VOICE.has(l.reason)) return null;
       return { at, kind: "ignored", text: "Ignored something it was not sure of.", dim: true };
     case "error":
       return {

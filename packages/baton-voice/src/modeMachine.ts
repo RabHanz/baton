@@ -134,7 +134,7 @@ export const isAffirmative = (text: string): boolean => answerOf(text) === "yes"
 const SLEEP =
   /^(?:that's all|thats all|that is all|go to sleep|stop listening|thanks,? that's it|thanks|thank you|cheers|goodbye)[.!]?$/i;
 
-const plainWords = (text: string): string =>
+export const plainWords = (text: string): string =>
   text
     .toLowerCase()
     .replace(/[‘’]/g, "'")

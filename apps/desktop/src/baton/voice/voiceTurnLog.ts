@@ -4,7 +4,7 @@
  * machine. Dictated words are not written here: they are often someone else's business, so a
  * dictation records its length only.
  */
-import type { VoiceCoreEvent } from "@t3tools/baton-voice";
+import { OVER_HER_VOICE, type VoiceCoreEvent } from "@t3tools/baton-voice";
 
 /** Stage times are for the turn that follows its words, not one typed a minute later. */
 const STAGES_KEPT_MS = 60_000;
@@ -102,7 +102,13 @@ export const makeVoiceTurnLog = (
           }
           return;
         case "dropped":
-          return note("dropped", { wake, text: event.text, reason: event.reason });
+          // Over her voice the last wake is not what these words answer to.
+          return note("dropped", {
+            ...(OVER_HER_VOICE.has(event.reason) ? {} : { wake }),
+            text: event.text,
+            reason: event.reason,
+            ...(event.score === undefined ? {} : { score: event.score }),
+          });
         case "stop_heard":
           return note("stop", { text: event.text });
         case "dismissed":
