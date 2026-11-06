@@ -5,6 +5,15 @@ onnxruntime-node (packages/baton-voice) is allowed to skip its install script.
 The scripts package typecheck leaves out scripts/tessaya, whose run-by-node tools import
 app sources outside that project.
 
+diff --git a/.gitignore b/.gitignore
+index b6b793e020ef1917d262a026246f52c1a825dbe2..0d6bd743640058c912c4d0a67ce01f8fc45220c3 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -48,3 +48,4 @@ node_modules/
+ 
+ # pnpm content-addressable store; never belongs in the repo.
+ .pnpm-store/
++apps/server/resources/memory-model/model_quantized.onnx
 diff --git a/apps/desktop/package.json b/apps/desktop/package.json
 index 3d9e3239840cfe53200983ed3b0de487191cb551..530735fd2f21100eaf37bc3ba10ab2ba2bfd58e9 100644
 --- a/apps/desktop/package.json
@@ -75,7 +84,7 @@ index e93c0733fa09a82d359454200b420d18c0a0a1b5..be7e3863a5e15337aefa4f475be6cc21
      "@t3tools/contracts": "workspace:*",
      "@t3tools/mobile-highlights-native": "file:./modules/t3-highlights",
 diff --git a/apps/server/package.json b/apps/server/package.json
-index 3a6797d90da28a2bda38e3a0cedfeb2a9e086652..190bc68947c8f62bdae1563afe45fcb643bda30d 100644
+index 3a6797d90da28a2bda38e3a0cedfeb2a9e086652..bc2cc54b8eef7df692b0a86d09ae7ea8943dde3a 100644
 --- a/apps/server/package.json
 +++ b/apps/server/package.json
 @@ -43,6 +43,8 @@
@@ -87,6 +96,14 @@ index 3a6797d90da28a2bda38e3a0cedfeb2a9e086652..190bc68947c8f62bdae1563afe45fcb6
      "@t3tools/provider-acp": "workspace:*",
      "@t3tools/provider-acp-registry": "workspace:*",
      "@t3tools/provider-core": "workspace:*",
+@@ -66,6 +68,7 @@
+     "effect": "catalog:",
+     "ffi-rs": "1.3.2",
+     "node-pty": "^1.2.0-beta.15",
++    "onnxruntime-node": "1.30.0",
+     "playwright-core": "1.60.0",
+     "proper-lockfile": "4.1.2",
+     "saxes": "6.0.0",
 diff --git a/apps/web/package.json b/apps/web/package.json
 index 57ed8f275f020cd039d3de9cd6c0b8fa24b2d4d3..5b134dc74a279cb5c12b74ff26420c6b8e51b1b1 100644
 --- a/apps/web/package.json
@@ -141,7 +158,7 @@ index 0659f65475da775fd54525d9147c84a8b0ad4a3a..6f45c7aecce09ceaeb55a27731aee067
      "test": "vp test run --config ../vite.config.ts --dir ."
    },
 diff --git a/knip.jsonc b/knip.jsonc
-index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..158c6b6a7fe884de8775b4b76115d3204b06ef47 100644
+index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..7415a21730965f83de4dac56503bf8f9a9d9e28b 100644
 --- a/knip.jsonc
 +++ b/knip.jsonc
 @@ -36,6 +36,9 @@
@@ -163,7 +180,7 @@ index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..158c6b6a7fe884de8775b4b76115d320
          "scripts/fetch-expo-schema.ts",
          "scripts/probe-claude-fork-local-rollback-replay.ts",
          "scripts/update-test-shard-weights.ts",
-@@ -58,7 +63,14 @@
+@@ -58,13 +63,22 @@
          "graphql.config.ts",
        ],
        // The generated operations export every selection's class.
@@ -179,7 +196,15 @@ index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..158c6b6a7fe884de8775b4b76115d320
        // Keep the transitive Effect runtime pinned for standalone npm installs.
        // The Vite+ web build prerequisite.
        // Native and disk-loaded provider packages stay external to the bundle; the
-@@ -72,13 +84,19 @@
+       // CLI archive and desktop sidecar stage them from this manifest.
+       "ignoreDependencies": [
+         "@effect/platform-node-shared",
++        // Memory recall's model runtime, resolved from disk for its worker thread (BatonMemoryEmbedder.ts).
++        "onnxruntime-node",
+         "@t3tools/web",
+         "@napi-rs/keyring",
+         "ffi-rs",
+@@ -72,13 +86,19 @@
        ],
      },
      "apps/desktop": {
@@ -199,7 +224,7 @@ index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..158c6b6a7fe884de8775b4b76115d320
          "src/boot.ts!",
          "src/compileCache.ts!",
          "src/serverCompileCache.ts!",
-@@ -91,7 +109,8 @@
+@@ -91,7 +111,8 @@
        ],
        // The injected runtime resolves Playwright by string; release tooling runs
        // electron-builder from this workspace, outside its package scripts.
@@ -209,7 +234,7 @@ index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..158c6b6a7fe884de8775b4b76115d320
      },
      "apps/web": {
        // Worktree setup (scripts/setup-worktree.ts) runs this directly, and evidence
-@@ -100,13 +119,20 @@
+@@ -100,13 +121,20 @@
        // UI component modules are copied and adapted as cohesive sets. Keep their
        // named subcomponents even before they have callers; the file audit still
        // reports an entire component module when nothing imports it.
@@ -231,7 +256,7 @@ index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..158c6b6a7fe884de8775b4b76115d320
        // Expo loads plugins and the fingerprint config by string; Metro embeds the browser entry in the native WebView.
        "entry": [
          "index.ts!",
-@@ -152,6 +178,9 @@
+@@ -152,6 +180,9 @@
        // These workspace packages are private to this monorepo.
        "includeEntryExports": true,
      },
@@ -622,6 +647,52 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..511a535d150bae20ceaa50c0653f4150
    if (options.platform === "linux") {
      for (const backend of ["kde", "hyprland"] as const)
        yield* stageLinuxCaptureHelper({
+diff --git a/scripts/lib/cli-external-packages.test.ts b/scripts/lib/cli-external-packages.test.ts
+index 7ea1c3968452e310254ecf4088e873289e79406d..afc16423104662783bb841ffa4358539c7aa90cd 100644
+--- a/scripts/lib/cli-external-packages.test.ts
++++ b/scripts/lib/cli-external-packages.test.ts
+@@ -10,6 +10,7 @@ import * as Schema from "effect/Schema";
+ import { findEsmImportsOfExternalPackages } from "./cli-executable-imports.ts";
+ 
+ import {
++  INSTALL_ONLY_DEPENDENCIES,
+   isRuntimeExternalCliDependency,
+   findInlinedExternalPackages,
+   selectCliRuntimeExternalDependencies,
+@@ -113,6 +114,7 @@ it.layer(NodeServices.layer)("external package dependency closure", (it) => {
+           ...manifest.peerDependencies,
+         };
+         for (const dependency of Object.keys(declared)) {
++          if (INSTALL_ONLY_DEPENDENCIES[name]?.includes(dependency) === true) continue;
+           if (!isRuntimeExternal(dependency)) {
+             violations.push(`${name} -> ${dependency}`);
+           }
+diff --git a/scripts/lib/cli-external-packages.ts b/scripts/lib/cli-external-packages.ts
+index b3df99797cfadf863356a2869af83965b77b9447..c577aa78a41e94eaeded7f1a8a463ba98d33b2a5 100644
+--- a/scripts/lib/cli-external-packages.ts
++++ b/scripts/lib/cli-external-packages.ts
+@@ -14,6 +14,8 @@ const CLI_RUNTIME_EXTERNAL_PREFIXES = [
+   "koffi",
+   "@koromix/",
+   "@napi-rs/keyring",
++  // Memory recall by meaning (MEM-13): the native runtime and its JS side load from disk beside the server.
++  "onnxruntime-",
+   "@clerk/electron-passkeys",
+   "node-gyp-build",
+   "node-addon-api",
+@@ -34,6 +36,12 @@ const CURSOR_RUNTIME_DEPENDENCIES = [
+   "@fastify/busboy",
+ ] as const;
+ 
++/** Dependencies only an install script uses; the workspace never runs it (pnpm-workspace.yaml), so nothing loads them. */
++export const INSTALL_ONLY_DEPENDENCIES: Readonly<Record<string, ReadonlyArray<string>>> = {
++  // onnxruntime-node's script/install.js downloads binaries with these; its dist needs only onnxruntime-common.
++  "onnxruntime-node": ["adm-zip", "global-agent"],
++};
++
+ export function isRuntimeExternalCliDependency(id: string): boolean {
+   return (
+     CLI_RUNTIME_EXTERNAL_PREFIXES.some((prefix) => id.startsWith(prefix)) ||
 diff --git a/scripts/lib/desktop-external-packages.ts b/scripts/lib/desktop-external-packages.ts
 index 68af7f32512c19565f9273101c05be347dc3362f..814ba45073f6bc53e296b9071c89cf26bbdf9e99 100644
 --- a/scripts/lib/desktop-external-packages.ts
