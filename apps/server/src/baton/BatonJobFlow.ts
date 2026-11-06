@@ -37,6 +37,7 @@ import { watchFleet } from "@t3tools/baton-shared/watch";
 import {
   DEFAULT_MODEL_BY_PROVIDER,
   type ModelSelection,
+  orchestrationV2RunWorkStartedAt,
   type ProviderInstanceId,
   ProviderDriverKind,
   type ThreadId,
@@ -136,6 +137,7 @@ export const startJob = Effect.fn("BatonJobFlow.start")(function* (
     ...(input.limits === undefined ? {} : { limits: input.limits }),
     workerInstanceId: input.modelSelection.instanceId,
     ...(options.parentId === undefined ? {} : { parentId: options.parentId }),
+    ...(options.role === undefined ? {} : { persona: options.role }),
   });
   // A retried start finds the thread it already made.
   const existing = yield* threadOf(id);
@@ -246,6 +248,42 @@ const TURN_STATUSES: ReadonlySet<string> = new Set([
   "failed",
 ]);
 
+/** Background work's daily caps (decided): a persona's jobs, and the whole team's. Talking with him is never capped. */
+export const PERSONA_DAY_TURNS = 40;
+export const TEAM_DAY_TURNS = 120;
+const DAY_MS = 24 * 60 * 60_000;
+
+/** Which personas, and whether the whole team, have used the day's turns. */
+export const capsReached = (counts: ReadonlyMap<string, number>) => ({
+  personas: [...counts].filter(([, n]) => n >= PERSONA_DAY_TURNS).map(([persona]) => persona),
+  team: [...counts.values()].reduce((a, b) => a + b, 0) >= TEAM_DAY_TURNS,
+});
+
+/** Turns each persona's jobs took in the last 24 hours, by persona. */
+const dayTurns = Effect.fn("BatonJobFlow.dayTurns")(function* (
+  entries: ReadonlyArray<BatonFleetEntry>,
+  personas: ReadonlyMap<string, string>,
+) {
+  const engine = yield* BatonEngine;
+  const since = (yield* Clock.currentTimeMillis) - DAY_MS;
+  const counts = new Map<string, number>();
+  for (const entry of entries) {
+    const persona = personas.get(entry.workSessionId);
+    if (persona === undefined) continue;
+    let n = 0;
+    for (const thread of entry.threads) {
+      const runs = yield* engine.threadRuns(thread.threadId);
+      n += runs.filter(
+        (r) =>
+          TURN_STATUSES.has(r.status) &&
+          DateTime.toEpochMillis(orchestrationV2RunWorkStartedAt(r)) > since,
+      ).length;
+    }
+    counts.set(persona, (counts.get(persona) ?? 0) + n);
+  }
+  return counts;
+});
+
 /** What each worker has taken so far, for the cards and for the caps. */
 export const turnCounts = Effect.fn("BatonJobFlow.turnCounts")(function* (
   entries: ReadonlyArray<BatonFleetEntry>,
@@ -325,6 +363,34 @@ export const enforceCaps = Effect.fn("BatonJobFlow.enforceCaps")(function* (
       at,
       via: "thread",
       text: `Stopped: it reached its ${card.limitReached} limit. Raise the limit to let it go on.`,
+    });
+    stopped.push(card.workSessionId);
+  }
+  // The day's caps stop any working job of a persona that has used its turns, or all of them for the team's.
+  const personas = yield* jobs.personas();
+  const reached = capsReached(yield* dayTurns(entries, personas));
+  if (!reached.team && reached.personas.length === 0) return stopped;
+  const roster = readPack(NodePath.dirname((yield* ServerConfig.ServerConfig).dbPath)).personas;
+  for (const card of cards) {
+    const persona = personas.get(card.workSessionId);
+    if (
+      persona === undefined ||
+      stopped.includes(card.workSessionId) ||
+      !["working", "starting", "monitoring"].includes(card.state) ||
+      !(reached.team || reached.personas.includes(persona))
+    ) {
+      continue;
+    }
+    if (!(yield* stopJob(card.workSessionId))) continue;
+    const name = roster.find((p) => p.id === persona)?.name ?? persona;
+    const why = reached.personas.includes(persona)
+      ? `${name} has used the ${PERSONA_DAY_TURNS} background turns a persona gets in a day`
+      : `the team has used its ${TEAM_DAY_TURNS} background turns for the day`;
+    yield* jobs.refine(card.workSessionId, {
+      by: "baton",
+      at: DateTime.formatIso(DateTime.makeUnsafe(yield* Clock.currentTimeMillis)),
+      via: "thread",
+      text: `Stopped: ${why}. Talking with you is never capped; send it on again once the last 24 hours are under the cap.`,
     });
     stopped.push(card.workSessionId);
   }

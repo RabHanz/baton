@@ -12,6 +12,7 @@ import * as NodePath from "node:path";
 
 import { assert, it } from "@effect/vitest";
 import * as ServerConfig from "../config.ts";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
@@ -20,6 +21,7 @@ import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
 import {
   agreeJob,
   autoRetry,
+  capsReached,
   enforceCaps,
   postReports,
   noticePlan,
@@ -41,7 +43,12 @@ const sent: Array<{ threadId: ThreadId; text: string }> = [];
 const shells: OrchestrationV2ThreadShell[] = [];
 const messages: Array<{ role: "user" | "assistant"; text: string }> = [];
 const interrupted: ThreadId[] = [];
-const runs = new Map<string, ReadonlyArray<{ status: string }>>();
+const runs = new Map<string, ReadonlyArray<{ status: string; requestedAt: DateTime.Utc }>>();
+/** A run of the worker's, this many hours before the test clock's start. */
+const ran = (status: string, hoursAgo = 1) => ({
+  status,
+  requestedAt: DateTime.makeUnsafe(-hoursAgo * 3_600_000),
+});
 const BRIEF = [
   "Job brief",
   "The job: x",
@@ -463,9 +470,9 @@ layer("BatonJobFlow", (it) => {
           },
         ] as never;
       interrupted.length = 0;
-      runs.set(threadId, [{ status: "completed" }, { status: "queued" }]);
+      runs.set(threadId, [ran("completed"), ran("queued")]);
       assert.deepStrictEqual(yield* enforceCaps(entry("working")), []);
-      runs.set(threadId, [{ status: "completed" }, { status: "running" }, { status: "cancelled" }]);
+      runs.set(threadId, [ran("completed"), ran("running"), ran("cancelled")]);
       assert.deepStrictEqual(yield* enforceCaps(entry("working")), [id]);
       assert.deepStrictEqual(interrupted, [threadId]);
       // Once stopped it is not working, so a second sweep leaves it alone.
@@ -473,6 +480,70 @@ layer("BatonJobFlow", (it) => {
       const terms = yield* jobs.terms(id);
       assert.isTrue(terms?.revisions.some((r) => r.text.includes("reached its turns limit")));
     }),
+  );
+
+  it.effect(
+    "stops a persona's jobs at its background turns for the day, and says who and why",
+    () =>
+      Effect.gen(function* () {
+        const jobs = yield* BatonJobService;
+        const id = WorkSessionId.make("job-persona-cap");
+        const { threadId } = yield* startJob(
+          {
+            id,
+            projectId: ProjectId.make("project-site"),
+            title: "Inbox",
+            goal: "Sort the inbox",
+            permissions: { folders: [], projects: [], tools: ["read"] },
+            limits: { workerTurns: 500, wallClockMinutes: 6000 },
+            modelSelection: { instanceId: ProviderInstanceId.make("claude"), model: "sonnet" },
+            runtimeMode: "approval-required",
+          },
+          { role: "operations" },
+        );
+        shells.push({ id: threadId, status: "completed" } as OrchestrationV2ThreadShell);
+        yield* jobs.planReady(id);
+        yield* agreeJob(id);
+        const entries = [
+          {
+            workSessionId: id,
+            title: "Inbox",
+            lifecycle: "active",
+            state: "working",
+            updatedAt: "2026-11-03T10:00:00.000Z",
+            threads: [{ threadId }],
+            synopsis: null,
+          },
+        ] as never;
+        interrupted.length = 0;
+        // Yesterday's turns do not count against today's.
+        const today = (n: number) => Array.from({ length: n }, () => ran("completed"));
+        const yesterday = Array.from({ length: 30 }, () => ran("completed", 25));
+        runs.set(threadId, [...today(39), ...yesterday]);
+        assert.deepStrictEqual(yield* enforceCaps(entries), []);
+        runs.set(threadId, [...today(40), ...yesterday]);
+        assert.deepStrictEqual(yield* enforceCaps(entries), [id]);
+        assert.deepStrictEqual(interrupted, [threadId]);
+        const terms = yield* jobs.terms(id);
+        assert.isTrue(
+          terms?.revisions.some((r) => r.text.includes("Freya has used the 40 background turns")),
+        );
+        // The team's cap holds across personas, each under its own.
+        const three = new Map([
+          ["executive", 39],
+          ["engineering", 39],
+          ["operations", 39],
+        ]);
+        assert.deepStrictEqual(capsReached(three), { personas: [], team: false });
+        assert.deepStrictEqual(capsReached(new Map([...three, ["research", 3]])), {
+          personas: [],
+          team: true,
+        });
+        assert.deepStrictEqual(capsReached(new Map([["research", 40]])), {
+          personas: ["research"],
+          team: false,
+        });
+      }),
   );
 
   it.effect(
