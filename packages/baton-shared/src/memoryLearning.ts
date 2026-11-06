@@ -38,6 +38,8 @@ export interface LearnInput {
   readonly project: string | null;
   /** The exchange before this one, so "yes, do that from now on" has a referent. */
   readonly previous?: string | null | undefined;
+  /** The persona whose turn it was (its pack id): the extractor is shown only what it may recall. */
+  readonly agent?: string | undefined;
 }
 
 export interface Proposal {

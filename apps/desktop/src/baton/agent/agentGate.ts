@@ -13,6 +13,7 @@ import {
   type ToolCall,
 } from "@t3tools/baton-shared/operator";
 import { decideTrust, type TrustAgent } from "@t3tools/baton-shared/trust";
+import type { ProjectRef } from "@t3tools/baton-shared/osPack";
 import { textIsFromConversation } from "@t3tools/baton-shared/conversation";
 import {
   chromeReads,
@@ -106,6 +107,8 @@ export const createAgentGate = (input: {
   readonly inPlan?: () => ReadonlyArray<string> | null;
   /** The persona this turn answers as: its own tool list narrows the gate, and every card names it. */
   readonly agent?: () => TrustAgent;
+  /** The projects of a job by its id, so a project's own lead may split only its own project's jobs. */
+  readonly jobProjects?: (id: string) => Promise<ReadonlyArray<ProjectRef> | null>;
   /** Keys were allowed for this window (a command line only when `shell` and he agreed); checked again when sent. */
   readonly keysAllowed?: (at: {
     readonly window?: number;
@@ -184,10 +187,19 @@ export const createAgentGate = (input: {
           textIsFromConversation(text, [{ said: input.taint.said(), reply: "" }])),
     };
     const agent = input.agent?.();
+    const jobId = call.input["id"];
+    const jobProjects =
+      agent !== undefined &&
+      !agent.lead &&
+      (name === "job_split" || name === "job_handoff" || name === "job_schedule") &&
+      typeof jobId === "string"
+        ? ((await input.jobProjects?.(jobId).catch(() => null)) ?? null)
+        : null;
     const judged = decideTrust({
       call,
       context,
       plan: input.inPlan?.() ?? null,
+      jobProjects,
       ...(agent === undefined ? {} : { agent }),
     });
     const action = describeToolCall(call);

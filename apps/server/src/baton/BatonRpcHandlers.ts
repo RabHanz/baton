@@ -521,6 +521,7 @@ export const makeHandlers = Effect.gen(function* () {
             tainted: input.tainted,
             project: input.project ?? null,
             previous: input.previous ?? null,
+            ...(input.agent === undefined ? {} : { agent: input.agent }),
           }),
         ),
       ),

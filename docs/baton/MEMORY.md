@@ -118,6 +118,13 @@ like any other. Exports are plain markdown the user owns; they leave the machine
 - On demand, `memory_search` returns ranked hits by FTS5 (bm25) on `text`, filtered by scope and kind, with each item's
   source and confidence. `memory_remember`, `memory_forget` (he is asked first, as today) and a new `memory_pin` keep their
   meaning; `memory_search` and the injected block record which ids were used in the turn.
+- Walls (decision 6): a project named in the lead's `walled:` pack field keeps its items for its team, the personas
+  whose `projects:` or `leads:` name it, and the lead. The wall is a filter on `scope`/`scopeRef` at recall and at an
+  agent's search, never a second store. A search that names no persona sees nothing walled unless it says `admin`
+  (his own view), so a new caller that forgets the persona fails closed. The standing block is shared by every persona in
+  a session, so it carries nothing walled; walled items reach a persona only through its own sentence's block. The
+  extractor is shown only what the turn's persona may recall, and what a turn in a walled project learns is kept in that
+  project whatever scope the model chose. His Memory page lists everything.
 - "Show what you used" opens a card listing those items, from the per-turn record in `memory_uses` (turn id, item ids).
 - "What do you remember about X?", "forget that", "remember that": the first is `memory_search`; "that" resolves to the last
   thing the assistant or he said, from the conversation file, so the tools take text or the previous turn's reference.

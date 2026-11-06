@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   DEFAULT_OS_PACK,
+  leadsProject,
   mergePack,
   modelOf,
   packPrompt,
@@ -62,6 +63,27 @@ describe("the roster", () => {
     // A file with no front-matter keeps the default face.
     expect(who(mergePack({ roles: { engineering: "Mine." } }), "Alfred")).toBe("Alfred/charles");
   });
+  it("reads each persona's team and the projects it leads, telling apart two projects with one title", () => {
+    const pack = mergePack({
+      executive: "---\nwalled: shop, tax\n---\n",
+      roles: { engineering: "---\nprojects: shop, site\nleads: Site, shop@studio\n---\n" },
+    });
+    const alfred = pack.personas.find((p) => p.name === "Alfred")!;
+    expect(pack.walled).toEqual(["shop", "tax"]);
+    expect(alfred.projects).toEqual(["shop", "site"]);
+    const at = (title: string, computer: string | null) => ({ title, computer });
+    const known = [at("site", "laptop"), at("shop", "studio"), at("shop", "laptop")];
+    expect(leadsProject(alfred, at("site", "laptop"), known)).toBe(true);
+    // Unqualified, a title matches only when one known project has it.
+    expect(leadsProject(alfred, at("site", null), known)).toBe(true);
+    expect(leadsProject(alfred, at("site", null), [...known, at("site", "studio")])).toBe(false);
+    expect(leadsProject(alfred, at("shop", "studio"), known)).toBe(true);
+    expect(leadsProject(alfred, at("shop", "laptop"), known)).toBe(false);
+    expect(leadsProject(alfred, at("shop", null), known)).toBe(false);
+    expect(leadsProject(alfred, at("tax", "laptop"), known)).toBe(false);
+    expect(leadsProject(pack.personas[0]!, at("tax", null), [])).toBe(true);
+  });
+
   it("runs each persona on the model and effort its file names: the lead on Opus, specialists on Sonnet", () => {
     const opus = { model: "opus", effort: "medium" };
     const sonnet = { model: "sonnet", effort: "medium" };

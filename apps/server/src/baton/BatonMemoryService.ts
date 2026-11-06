@@ -1,4 +1,4 @@
-// @effect-diagnostics tryCatchInEffectGen:off preferSchemaOverJson:off cryptoRandomUUIDInEffect:off flatMapConditionalToFilterOrFail:off
+// @effect-diagnostics tryCatchInEffectGen:off preferSchemaOverJson:off cryptoRandomUUIDInEffect:off flatMapConditionalToFilterOrFail:off nodeBuiltinImport:off
 /**
  * Memory (D150, docs/baton/MEMORY.md): short items about him and his work, searchable, with a
  * single door that refuses what must never be kept. The desktop tools, the windows, a phone and
@@ -28,12 +28,18 @@ import {
   type MemoryKind,
   type MemoryQuery,
 } from "@t3tools/baton-shared/memory";
+import { DEFAULT_OS_PACK, mayRecall } from "@t3tools/baton-shared/osPack";
+import * as NodePath from "node:path";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as SqlClient from "effect/sql/SqlClient";
+
+import * as ServerConfig from "../config.ts";
+import { readPack } from "./OperatingSystemPack.ts";
 
 interface ItemRow {
   readonly id: string;
@@ -123,6 +129,7 @@ export class BatonMemoryService extends Context.Service<
       readonly scopeRef?: string | null | undefined;
       readonly budgetTokens?: number | undefined;
       readonly turnRef?: string | undefined;
+      readonly agent?: string | undefined;
     }) => Effect.Effect<MemoryRecall>;
     readonly markUsed: (turnRef: string, ids: ReadonlyArray<string>) => Effect.Effect<void>;
     readonly used: (turnRef?: string) => Effect.Effect<ReadonlyArray<MemoryItem>>;
@@ -203,11 +210,23 @@ export const make = Effect.gen(function* () {
       .slice(0, query.limit ?? 500);
   });
 
+  /** Decision 6: a walled project's items reach only its team; the wall is a label, not a second store. */
+  const walls = Effect.fn("BatonMemoryService.walls")(function* (agent: string | undefined) {
+    const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
+    const pack = Option.isNone(config)
+      ? DEFAULT_OS_PACK
+      : readPack(NodePath.dirname(config.value.dbPath));
+    return (item: MemoryItem) =>
+      item.scope !== "project" || item.scopeRef === null || mayRecall(pack, agent, item.scopeRef);
+  });
+
   const search = Effect.fn("BatonMemoryService.search")(function* (query: MemoryQuery) {
     const words = tokens(query.text ?? "");
     const limit = query.limit ?? DEFAULT_LIMIT;
+    // Walled unless it is his own view: a caller that forgets to name its persona sees nothing walled.
+    const seen = query.admin === true ? () => true : yield* walls(query.agent);
     if (words.length === 0) {
-      const items = yield* list(query);
+      const items = (yield* list(query)).filter(seen);
       return items.slice(0, limit).map((item) => ({ item, score: item.pinned ? 1 : 0.5 }));
     }
     const expression = words.map((w) => `"${w}"*`).join(" OR ");
@@ -222,7 +241,7 @@ export const make = Effect.gen(function* () {
     const wanted = new Set(words);
     return rows
       .map(fromRow)
-      .filter((item) => matches(item, query))
+      .filter((item) => matches(item, query) && seen(item))
       .map((item) => {
         const have = new Set(tokens(item.text));
         let both = 0;
@@ -391,8 +410,10 @@ export const make = Effect.gen(function* () {
     readonly scopeRef?: string | null | undefined;
     readonly budgetTokens?: number | undefined;
     readonly turnRef?: string | undefined;
+    readonly agent?: string | undefined;
   }) {
     const now = yield* nowMs;
+    const seen = yield* walls(context.agent);
     const words = context.text === undefined ? [] : tokens(context.text);
     // A sentence gets what matches it: the standing set is already in the session's system prompt.
     const hits =
@@ -400,6 +421,7 @@ export const make = Effect.gen(function* () {
         ? (yield* search({
             text: context.text!,
             ...(context.scopeRef === undefined ? {} : { scopeRef: context.scopeRef }),
+            ...(context.agent === undefined ? {} : { agent: context.agent }),
             limit: 40,
           })).filter((hit) => hit.score >= RECALL_FLOOR)
         : (yield* list({ kinds: ["note", "preference", "correction", "decision"] }))
@@ -414,6 +436,7 @@ export const make = Effect.gen(function* () {
           item.scope !== "project" ||
           item.scopeRef === context.scopeRef,
       )
+      .filter(({ item }) => seen(item))
       .filter((hit) => effectiveConfidence(hit.item, now) >= 0.1 || hit.item.pinned)
       .toSorted((a, b) => b.score - a.score)
       .map((hit) => hit.item);

@@ -1,3 +1,8 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+
 import { assert, it } from "@effect/vitest";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -5,6 +10,7 @@ import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
 
 import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
+import * as ServerConfig from "../config.ts";
 import { BatonMemoryService, layer as memoryLayer } from "./BatonMemoryService.ts";
 
 const layer = it.layer(memoryLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)));
@@ -162,6 +168,72 @@ layer("BatonMemoryService", (it) => {
     }),
   );
 });
+
+it.effect(
+  "a walled project's memories are recalled only by its team and its leads; the lead sees through the wall",
+  () => {
+    const userdata = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-walls-"));
+    const pack = NodePath.join(userdata, "operating-system");
+    NodeFS.mkdirSync(NodePath.join(pack, "roles"), { recursive: true });
+    NodeFS.writeFileSync(NodePath.join(pack, "executive.md"), "---\nwalled: Shop\n---\n");
+    NodeFS.writeFileSync(
+      NodePath.join(pack, "roles", "engineering.md"),
+      "---\nprojects: shop\n---\n",
+    );
+    NodeFS.writeFileSync(NodePath.join(pack, "roles", "research.md"), "---\nleads: shop\n---\n");
+    const config = Layer.succeed(ServerConfig.ServerConfig, {
+      dbPath: NodePath.join(userdata, "state.sqlite"),
+    } as never);
+    return Effect.gen(function* () {
+      const memory = yield* BatonMemoryService;
+      yield* memory.add({
+        kind: "fact",
+        text: "The shop deploy key rotates on Fridays",
+        source: "user",
+        scope: "project",
+        scopeRef: "shop",
+      });
+      yield* memory.add({
+        kind: "fact",
+        text: "The site deploy key lives in the vault",
+        source: "user",
+        scope: "project",
+        scopeRef: "site",
+      });
+      const recalled = (agent?: string) =>
+        memory
+          .recall({ text: "deploy key", ...(agent === undefined ? {} : { agent }) })
+          .pipe(Effect.map((r) => r.block.includes("shop deploy key")));
+      // Freya is not on the shop's team; Alfred is, Sebastian leads it, Tessaya leads everything.
+      assert.isFalse(yield* recalled("operations"));
+      assert.isTrue(yield* recalled("engineering"));
+      assert.isTrue(yield* recalled("research"));
+      assert.isTrue(yield* recalled("executive"));
+      // A block no one persona owns (the shared standing set) carries nothing walled.
+      assert.isFalse(yield* recalled());
+      // An unwalled project is everyone's.
+      assert.include(
+        (yield* memory.recall({ text: "deploy key", agent: "operations" })).block,
+        "site deploy key",
+      );
+      // Freya's memory_search cannot reach it either.
+      const found = (agent?: string) =>
+        memory
+          .search({ text: "deploy key", ...(agent === undefined ? {} : { agent }) })
+          .pipe(Effect.map((hits) => hits.some((h) => h.item.scopeRef === "shop")));
+      assert.isFalse(yield* found("operations"));
+      // A search that names no persona fails closed; only his own view (admin) sees through.
+      assert.isFalse(yield* found());
+      const own = yield* memory.search({ text: "deploy key", admin: true });
+      assert.isTrue(own.some((h) => h.item.scopeRef === "shop"));
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(memoryLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)), config),
+      ),
+      Effect.ensuring(Effect.sync(() => NodeFS.rmSync(userdata, { recursive: true, force: true }))),
+    );
+  },
+);
 
 // A second server with its own database; it lives as long as the test's scope.
 const server = Layer.build(memoryLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory))).pipe(
