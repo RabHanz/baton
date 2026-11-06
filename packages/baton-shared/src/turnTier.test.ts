@@ -61,6 +61,8 @@ describe("which model answers a chat turn", () => {
     expect(chooseTurnBrain("yes, go ahead", opus, "deep").brain).toEqual(opus);
     expect(chooseTurnBrain("yes, go ahead", opus).tier).toBe("fast");
     expect(chooseTurnBrain("what time is it", opus, "deep").tier).toBe("fast");
+    // A yes after a quick answer may start real work: never carried on the fast model.
+    expect(chooseTurnBrain("yes, go ahead", opus, "fast").tier).toBe("default");
   });
 
   it("warms every model a persona's turns can land on, the likeliest first", () => {
@@ -86,6 +88,9 @@ describe("which model answers a chat turn", () => {
     expect(chooseTurnBrain("go ahead", opus, memory.previous()).brain).toEqual(opus);
     now += TIER_CARRY_MS;
     expect(memory.previous()).toBeNull();
+    // A paired device's turn is not his: his next yes does not carry its tier.
+    memory.settled("deep", true);
+    expect(memory.previous()).toBeNull();
   });
 });
 
@@ -98,8 +103,15 @@ describe("his own choice of model and effort", () => {
     ["back to normal", AUTOMATIC],
     ["use opus to plan my week", null],
     ["what is opus", null],
+    ["faster", null],
+    ["quicker", null],
+    ["think it through", null],
   ])("%s", (said, choice) => {
     expect(modelCommand(said, AUTOMATIC)).toEqual(choice);
+  });
+
+  it("never lets a paired device or an agent change his model", () => {
+    expect(modelCommand("use opus", AUTOMATIC, true)).toBeNull();
   });
 
   it("keeps the other half of the choice: a named model keeps his effort, harder keeps his model", () => {
@@ -117,7 +129,7 @@ describe("his own choice of model and effort", () => {
     expect(
       chooseTurnBrain("what time is it", sonnet, null, { model: "opus", effort: null }),
     ).toMatchObject({
-      brain: { model: "opus", effort: "low" },
+      brain: { model: "opus", effort: "medium" },
       why: "his choice (Opus)",
     });
     expect(

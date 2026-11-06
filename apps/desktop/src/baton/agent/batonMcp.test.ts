@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { createAgentGate, createTaint } from "./agentGate.ts";
-import { startBatonMcp, type BatonTool } from "./batonMcp.ts";
+import { sessionWithOwnMcp, startBatonMcp, type BatonMcp, type BatonTool } from "./batonMcp.ts";
 
 const rpc = (method: string, params?: unknown) =>
   JSON.stringify({ jsonrpc: "2.0", id: 1, method, params });
@@ -166,5 +166,52 @@ describe("Baton's tool server", () => {
       },
     ]);
     await mcp.close();
+  });
+
+  it("gives each warm session its own tool server, alive until that session is disposed", async () => {
+    const gate = createAgentGate({
+      actWithoutAsking: () => false,
+      taint: createTaint(),
+      textIsHis: () => false,
+      focusedWindow: async () => ({ label: "Notepad", shell: false }),
+      confirm: async () => true,
+      record: () => undefined,
+    });
+    const tools: BatonTool[] = [
+      {
+        name: "sessions_list",
+        description: "",
+        inputSchema: { type: "object" },
+        run: async () => ({ text: "ok" }),
+      },
+    ];
+    const live = new Set<BatonMcp>();
+    const listTools = (mcp: BatonMcp) =>
+      fetch(mcp.url, {
+        method: "POST",
+        headers: { authorization: `Bearer ${mcp.token}`, "content-type": "application/json" },
+        body: rpc("tools/list"),
+      }).then(
+        (r) => r.status,
+        () => "closed",
+      );
+    const open = () => {
+      let own!: BatonMcp;
+      return sessionWithOwnMcp(
+        () => startBatonMcp({ tools, gate }),
+        async (mcp) => ((own = mcp), { mcp: () => own, dispose: () => undefined }),
+        live,
+      );
+    };
+    const sonnet = await open();
+    const opus = await open();
+    // Starting the second never takes the first one's tools away.
+    expect(await listTools(sonnet.mcp())).toBe(200);
+    expect(await listTools(opus.mcp())).toBe(200);
+    sonnet.dispose();
+    expect(await listTools(sonnet.mcp())).toBe("closed");
+    expect(await listTools(opus.mcp())).toBe(200);
+    expect(live.size).toBe(1);
+    opus.dispose();
   });
 });

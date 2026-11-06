@@ -222,3 +222,32 @@ export const startBatonMcp = async (input: {
       }),
   };
 };
+
+/**
+ * A session with its own tool server, closed when that session is disposed: the warm sessions of each model run
+ * side by side, and one shared server, closed by the next session's start, left all but the newest without tools.
+ */
+export const sessionWithOwnMcp = async <S extends { readonly dispose: () => void }>(
+  startMcp: () => Promise<BatonMcp>,
+  start: (mcp: BatonMcp) => S | Promise<S>,
+  live: Set<BatonMcp>,
+): Promise<S> => {
+  const mcp = await startMcp();
+  live.add(mcp);
+  const close = () => {
+    if (live.delete(mcp)) void mcp.close();
+  };
+  try {
+    const session = await start(mcp);
+    return {
+      ...session,
+      dispose: () => {
+        session.dispose();
+        close();
+      },
+    };
+  } catch (error) {
+    close();
+    throw error;
+  }
+};

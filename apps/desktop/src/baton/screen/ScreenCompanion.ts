@@ -104,7 +104,7 @@ import { createAgentGate, createTaint } from "../agent/agentGate.ts";
 import { createTurnLedger, stoppedBy, traceCalls } from "../agent/turnLedger.ts";
 import { buildRemoteHandsTools, type RemoteHandsDeps } from "../agent/remoteHandsTools.ts";
 import type { HandsResult } from "@t3tools/baton-shared/remoteHands";
-import { startBatonMcp, type BatonMcp } from "../agent/batonMcp.ts";
+import { sessionWithOwnMcp, startBatonMcp, type BatonMcp } from "../agent/batonMcp.ts";
 import {
   buildBatonTools,
   treeText,
@@ -531,7 +531,7 @@ const lateCatalog = (get: () => ToolHost["catalog"]): NonNullable<ToolHost["cata
 export const startScreenCompanion = (input: {
   readonly stateDir: string;
   /** What the app can do for a remote session besides drive windows: version, logs, processes, update, pages. */
-  readonly remoteOps?: Omit<RemoteHandsDeps["ops"], "assistantModel">;
+  readonly remoteOps?: RemoteHandsDeps["ops"];
   /** The sessions catalog, which starts after this does: asked for at each use. */
   readonly catalog?: () => ToolHost["catalog"];
   /** Bring Tessaya's window forward, on a tab when it can (the vault asks to be unlocked there). */
@@ -930,10 +930,12 @@ export const startScreenCompanion = (input: {
   };
   const MODELS = ["haiku", "sonnet", "opus"] as const;
   const EFFORTS = ["low", "medium", "high"] as const;
-  /** The tool's way in (assistant MCP and remote hands): names checked here, since they come from outside. */
+  /** The assistant_model tool's way in: names checked here, since they come from the model. */
   const setModelByName = (model: string | null, effort: string | null): string => {
     const now = manual();
     if (model === null && effort === null) return `Model: ${manualLabel(now)}.`;
+    if (outsideTurn)
+      throw new Error("Only he can change his model, not a paired device or an agent.");
     const m = MODELS.find((x) => x === model);
     const e = EFFORTS.find((x) => x === effort);
     if (model !== null && model !== "auto" && m === undefined)
@@ -1635,8 +1637,8 @@ export const startScreenCompanion = (input: {
   };
 
   /** One assistant (D143): one warm session, Baton's tools, the same gate on every call. */
-  let agentMcp: BatonMcp | null = null;
-  let outsideMcp: BatonMcp | null = null;
+  /** Each warm session's own tool server (one per model), closed with that session. */
+  const agentMcps = new Set<BatonMcp>();
   let lastShots: ReadonlyArray<ScreenShot> = [];
   const agentTaint = createTaint();
   /** The plan he approved this turn (plan_show): its steps run without a box each, and pastes keep its clipboard. */
@@ -1810,7 +1812,7 @@ export const startScreenCompanion = (input: {
         buildRemoteHandsTools({
           sidecar: side,
           scratchDir: NodePath.join(input.stateDir, "screen"),
-          ops: { ...input.remoteOps, assistantModel: async (m, e) => setModelByName(m, e) },
+          ops: input.remoteOps,
           foreground: {
             clickAt: async (to, double) => {
               await remoteMouse.need();
@@ -2372,41 +2374,38 @@ export const startScreenCompanion = (input: {
       return "Noted.";
     },
   };
-  const agentStart = async (
-    systemPrompt: string,
-    chosen = leadBrain(),
-    slot: "his" | "outside" = "his",
-  ): Promise<VisionSession> => {
-    await (slot === "his" ? agentMcp : outsideMcp)?.close();
-    const mcp = await startBatonMcp({
-      tools: withFailureGuard(buildBatonTools(toolHost), toolFailures),
-      gate: agentGate,
-      scrub: (text) => vaultHost?.scrub(text) ?? text,
-      onResult: ({ text, ...r }) => {
-        const record = turns.current();
-        record.results.push(r);
-        // The answer stays on this machine, only for replaying the turn if he asks to learn from it.
-        if (r.ok && text !== undefined) record.answers[r.tool] ??= text.slice(0, 2_000);
-      },
-    });
-    if (slot === "his") agentMcp = mcp;
-    else outsideMcp = mcp;
-    return startVisionSession({
-      claudeBinary: settings.claudeBinary,
-      model: chosen.model,
-      effort: chosen.effort,
-      systemPrompt,
-      workDir: NodePath.join(input.stateDir, "screen"),
-      cwd: input.env["USERPROFILE"] ?? input.env["HOME"] ?? input.stateDir,
-      env: claudeEnv(),
-      platform: input.platform,
-      timeoutMs: OPERATOR_TURN_MS,
-      gate: harnessGate,
-      mcp: { url: mcp.url, token: mcp.token },
-      chrome: settings.browserChrome,
-      onTool: (call) => turns.current().tools.push(call.tool),
-    });
-  };
+  const agentStart = (systemPrompt: string, chosen = leadBrain()): Promise<VisionSession> =>
+    sessionWithOwnMcp(
+      () =>
+        startBatonMcp({
+          tools: withFailureGuard(buildBatonTools(toolHost), toolFailures),
+          gate: agentGate,
+          scrub: (text) => vaultHost?.scrub(text) ?? text,
+          onResult: ({ text, ...r }) => {
+            const record = turns.current();
+            record.results.push(r);
+            // The answer stays on this machine, only for replaying the turn if he asks to learn from it.
+            if (r.ok && text !== undefined) record.answers[r.tool] ??= text.slice(0, 2_000);
+          },
+        }),
+      (mcp) =>
+        startVisionSession({
+          claudeBinary: settings.claudeBinary,
+          model: chosen.model,
+          effort: chosen.effort,
+          systemPrompt,
+          workDir: NodePath.join(input.stateDir, "screen"),
+          cwd: input.env["USERPROFILE"] ?? input.env["HOME"] ?? input.stateDir,
+          env: claudeEnv(),
+          platform: input.platform,
+          timeoutMs: OPERATOR_TURN_MS,
+          gate: harnessGate,
+          mcp: { url: mcp.url, token: mcp.token },
+          chrome: settings.browserChrome,
+          onTool: (call) => turns.current().tools.push(call.tool),
+        }),
+      agentMcps,
+    );
   const beginTurn = (said: string, outside: boolean) => {
     memory.beginTurn();
     outsideTurn = outside;
@@ -2464,7 +2463,7 @@ export const startScreenCompanion = (input: {
     const file = NodePath.join(input.stateDir, "screen", "outside-turn.ndjson");
     NodeFS.rmSync(file, { force: true });
     return createAssistantAgent({
-      start: (systemPrompt, brain) => agentStart(systemPrompt, brain, "outside"),
+      start: agentStart,
       conversation: createConversationLog({ file }),
       clockLine: () => clockLine(new Date()),
       notes: () => assistantFrame(readPack(NodePath.join(input.stateDir, PACK_FOLDER))),
@@ -2481,8 +2480,6 @@ export const startScreenCompanion = (input: {
             return await once.say(text, where, onDelta);
           } finally {
             once.dispose();
-            void outsideMcp?.close();
-            outsideMcp = null;
           }
         }
       : agentOf().say;
@@ -2616,7 +2613,7 @@ export const startScreenCompanion = (input: {
       });
       fail(error);
     } finally {
-      tierMemory.settled(brain.tier);
+      tierMemory.settled(brain.tier, outside);
       answering -= 1;
       mine.done();
       input.onTurnEnd?.();
@@ -2645,7 +2642,7 @@ export const startScreenCompanion = (input: {
       return { kind: "handled" };
     }
     // "Use Opus", "think harder", "go faster", "back to normal": a choice, not a question for the model.
-    const choice = modelCommand(text, manual());
+    const choice = modelCommand(text, manual(), outside);
     if (choice !== null) {
       const label = chooseModel(choice);
       const reply =
@@ -3243,8 +3240,8 @@ export const startScreenCompanion = (input: {
     dispose: () => {
       stopMemorySync?.();
       agent?.dispose();
-      void agentMcp?.close();
-      void outsideMcp?.close();
+      for (const mcp of agentMcps) void mcp.close();
+      agentMcps.clear();
       end();
       dropSpare();
       if (askKey !== null) Electron.globalShortcut.unregister(askKey);

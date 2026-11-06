@@ -88,13 +88,19 @@ export const isAutomatic = (manual: ManualBrain): boolean =>
 const USE_MODEL =
   /^(?:please )?(?:use|switch to|change to|go to|move to|try) (?:the )?(haiku|sonnet|opus)(?: model)?(?: please| from now on| for now| instead)?$/;
 const HARDER =
-  /^(?:think (?:harder|more|deeper|longer|it through)|take (?:more|your) time|try harder)(?: please)?$/;
-const FASTER = /^(?:go faster|be (?:quicker|faster)|speed up|faster|quicker)(?: please)?$/;
+  /^(?:think (?:harder|more|deeper|longer)|take (?:more|your) time|try harder)(?: please)?$/;
+const FASTER = /^(?:go faster|be (?:quicker|faster)|speed up)(?: please)?$/;
 const NORMAL =
   /^(?:go )?(?:back to normal|back to automatic|automatic model|reset the model|pick the model yourself|choose the model yourself)(?: please)?$/;
 
 /** The choice a sentence makes when all it does is change how he is answered, or null for any other sentence. */
-export const modelCommand = (said: string, current: ManualBrain): ManualBrain | null => {
+export const modelCommand = (
+  said: string,
+  current: ManualBrain,
+  /** A paired device's or an agent's words: they never change his setting. */
+  outside = false,
+): ManualBrain | null => {
+  if (outside) return null;
   const t = plain(said);
   const named = USE_MODEL.exec(t)?.[1] as ManualModel | undefined;
   if (named !== undefined) return { model: named, effort: current.effort };
@@ -146,7 +152,11 @@ export const chooseTurnBrain = (
   if (isAutomatic(manual)) return auto;
   return {
     tier: auto.tier,
-    brain: { model: manual.model ?? auto.brain.model, effort: manual.effort ?? auto.brain.effort },
+    // A chosen model at automatic effort runs at the one effort `tierBrains` warms it at.
+    brain:
+      manual.model === null
+        ? { model: auto.brain.model, effort: manual.effort ?? auto.brain.effort }
+        : { model: manual.model, effort: manual.effort ?? "medium" },
     why: `his choice (${manualLabel(manual)})`,
   };
 };
@@ -157,7 +167,8 @@ const autoTurnBrain = (said: string, ceiling: Brain, previous: TurnTier | null):
   const own = tierOfSentence(said);
   const picked =
     previous !== null && own.why === "short reply"
-      ? { tier: previous, why: "answers the last turn" }
+      ? // A yes to a quick answer may start real work: it is never carried on the fast model.
+        { tier: previous === "fast" ? "default" : previous, why: "answers the last turn" }
       : own;
   const tier = TIERS[Math.min(TIERS.indexOf(picked.tier), TIERS.indexOf(top))]!;
   return {
@@ -200,8 +211,9 @@ export const createTierMemory = (now: () => number = Date.now) => {
   return {
     previous: (): TurnTier | null =>
       last !== null && now() - last.at < TIER_CARRY_MS ? last.tier : null,
-    settled: (tier: TurnTier) => {
-      last = { tier, at: now() };
+    /** A device's or agent's turn is not his: his next yes does not answer it. */
+    settled: (tier: TurnTier, outside = false) => {
+      if (!outside) last = { tier, at: now() };
     },
   };
 };

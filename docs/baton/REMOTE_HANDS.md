@@ -25,7 +25,7 @@ hub server --long poll (baton:hands-host)--> desktop app --> gate --> hands tool
   remote hands" turns them off. While he is present, a window picture or `ui_tree` follows his screen setting (it may ask); "I'm away" is
   his standing yes (D153).
 - **Ops tools**: `app_version`, `log_tail` (named logs only, last N lines), `process_list` / `process_stop` (only an id `process_list` returned),
-  `app_update` (the app's own updater, to a given version, replacing scp and scheduled tasks), `open_page` (a page in the Home window), `assistant_model` (the model and effort for his chat turns, as in the tray).
+  `app_update` (the app's own updater, to a given version, replacing scp and scheduled tasks), `open_page` (a page in the Home window).
 
 ## Built
 

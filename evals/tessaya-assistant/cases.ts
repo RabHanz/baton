@@ -373,4 +373,24 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     first: ["activity_today", "what_happened"],
     not: ["jobs_list"],
   },
+  {
+    id: "model-use-opus",
+    source:
+      "#508: he picks the model himself; typed, or said in a way the local rule does not catch",
+    said: "use Opus",
+    first: ["assistant_model"],
+  },
+  {
+    id: "model-think-harder",
+    source: "#508: he asks for more effort",
+    said: "think harder",
+    first: ["assistant_model"],
+  },
+  {
+    id: "model-not-for-a-question",
+    source: "#508: an ordinary question never changes the model",
+    said: "how long does it take to boil an egg?",
+    first: ["none"],
+    not: ["assistant_model"],
+  },
 ];

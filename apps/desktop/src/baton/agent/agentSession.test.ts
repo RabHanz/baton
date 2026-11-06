@@ -328,6 +328,74 @@ describe("the one assistant's session", () => {
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 
+  it("never gives back the session a turn is using to make room for a tier it warms", async () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-agent-"));
+    const conversation = createConversationLog({ file: NodePath.join(dir, "c.ndjson") });
+    const started: string[] = [];
+    const disposed: string[] = [];
+    const agent = createAssistantAgent({
+      start: async (_prompt, brain) => {
+        const model = brain?.model ?? "none";
+        started.push(model);
+        return {
+          ask: async (_content, onDelta) => (onDelta?.("Hi."), "Hi."),
+          alive: () => true,
+          dispose: () => void disposed.push(model),
+        };
+      },
+      conversation,
+      clockLine: () => "now",
+      beginTurn: () => undefined,
+    });
+    const sonnet = { model: "sonnet", effort: "medium" };
+    agent.warm([sonnet, { model: "haiku", effort: "low" }, { model: "opus", effort: "medium" }]);
+    // A persona on its own model: its first token warms the other two tiers while it is still answering.
+    await agent.say("Freya, what is on today", {
+      window: null,
+      session: null,
+      brain: { model: "x", effort: "low" },
+    });
+    await vi.waitFor(() => expect(started).toEqual(["sonnet", "x", "haiku", "opus"]));
+    expect(disposed).toEqual([]);
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("warms nothing more for a turn he stopped before its first token", async () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-agent-"));
+    const conversation = createConversationLog({ file: NodePath.join(dir, "c.ndjson") });
+    const started: string[] = [];
+    let release = () => undefined as void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let asking = () => undefined as void;
+    const inAsk = new Promise<void>((resolve) => (asking = resolve));
+    const agent = createAssistantAgent({
+      start: async (_prompt, brain) => {
+        started.push(brain?.model ?? "none");
+        return {
+          ask: async () => {
+            asking();
+            await held;
+            throw new SessionClosed("stopped");
+          },
+          alive: () => true,
+          dispose: () => undefined,
+        };
+      },
+      conversation,
+      clockLine: () => "now",
+      beginTurn: () => undefined,
+    });
+    const sonnet = { model: "sonnet", effort: "medium" };
+    agent.warm([sonnet, { model: "haiku", effort: "low" }, { model: "opus", effort: "medium" }]);
+    const turn = agent.say("hello", { window: null, session: null, brain: sonnet });
+    await inAsk;
+    agent.dispose();
+    release();
+    await expect(turn).rejects.toBeInstanceOf(SessionClosed);
+    expect(started).toEqual(["sonnet"]);
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+
   it("drops the sentences still queued when he says stop", async () => {
     const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-agent-"));
     const conversation = createConversationLog({ file: NodePath.join(dir, "c.ndjson") });
