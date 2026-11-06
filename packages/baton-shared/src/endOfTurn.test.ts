@@ -19,7 +19,7 @@ describe("end of turn", () => {
       "so,",
       "I think that",
       "Look. What?",
-      "Right.",
+      "Well.",
       "So, what",
     ])
       expect(isUnfinished(t)).toBe(true);
@@ -29,6 +29,11 @@ describe("end of turn", () => {
       "Textbox on screen.",
       "Look at the screen.",
       "So what needs me today?",
+      "Okay.",
+      "Right.",
+      "Okay, yes.",
+      "Right, send.",
+      "Okay thanks.",
     ])
       expect(isUnfinished(t)).toBe(false);
   });

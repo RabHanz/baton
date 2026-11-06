@@ -189,9 +189,23 @@ const launch = () => {
   /** Recognition held back (the recogniser busy right after launch) until `recognise`. */
   let slow = false;
   const recognitions: Array<() => void> = [];
-  /** The app stalled: frames arrive in a burst the speech detector has not scored, so it repeats its last answer. */
-  let stalled = false;
+  /**
+   * The speech detector scores frames `lag` behind the newest, repeating its last answer meanwhile: a stall
+   * (frames in a burst it has not scored) is an endless lag until it catches up.
+   */
+  let lag = 0;
   let lastSpeech = false;
+  const unscored: boolean[] = [];
+  const scored = { speech: 0, quiet: 0 };
+  const score = (keep: number) => {
+    while (unscored.length > keep) {
+      lastSpeech = unscored.shift()!;
+      if (lastSpeech) {
+        scored.speech += FRAME;
+        scored.quiet = 0;
+      } else scored.quiet += FRAME;
+    }
+  };
   // Each sentence is its own sample value, so recognition can tell which sentences a clip holds.
   const SAID: Record<number, string> = {
     1_000: "what time is it",
@@ -216,8 +230,12 @@ const launch = () => {
     vad: {
       name: "fake",
       reset: () => {},
-      isSpeech: (frame) => (stalled ? lastSpeech : (lastSpeech = frame[0] !== 0)),
-      behind: () => (stalled ? 16_000 : 0),
+      isSpeech: (frame) => {
+        unscored.push(frame[0] !== 0);
+        score(lag);
+        return lastSpeech;
+      },
+      scored: () => ({ ...scored }),
     },
     stt: {
       name: "fake",
@@ -262,7 +280,12 @@ const launch = () => {
       slow = false;
       recognitions.splice(0).forEach((resolve) => resolve());
     },
-    stall: (on: boolean) => (stalled = on),
+    stall: (on: boolean) => {
+      lag = on ? Infinity : 0;
+      if (!on) score(0);
+    },
+    /** The detector keeps up, `seconds` behind. */
+    lagBy: (seconds: number) => (lag = frames(seconds)),
     settle: async () => {
       for (let i = 0; i < 5; i += 1) await new Promise((resolve) => setImmediate(resolve));
     },
@@ -348,6 +371,24 @@ describe("right after launch, when the wake check is slow", () => {
     r.quiet(1);
     await r.core.idle();
     expect(r.events.some((e) => e.type === "dropped" && e.reason === "no speech")).toBe(false);
+    expect(r.routed).toEqual([{ text: "what time is it", wake: "Freya" }]);
+  });
+
+  it("ends the sentence promptly on silence a lagging detector has scored", async () => {
+    const r = launch();
+    r.quiet(4.4);
+    r.lagBy(1);
+    r.name("Freya", 1_000);
+    r.quiet(0.15);
+    r.say(1_000, 1.4);
+    // A second behind, plus the end-of-speech silence: not the fifteen-second cap.
+    r.quiet(2);
+    expect(r.events.some((e) => e.type === "speech_end")).toBe(false);
+    r.confirm("Freya");
+    await r.settle();
+    expect(r.events.some((e) => e.type === "speech_end")).toBe(true);
+    r.quiet(1);
+    await r.core.idle();
     expect(r.routed).toEqual([{ text: "what time is it", wake: "Freya" }]);
   });
 

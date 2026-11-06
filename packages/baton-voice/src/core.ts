@@ -152,8 +152,6 @@ const WAKE_LOOKBACK_MS = 1_600;
 const WAKE_TAIL_MS = 200;
 /** Audio kept behind the newest frame, so a wake scored late (a busy computer just after launch) still finds the name and what followed. */
 const RECENT_MS = 30_000;
-/** The speech detector this far behind the newest frame (frames arrived in a burst after a stall) is not believed about silence. */
-const VAD_BEHIND_MS = 250;
 /** However long the speech after held words takes to recognise, they are let go after this. */
 const JOIN_WAIT_MAX_MS = 15_000;
 const STOP_MIN_SPEECH_MS = 120;
@@ -667,6 +665,8 @@ export const createVoiceCore = (input: {
   const heardItselfAt = (at: number) =>
     !headphones() && at >= spokeFrom && (speaking || at < echoUntil);
   let bargeRun = 0;
+  /** The detector's scored speech, as of the last frame. */
+  let scoredSpeech = 0;
   let ducked = false;
   let cueUntil = 0;
 
@@ -686,6 +686,7 @@ export const createVoiceCore = (input: {
         : [...preRoll];
       segment = kept;
       segmentSamples = late ? kept.reduce((n, f) => n + f.length, 0) : preRollSamples;
+      scoredSpeech = input.vad.scored?.().speech ?? 0;
       // The detector did not run while asleep, so what came after the name counts as speech until it says
       // otherwise; recognition decides whether it was words.
       speechSamples = late
@@ -847,8 +848,11 @@ export const createVoiceCore = (input: {
 
     if (listening() && !hearingItself()) {
       const speech = input.vad.isSpeech(frame);
-      // Frames that came in a burst (the app was busy) are not scored yet: unknown counts as speech, never as silence.
-      const unsure = (input.vad.behind?.() ?? 0) > msToSamples(VAD_BEHIND_MS);
+      // Counted from what the detector has scored, not its last answer: frames it has not reached (a burst after a
+      // stall) are neither speech nor silence yet.
+      const scored = input.vad.scored?.();
+      const freshSpeech = scored === undefined ? 0 : scored.speech - scoredSpeech;
+      if (scored !== undefined) scoredSpeech = scored.speech;
       if (segment === null && speech) {
         segment = [...preRoll];
         segmentSamples = preRollSamples;
@@ -856,7 +860,10 @@ export const createVoiceCore = (input: {
       if (segment !== null) {
         segment.push(frame);
         segmentSamples += frame.length;
-        if (speech || unsure) {
+        if (scored !== undefined) {
+          if (samples >= creditFrom) speechSamples += freshSpeech;
+          silenceSamples = Math.min(scored.quiet, segmentSamples);
+        } else if (speech) {
           if (samples >= creditFrom) speechSamples += frame.length;
           silenceSamples = 0;
         } else {
