@@ -291,6 +291,36 @@ describe("stop while dictating", () => {
   });
 });
 
+describe("a name recognition wrote as other words", () => {
+  const timings = { ...DEFAULT_TIMINGS, wakeWords: ["Tessaya", "Alfred"] };
+
+  it("is still the name: 'To say yeah, dictate.' starts dictation from the conversation", () => {
+    const talking = play([
+      { type: "wake", at: 0 },
+      { type: "utterance", text: "Hey Jarvis, what's on my screen?", at: 10 },
+    ]);
+    const { state } = reduceVoice(
+      talking.state,
+      { type: "utterance", text: "To say yeah, dictate.", at: 20 },
+      timings,
+    );
+    expect(state.mode).toBe("dictation");
+  });
+
+  it("is never cut from what he dictates", () => {
+    const start = play([
+      { type: "wake", at: 0 },
+      { type: "utterance", text: "dictate", at: 10 },
+    ]);
+    const { effects } = reduceVoice(
+      start.state,
+      { type: "utterance", text: "Desire to win matters.", at: 20 },
+      timings,
+    );
+    expect(effects).toContainEqual({ kind: "dictate", text: "Desire to win matters." });
+  });
+});
+
 describe("a spoken cancel", () => {
   it("closes the window and drops what was waiting, with no wake word", () => {
     const { state } = play([

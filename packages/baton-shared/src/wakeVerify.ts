@@ -7,17 +7,8 @@
 
 /** Other ways recognition writes a wake word, from how each one is said. */
 const ALIASES: Readonly<Record<string, ReadonlyArray<string>>> = {
-  tessaya: [
-    "tessaia",
-    "tesaya",
-    "tessia",
-    "tessa ya",
-    "tesseya",
-    "teh sayuh",
-    "tessie a",
-    "theresa",
-    "tessa",
-  ],
+  // Not "Tessa", "Tessie" or "Theresa": they are other names, and near misses the model is trained against.
+  tessaya: ["tessaia", "tesaya", "tessa ya", "tesseya", "teh sayuh", "desire"],
   sebastian: ["bastian", "sebastien", "sabastian", "sebastiane"],
   alfred: ["alfrid", "alfread", "al fred"],
   freya: ["fraya", "freia", "fria", "fray uh", "frayer", "freyer"],
@@ -43,21 +34,69 @@ const editDistance = (a: string, b: string): number => {
 const similar = (heard: string, word: string): number =>
   1 - editDistance(heard, word) / Math.max(heard.length, word.length, 1);
 
+/**
+ * How a word sounds, roughly: one letter per consonant sound and one "a" per run of vowels. Words are
+ * keyed one at a time and joined, so "to say yeah", "tess a ya" and "the saya" all read as Tessaya
+ * ("tasaya") while "to say a" and "Tessa" ("tasa") do not.
+ */
+const soundKey = (word: string): string =>
+  word
+    .replace(/th/g, "t")
+    .replace(/ph/g, "f")
+    .replace(/c(?=[eiy])/g, "s")
+    .replace(/[cq]/g, "k")
+    .replace(/x/g, "ks")
+    .replace(/z/g, "s")
+    .replace(/d/g, "t")
+    .replace(/h/g, "")
+    .replace(/y(?![aeiou])/g, "a")
+    .replace(/[aeiou]/g, "a");
+
+const keyOf = (words: ReadonlyArray<string>): string =>
+  words
+    .map(soundKey)
+    .join("")
+    .replace(/(.)\1+/g, "$1");
+
+/** The name said in one, two or three recognised words: "Tessaia", "al fred", "to say yeah". */
+const matches = (words: ReadonlyArray<string>, target: string): boolean => {
+  if (keyOf(words) === keyOf([target])) return true;
+  // Spelling closeness only within two words: across three, "to say a" is a letter away from "tesaya".
+  if (words.length > 2) return false;
+  const piece = words.join("");
+  return [target, ...(ALIASES[target] ?? [])].some((c) => {
+    const flat = letters(c).replace(/ /g, "");
+    return piece === flat || similar(piece, flat) >= 0.72;
+  });
+};
+
+const MAX_WORDS = 3;
+
 /** True when `transcript` contains `word` or a close spelling of it. */
 export const wakeWordHeard = (transcript: string, word: string): boolean => {
-  const target = letters(word).trim();
+  const target = letters(word).replace(/ /g, "");
   if (target === "") return true;
   const spoken = letters(transcript).split(/\s+/).filter(Boolean);
-  if (spoken.length === 0) return false;
-  const candidates = [target, ...(ALIASES[target] ?? []).map((alias) => letters(alias))];
-  // Single words, and neighbouring pairs joined ("al fred", "tessa ya").
-  const pieces = spoken.flatMap((token, i) =>
-    i + 1 < spoken.length ? [token, `${token}${spoken[i + 1]}`] : [token],
+  return spoken.some((_, i) =>
+    Array.from({ length: Math.min(MAX_WORDS, spoken.length - i) }, (_, n) =>
+      spoken.slice(i, i + n + 1),
+    ).some((words) => matches(words, target)),
   );
-  return pieces.some((piece) =>
-    candidates.some((c) => {
-      const flat = c.replace(/ /g, "");
-      return piece === flat || similar(piece, flat) >= 0.72;
-    }),
-  );
+};
+
+/**
+ * How many of the first words are one of the wake words said the way recognition wrote it ("To say
+ * yeah, dictate" starts with Tessaya in three words); 0 when it does not start with one.
+ */
+export const wakeWordLead = (
+  words: ReadonlyArray<string>,
+  wakeWords: ReadonlyArray<string>,
+): number => {
+  const targets = wakeWords.map((w) => letters(w).replace(/ /g, "")).filter(Boolean);
+  const heard = words.map((w) => letters(w).replace(/ /g, ""));
+  for (let n = 1; n <= Math.min(MAX_WORDS, heard.length); n += 1) {
+    const lead = heard.slice(0, n);
+    if (lead.every(Boolean) && targets.some((t) => matches(lead, t))) return n;
+  }
+  return 0;
 };

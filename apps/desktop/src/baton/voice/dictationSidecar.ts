@@ -466,15 +466,43 @@ export const startDictationSidecar = (input: {
   };
 };
 
+/** Common words of the other languages Parakeet v3 knows that are not English words. */
+const FOREIGN_WORDS = new Set(
+  (
+    "ik weet niet het een maar ook zijn wij jij hij zij dit wel nog geen hoe waar wie zeg zegt heb mij mijn jou naar nee dank " +
+    "det och jag inte vad nej hej du har ska som med att bara ikke jeg hvad hva " +
+    "ich nicht und ist das ein eine nein wir aber auch doch sagt " +
+    "je oui est et cest que qué pero sono che"
+  ).split(" "),
+);
+
+/**
+ * Parakeet v3 takes no language hint (its build has no language prompt), so a short phrase in a British
+ * accent can come back Dutch or Swedish ("Ik weet.", "Det säger."). With English chosen, that is not heard.
+ */
+export const notEnglish = (text: string): boolean => {
+  const words = text
+    .toLowerCase()
+    .replace(/[’']/g, "")
+    .split(/[^\p{L}]+/u)
+    .filter(Boolean);
+  const foreign = words.filter((w) => FOREIGN_WORDS.has(w) || /[^a-z]/.test(w)).length;
+  return foreign > 0 && foreign * 2 >= words.length;
+};
+
 /** Parakeet behind the core's `SttProvider`, in the sidecar that already holds the model. */
-export const makeSidecarStt = (sidecar: DictationSidecar): SttProvider => ({
+export const makeSidecarStt = (
+  sidecar: DictationSidecar,
+  language: () => string | null = () => null,
+): SttProvider => ({
   name: "parakeet",
   transcribe: async (pcm) => {
     const dir = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "baton-voice-"));
     const file = NodePath.join(dir, "utterance.wav");
     try {
       await NodeFSP.writeFile(file, encodeWav(pcm));
-      return await sidecar.transcribe(file);
+      const text = await sidecar.transcribe(file);
+      return language() === "en" && notEnglish(text) ? "" : text;
     } finally {
       await NodeFSP.rm(dir, { recursive: true, force: true });
     }
