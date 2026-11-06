@@ -22,6 +22,8 @@ import * as NodePath from "node:path";
 import * as NodeReadline from "node:readline";
 import * as NodeURL from "node:url";
 
+import { parsePanePrompt } from "./pane-prompt.mjs";
+
 const HERDR =
   process.env.BATON_HERDR_BIN ?? NodePath.join(NodeOS.homedir(), ".local", "bin", "herdr");
 const BATON = process.env.BATON_BIN ?? NodePath.join(NodeOS.homedir(), ".local", "bin", "baton");
@@ -54,16 +56,6 @@ export const isAdoptRequest = (text) => /(?:^|\n)\s*bring (it )?into herdr\s*\.?
 /** The answer to the "waiting on something I cannot read" question when he will deal with it in the terminal. */
 export const ANSWER_IN_TERMINAL = "I'll answer it in the terminal";
 export const isAnswerInTerminal = (text) => text.trim().endsWith(ANSWER_IN_TERMINAL);
-
-/** The last lines on a pane's screen, for a question Tessaya could not read as options. */
-export const screenTail = (screen, lines = 12) =>
-  screen
-    .split("\n")
-    .map((l) => l.replace(/\s+$/g, ""))
-    .filter((l) => l.trim() !== "")
-    .slice(-lines)
-    .join("\n")
-    .slice(0, 1200);
 
 /** What a send to a plain-terminal session says instead of being delivered. */
 export const notSentNote = (live) =>
@@ -126,269 +118,6 @@ export function herdrPaneRef(env) {
   if (!pane) return null;
   const session = env.get("HERDR_SESSION");
   return !session || session === "default" ? pane : `${session}~${pane}`;
-}
-
-// ---------------------------------------------------------------------------------------------
-// Terminal prompts (D88): a permission dialog, an AskUserQuestion or a mod's ui.ask, read from
-// the pane's screen so T3 can show it with its options and answer it with keystrokes.
-
-const FOOTER = /Esc to cancel|Enter to (confirm|select)|↑\/↓ to navigate/;
-const RULE = /^\s*[─━╌]{8,}\s*$/;
-const SOLID = /^\s*[─━]{8,}\s*$/;
-const NUMBERED = /^(\s*)(❯\s*)?(\d+)\.\s+(.+?)\s*$/;
-const CUSTOM = /^(?:type something|other)\.?$/i;
-const DROPPED = /^chat about this$/i;
-const clean = (text) =>
-  text
-    .replace(/^[\s│┃|]+/, "")
-    .replace(/\s+/g, " ")
-    .trim();
-
-/** The tab bar of a multi-question form: each question's name and whether it is answered (☒). */
-const tabsOf = (line) =>
-  [...line.matchAll(/([☐☒✔])\s+(.+?)(?=\s+[☐☒✔]|\s*→|\s*$)/g)]
-    .map((m) => ({ label: m[2].trim(), answered: m[1] !== "☐", submit: m[1] === "✔" }))
-    .filter((tab) => tab.label.length > 0);
-
-/**
- * The last screen of a multi-question form: "Review your answers", each question with its answer, then
- * "Ready to submit your answers?" over Submit and Cancel. It has no Esc footer, which is why it was not
- * read: a session sat waiting on it with nothing to show. Going back one question is the left arrow.
- */
-export function parseReviewScreen(lines) {
-  let ask = -1;
-  for (let i = lines.length - 1; i >= 0 && i >= lines.length - 40; i -= 1)
-    if (/^\s*Ready to submit your answers\?\s*$/.test(lines[i])) {
-      ask = i;
-      break;
-    }
-  if (ask < 0) return null;
-  const options = [];
-  for (let i = ask + 1; i < lines.length && i <= ask + 8; i += 1) {
-    const m = NUMBERED.exec(lines[i]);
-    if (m === null) {
-      if (options.length > 0 && lines[i].trim() === "") break;
-      continue;
-    }
-    options.push({ number: Number(m[3]), label: m[4], selected: m[2] !== undefined });
-  }
-  if (options.length < 2 || options.filter((o) => o.selected).length !== 1) return null;
-  let top = ask - 1;
-  while (top >= 0 && ask - top < 40 && !/Review your answers/.test(lines[top])) top -= 1;
-  const answers = [];
-  for (let i = Math.max(0, top); i < ask; i += 1) {
-    const q = /^[\s│┃]*●\s*(.*)$/.exec(lines[i]);
-    if (q !== null) answers.push({ question: clean(q[1]), answer: "" });
-    else if (answers.length > 0) {
-      const a = /^\s*→\s*(.*)$/.exec(lines[i]);
-      if (a !== null && answers.at(-1).answer === "") answers.at(-1).answer = clean(a[1]);
-      else if (/^[\s│┃]/.test(lines[i]) && lines[i].trim() !== "" && answers.at(-1).answer === "")
-        answers.at(-1).question = `${answers.at(-1).question} ${clean(lines[i])}`.trim();
-    }
-  }
-  const tabLine = lines.slice(Math.max(0, top - 2), top + 1).find((l) => /^\s*←/.test(l));
-  const question = "Ready to submit your answers?";
-  const context = answers
-    .map((a) => `${a.question} → ${a.answer}`)
-    .join(" · ")
-    .slice(0, 600);
-  return {
-    question,
-    header: "Review your answers",
-    ...(tabLine === undefined ? {} : { tabs: tabsOf(tabLine.trim()) }),
-    context,
-    options: [
-      ...options.map((o) => ({ index: o.number - 1, label: o.label, description: "" })),
-      { index: -1, label: "Go back", description: "Back to the last question", keys: ["left"] },
-    ],
-    selected: options.findIndex((o) => o.selected),
-    customIndex: null,
-    review: true,
-    key: [question, ...options.map((o) => o.label), context].join("\u0000"),
-  };
-}
-
-/**
- * The prompt on a Claude Code screen, or null when none can be read. Options keep their screen
- * order (`index`), so an answer is arrows from the highlighted one plus Enter.
- */
-export function parsePanePrompt(screen) {
-  const lines = String(screen ?? "")
-    .replace(/\r/g, "")
-    .split("\n");
-  const review = parseReviewScreen(lines);
-  if (review !== null) return review;
-  let footer = -1;
-  for (let i = lines.length - 1; i >= 0 && i >= lines.length - 40; i -= 1)
-    if (FOOTER.test(lines[i])) {
-      footer = i;
-      break;
-    }
-  if (footer < 0) {
-    // No footer (the held cross-session message): a highlighted option block ending the screen.
-    let end = lines.length - 1;
-    while (end >= 0 && lines[end].trim() === "") end -= 1;
-    const tail = lines.slice(Math.max(0, end - 8), end + 1);
-    const marked = tail.findLastIndex((l) => /^\s*❯\s/.test(l));
-    if (marked < 0 || tail.slice(marked).some((l) => RULE.test(l))) return null;
-    footer = end + 1;
-  }
-  const options = [];
-  let first = -1;
-  // Numbered options (permission dialogs, AskUserQuestion), read upward to option 1.
-  for (let i = footer - 1; i >= 0 && i >= footer - 60; i -= 1) {
-    const m = NUMBERED.exec(lines[i]);
-    if (m === null) continue;
-    options.unshift({ number: Number(m[3]), label: m[4], selected: m[2] !== undefined, line: i });
-    if (m[3] === "1") {
-      first = i;
-      break;
-    }
-  }
-  const ordered = options.every((option, index) => option.number === index + 1);
-  if (first < 0 || !ordered) {
-    // Unnumbered options (the folder-trust dialog): the highlighted line and its neighbours.
-    options.length = 0;
-    const marked = lines
-      .slice(Math.max(0, footer - 20), footer)
-      .findLastIndex((l) => /^\s*❯\s/.test(l));
-    if (marked < 0) return null;
-    const at = Math.max(0, footer - 20) + marked;
-    const indent = lines[at].indexOf("❯");
-    const isOption = (l) =>
-      l.trim().length > 0 &&
-      (l.slice(indent).startsWith("❯ ") || l.slice(0, indent + 2).trim() === "");
-    let top = at;
-    while (
-      top - 1 >= 0 &&
-      isOption(lines[top - 1]) &&
-      /^\s+$/.test(lines[top - 1].slice(0, indent + 2))
-    )
-      top -= 1;
-    let bottom = at;
-    while (
-      bottom + 1 < footer &&
-      isOption(lines[bottom + 1]) &&
-      /^\s+$/.test(lines[bottom + 1].slice(0, indent + 2))
-    )
-      bottom += 1;
-    // A label wrapped at the pane edge continues on the next line: its first word would not have fit.
-    const width = Math.max(0, ...lines.filter((l) => RULE.test(l)).map((l) => l.trimEnd().length));
-    const wrapped = (i) =>
-      width > 0 &&
-      i !== at &&
-      lines[i - 1].trimEnd().length + 1 + (lines[i].trim().split(/\s+/)[0]?.length ?? 0) > width;
-    for (let i = top; i <= bottom; i += 1) {
-      const label = clean(lines[i].replace("❯", ""));
-      if (i > top && wrapped(i)) {
-        options.at(-1).label = `${options.at(-1).label} ${label}`;
-        options.at(-1).selected ||= i === at;
-        continue;
-      }
-      options.push({ number: options.length + 1, label, selected: i === at, line: i });
-    }
-    first = top;
-  }
-  if (options.length < 2 || options.filter((o) => o.selected).length !== 1) return null;
-  // Lines under an option, before the next one, describe it.
-  for (let k = 0; k < options.length; k += 1) {
-    const end = k + 1 < options.length ? options[k + 1].line : footer;
-    const text = lines
-      .slice(options[k].line + 1, end)
-      .filter((l) => !RULE.test(l))
-      .map(clean)
-      .filter((l) => l.length > 0)
-      .join(" ");
-    options[k].description = text;
-  }
-  // The question is the nearest text above the options; what it asks about runs up to a rule.
-  let q = first - 1;
-  while (q >= 0 && clean(lines[q]).length === 0) q -= 1;
-  if (q < 0 || SOLID.test(lines[q])) return null;
-  if (RULE.test(lines[q])) {
-    // A dashed box above the options (artifact access): its lines up to the "?" are the question.
-    let boxTop = q - 1;
-    while (boxTop >= 0 && q - boxTop < 30 && !RULE.test(lines[boxTop])) boxTop -= 1;
-    const box = lines
-      .slice(boxTop + 1, q)
-      .map(clean)
-      .filter((l) => l.length > 0);
-    const asks = box.findIndex((l) => l.includes("?"));
-    if (boxTop < 0) return null;
-    if (asks < 0) {
-      // No question in the box (a held message's body): the dialog's title asks, the rest is context.
-      let solid = boxTop - 1;
-      while (solid >= 0 && boxTop - solid < 30 && !SOLID.test(lines[solid])) solid -= 1;
-      const above = lines
-        .slice(solid + 1, boxTop)
-        .map(clean)
-        .filter((l) => l.length > 0);
-      if (above.length === 0) return null;
-      const about = [...above.slice(1), ...box].join(" ").replace(/\s+/g, " ");
-      lines.splice(solid + 1, q - solid, about, "", above[0], "");
-      return parsePanePrompt(lines.join("\n"));
-    }
-    const question = box.slice(0, asks + 1).join(" ");
-    // A link wrapped at the box edge continues on a line with no spaces.
-    const about = box
-      .slice(asks + 1)
-      .reduce(
-        (text, l) => (/https?:\/\/\S+$/.test(text) && !/\s/.test(l) ? text + l : `${text} ${l}`),
-        "",
-      )
-      .trim();
-    lines.splice(boxTop, q - boxTop + 1, about, "", question, "");
-    return parsePanePrompt(lines.join("\n"));
-  }
-  // A long question wraps over several lines with no blank between them: they are one question.
-  let qTop = q;
-  while (
-    qTop - 1 >= 0 &&
-    q - qTop < 12 &&
-    clean(lines[qTop - 1]).length > 0 &&
-    !RULE.test(lines[qTop - 1]) &&
-    !/^[←☐☒✔]/.test(clean(lines[qTop - 1]))
-  )
-    qTop -= 1;
-  const question = lines
-    .slice(qTop, q + 1)
-    .map(clean)
-    .join(" ");
-  let top = qTop - 1;
-  while (top >= 0 && qTop - top < 30 && !SOLID.test(lines[top])) top -= 1;
-  const context = lines
-    .slice(top + 1, qTop)
-    .filter((l) => !RULE.test(l))
-    .map(clean)
-    .filter((l) => l.length > 0);
-  // A multi-question form puts its tabs on one line: ← ☐ Chrome ☒ Connectors ✔ Submit →
-  const tabs = context.length > 0 && /^←/.test(context[0]) ? tabsOf(context.shift()) : null;
-  const tabbed =
-    context.length > 0 && /^[☐☒✔]/.test(context[0]) ? context.shift().slice(1).trim() : null;
-  // A tabbed form's header is its tabs, so the card says which question of how many this is.
-  const header =
-    tabs !== null && tabs.length > 1
-      ? tabs
-          .filter((tab) => !tab.submit)
-          .map((tab) => (tab.answered ? `${tab.label} ✓` : tab.label))
-          .join(" · ")
-      : tabbed;
-  const visible = options.filter((o) => !CUSTOM.test(o.label) && !DROPPED.test(o.label));
-  const custom = options.find((o) => CUSTOM.test(o.label));
-  return {
-    question,
-    header,
-    ...(tabs === null ? {} : { tabs }),
-    context: context.join(" · ").slice(0, 600),
-    options: visible.map((o) => ({
-      index: o.number - 1,
-      label: o.label,
-      description: o.description,
-    })),
-    selected: options.findIndex((o) => o.selected),
-    customIndex: custom === undefined ? null : custom.number - 1,
-    key: [question, ...options.map((o) => o.label)].join("\u0000"),
-  };
 }
 
 /** The keys that answer `prompt` with `answer` (an option's label or number, or free text). */
@@ -774,14 +503,6 @@ export async function sendToStopped(dir, sessionId, item, deps) {
 }
 
 /** The prompt on the pane's screen now, or null. */
-export async function readPaneScreen(paneRef) {
-  const read = await run(
-    HERDR,
-    herdrArgs(paneRef, "read", ["--source", "visible", "--lines", "40"]),
-  );
-  return read.ok ? screenTail(read.out) : "";
-}
-
 export async function readPanePrompt(paneRef) {
   const read = await run(
     HERDR,
@@ -1308,15 +1029,5 @@ if (
   process.argv[1] &&
   NodeURL.fileURLToPath(import.meta.url) === NodePath.resolve(process.argv[1])
 ) {
-  // `--pane-screen <pane>`: the last lines of a waiting pane, for a question it could not read as options.
-  if (process.argv[2] === "--pane-screen" && process.argv[3])
-    readPaneScreen(process.argv[3]).then((text) =>
-      process.stdout.write(`${JSON.stringify({ text })}\n`),
-    );
-  else // `--pane-prompt <pane>`: the server's mirror reads a waiting session's prompt through this (D88).
-  if (process.argv[2] === "--pane-prompt" && process.argv[3])
-    readPanePrompt(process.argv[3]).then((found) =>
-      process.stdout.write(`${JSON.stringify(found)}\n`),
-    );
-  else main();
+  main();
 }

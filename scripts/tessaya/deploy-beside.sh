@@ -22,7 +22,7 @@ if [ -n "$host" ]; then
   key="${BATON_SSH_KEY:-$HOME/.config/venture-ssh/onnyx_ed25519}"
   ssh_opts=(-i "$key" -o IdentitiesOnly=yes -o BatchMode=yes)
   ssh "${ssh_opts[@]}" "$host" 'mkdir -p ~/dev/baton-deploy'
-  scp "${ssh_opts[@]}" "$archive" "$0" "$(dirname "$0")/live/baton-live-acp.mjs" "$host:dev/baton-deploy/"
+  scp "${ssh_opts[@]}" "$archive" "$0" "$(dirname "$0")/live/baton-live-acp.mjs" "$(dirname "$0")/live/pane-prompt.mjs" "$host:dev/baton-deploy/"
   exec ssh "${ssh_opts[@]}" "$host" \
     "bash ~/dev/baton-deploy/deploy-beside.sh ~/dev/baton-deploy/$(basename "$archive") $version"
 fi
@@ -77,8 +77,12 @@ tar -xzf "$archive" --strip-components=1 -C "$dest"
 printf '%s' "$version" > "$dest/.install-complete"
 
 # The live-session agent T3 runs as its "Live session" provider (D83); the server finds it here.
-for agent in "$(dirname "$0")/live/baton-live-acp.mjs" "$(dirname "$0")/baton-live-acp.mjs"; do
-  [ -f "$agent" ] && install -D -m 755 "$agent" "$t3home/baton/baton-live-acp.mjs" && break
+# It imports pane-prompt.mjs from its own folder, so both are installed together.
+for from in "$(dirname "$0")/live" "$(dirname "$0")"; do
+  [ -f "$from/baton-live-acp.mjs" ] || continue
+  install -D -m 755 "$from/baton-live-acp.mjs" "$t3home/baton/baton-live-acp.mjs"
+  install -D -m 644 "$from/pane-prompt.mjs" "$t3home/baton/pane-prompt.mjs"
+  break
 done
 
 printf '[Service]\nExecStart=\nExecStart=%%h/.t3/runtime/versions/%s/t3 __service-launcher\n' "$version" > "$dropins/fabric-runtime.conf"

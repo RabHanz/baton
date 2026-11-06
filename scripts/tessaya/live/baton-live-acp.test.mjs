@@ -12,15 +12,12 @@ import {
   soleCandidate,
   isAdoptRequest,
   isAnswerInTerminal,
-  screenTail,
   notSentNote,
   isAppContinuation,
   promptText,
   splitAttachments,
   safeInboxName,
   readableInboxName,
-  parsePanePrompt,
-  parseReviewScreen,
   answerKeys,
   answerFrom,
   enqueue,
@@ -40,6 +37,7 @@ import {
   liveQueueDir,
   takeDrainLock,
 } from "./baton-live-acp.mjs";
+import { parsePanePrompt, parseReviewScreen, screenTail } from "./pane-prompt.mjs";
 
 const AGENT = NodePath.join(
   NodePath.dirname(NodeURL.fileURLToPath(import.meta.url)),

@@ -94,6 +94,9 @@ import {
   stampKept,
 } from "./UnboundMessages.ts";
 import { staleAskIds } from "./StaleAsks.ts";
+import { splitPaneRef } from "./HerdrAdapterLive.ts";
+// @ts-expect-error -- plain JS shared with the live agent, which runs without a build; typed below
+import * as panePrompt from "../../../../scripts/tessaya/live/pane-prompt.mjs";
 import { mediaKindFromPath } from "@t3tools/shared/mediaPreview";
 import {
   attachMarkdown,
@@ -170,7 +173,7 @@ const FILE_TYPES: Record<string, string> = {
   ".txt": "text/plain",
 };
 
-/** A prompt read off a Herdr pane by the agent script's `--pane-prompt` (D88). */
+/** What the mirror shows of a prompt read off a Herdr pane (D88). */
 interface PanePrompt {
   readonly question: string;
   readonly header: string | null;
@@ -180,48 +183,31 @@ interface PanePrompt {
   readonly key: string;
 }
 
-const readPanePrompt = (pane: string): Effect.Effect<PanePrompt | null> => {
-  const node = findNode();
-  const script = agentScript();
-  if (node === null || !NodeFS.existsSync(script)) return Effect.succeed(null);
-  return Effect.callback<PanePrompt | null>((resume) => {
+const parsePanePrompt: (screen: string) => PanePrompt | null = panePrompt.parsePanePrompt;
+const screenTail: (screen: string) => string = panePrompt.screenTail;
+
+/** The visible screen of a Herdr pane read in-process (no node child per read), or null when Herdr cannot read it. */
+const readPane = (paneRef: string, lines: number): Effect.Effect<string | null> => {
+  const { session, pane } = splitPaneRef(paneRef);
+  const prefix = session === null || session === "default" ? [] : ["--session", session];
+  return Effect.callback<string | null>((resume) => {
     NodeChildProcess.execFile(
-      node,
-      [script, "--pane-prompt", pane],
+      "herdr",
+      [...prefix, "agent", "read", pane, "--source", "visible", "--lines", String(lines)],
       { timeout: 10_000 },
-      (error, stdout) => {
-        if (error !== null) return resume(Effect.succeed(null));
-        try {
-          resume(Effect.succeed(JSON.parse(stdout) as PanePrompt | null));
-        } catch {
-          resume(Effect.succeed(null));
-        }
-      },
+      (error, stdout) => resume(Effect.succeed(error === null ? stdout : null)),
     );
   });
 };
 
-/** The last lines on a waiting pane, from the agent script's `--pane-screen`; empty when it cannot be read. */
-const readPaneScreen = (pane: string): Effect.Effect<string> => {
-  const node = findNode();
-  const script = agentScript();
-  if (node === null || !NodeFS.existsSync(script)) return Effect.succeed("");
-  return Effect.callback<string>((resume) => {
-    NodeChildProcess.execFile(
-      node,
-      [script, "--pane-screen", pane],
-      { timeout: 10_000 },
-      (error, stdout) => {
-        if (error !== null) return resume(Effect.succeed(""));
-        try {
-          resume(Effect.succeed((JSON.parse(stdout) as { text?: string }).text ?? ""));
-        } catch {
-          resume(Effect.succeed(""));
-        }
-      },
-    );
-  });
-};
+const readPanePrompt = (pane: string): Effect.Effect<PanePrompt | null> =>
+  readPane(pane, 80).pipe(
+    Effect.map((screen) => (screen === null ? null : parsePanePrompt(screen))),
+  );
+
+/** The last lines on a waiting pane; empty when it cannot be read. */
+const readPaneScreen = (pane: string): Effect.Effect<string> =>
+  readPane(pane, 40).pipe(Effect.map((screen) => (screen === null ? "" : screenTail(screen))));
 
 /**
  * A session that is waiting but whose prompt cannot be read as options (a plain terminal, or a screen the reader does not

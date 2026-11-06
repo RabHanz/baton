@@ -2365,11 +2365,11 @@ The Director, 2026-10-29: when a live session showed a permission dialog, an Ask
 mod's `ui.ask`, T3 only said to answer it in the terminal, so he could not answer from his phone.
 
 - **Detection.** Claude Code's own session record says `status: "waiting"` while a prompt shows.
-  For a waiting session with a Herdr pane, the mirror runs the agent script's `--pane-prompt`,
-  which reads the pane's screen and parses the prompt: the footer (`Esc to cancel`, `Enter to
+  For a waiting session with a Herdr pane, the mirror reads the pane's screen with `herdr agent read`
+  and parses the prompt: the footer (`Esc to cancel`, `Enter to
   select`), the options (numbered, or the unnumbered kind with a `❯` marker), their descriptions,
   the highlighted one, the question above them, and what it asks about (up to the box's rule).
-  One parser, in the agent script, used by both sides.
+  One parser, `scripts/tessaya/live/pane-prompt.mjs`, used by both the agent and the server.
 - **Shown as T3's own question.** The mirror writes a `user_input_request` turn item and a
   `runtime-request` of kind `user_input` with upstream's `message` response mode (the shape
   Codex's async questions use), so T3 renders the options as buttons on every client. "Type
