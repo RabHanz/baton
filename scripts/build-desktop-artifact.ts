@@ -2373,14 +2373,20 @@ export const BATON_VOICE_PAYLOAD_FILES = [
   "models/alfred.onnx",
   "models/freya.onnx",
   "models/onyx.onnx",
+  "models/tessaya.onnx",
 ] as const;
 
 /** The sidecar's cargo target and cmake flags for one platform and arch. Windows keeps its static CRT build. */
 export function batonSidecarBuild(
   platform: typeof BuildPlatform.Type,
   arch: typeof BuildArch.Type,
-): ReadonlyArray<{ readonly rustTarget: string | null; readonly cmake: string; readonly rustflags?: string }> {
-  const avx2 = "-DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BMI2=ON";
+): ReadonlyArray<{
+  readonly rustTarget: string | null;
+  readonly cmake: string;
+  readonly rustflags?: string;
+}> {
+  const avx2 =
+    "-DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BMI2=ON";
   if (platform === "win") {
     return [
       {
@@ -2391,8 +2397,14 @@ export function batonSidecarBuild(
     ];
   }
   if (platform === "linux") return [{ rustTarget: null, cmake: avx2 }];
-  const arm = { rustTarget: "aarch64-apple-darwin", cmake: "-DGGML_NATIVE=OFF -DCMAKE_OSX_ARCHITECTURES=arm64" };
-  const intel = { rustTarget: "x86_64-apple-darwin", cmake: `${avx2} -DCMAKE_OSX_ARCHITECTURES=x86_64` };
+  const arm = {
+    rustTarget: "aarch64-apple-darwin",
+    cmake: "-DGGML_NATIVE=OFF -DCMAKE_OSX_ARCHITECTURES=arm64",
+  };
+  const intel = {
+    rustTarget: "x86_64-apple-darwin",
+    cmake: `${avx2} -DCMAKE_OSX_ARCHITECTURES=x86_64`,
+  };
   return arch === "universal" ? [arm, intel] : [arch === "arm64" ? arm : intel];
 }
 
@@ -2435,19 +2447,33 @@ export const stageBatonVoice = Effect.fn("stageBatonVoice")(function* (input: {
           ...(input.platform === "mac" ? { MACOSX_DEPLOYMENT_TARGET: "11.0" } : {}),
         },
       }),
-      { label: `cargo build baton-dictation${build.rustTarget === null ? "" : ` (${build.rustTarget})`}`, verbose: input.verbose },
+      {
+        label: `cargo build baton-dictation${build.rustTarget === null ? "" : ` (${build.rustTarget})`}`,
+        verbose: input.verbose,
+      },
     );
-    built.push(path.join(crate, "target", ...(build.rustTarget === null ? [] : [build.rustTarget]), "release", exe));
+    built.push(
+      path.join(
+        crate,
+        "target",
+        ...(build.rustTarget === null ? [] : [build.rustTarget]),
+        "release",
+        exe,
+      ),
+    );
   }
   const out = path.join(destination, exe);
   if (built.length === 1) {
     yield* fs.copyFile(built[0]!, out);
   } else {
     const lipo = yield* resolveSpawnCommand("lipo", ["-create", ...built, "-output", out]);
-    yield* runCommand(ChildProcess.make(lipo.command, lipo.args, { cwd: input.repoRoot, shell: lipo.shell }), {
-      label: "lipo baton-dictation",
-      verbose: input.verbose,
-    });
+    yield* runCommand(
+      ChildProcess.make(lipo.command, lipo.args, { cwd: input.repoRoot, shell: lipo.shell }),
+      {
+        label: "lipo baton-dictation",
+        verbose: input.verbose,
+      },
+    );
   }
   if (input.platform !== "win") yield* fs.chmod(out, 0o755);
 });

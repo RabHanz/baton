@@ -303,7 +303,7 @@ index aa04d9bfbf17d9891c21f0a6280a3326f0b01a40..a97f4715fe6495e51b14ad05fbe83b5b
 +  assert.include(batonSidecarBuild("mac", "x64")[0]!.cmake, "CMAKE_OSX_ARCHITECTURES=x86_64");
 +});
 diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
-index 5de3c068fc6c6345963bef019e1e9eadb4faf08e..49d14c0791010b069baf39cd0517411860054251 100644
+index 5de3c068fc6c6345963bef019e1e9eadb4faf08e..701c9bd4be2bb4d596bfb0d16b2c6e7c48ab635b 100644
 --- a/scripts/build-desktop-artifact.ts
 +++ b/scripts/build-desktop-artifact.ts
 @@ -740,6 +740,7 @@ const WindowsPackagedPayloadValidationReason = Schema.Literals([
@@ -376,7 +376,7 @@ index 5de3c068fc6c6345963bef019e1e9eadb4faf08e..49d14c0791010b069baf39cd05174118
  ] as const;
  export const LINUX_CAPTURE_EXTRA_RESOURCES = [
    {
-@@ -2338,6 +2364,94 @@ export const stageLinuxCaptureHelper = Effect.fn("stageLinuxCaptureHelper")(func
+@@ -2338,6 +2364,120 @@ export const stageLinuxCaptureHelper = Effect.fn("stageLinuxCaptureHelper")(func
    }
  });
  
@@ -389,14 +389,20 @@ index 5de3c068fc6c6345963bef019e1e9eadb4faf08e..49d14c0791010b069baf39cd05174118
 +  "models/alfred.onnx",
 +  "models/freya.onnx",
 +  "models/onyx.onnx",
++  "models/tessaya.onnx",
 +] as const;
 +
 +/** The sidecar's cargo target and cmake flags for one platform and arch. Windows keeps its static CRT build. */
 +export function batonSidecarBuild(
 +  platform: typeof BuildPlatform.Type,
 +  arch: typeof BuildArch.Type,
-+): ReadonlyArray<{ readonly rustTarget: string | null; readonly cmake: string; readonly rustflags?: string }> {
-+  const avx2 = "-DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BMI2=ON";
++): ReadonlyArray<{
++  readonly rustTarget: string | null;
++  readonly cmake: string;
++  readonly rustflags?: string;
++}> {
++  const avx2 =
++    "-DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BMI2=ON";
 +  if (platform === "win") {
 +    return [
 +      {
@@ -407,8 +413,14 @@ index 5de3c068fc6c6345963bef019e1e9eadb4faf08e..49d14c0791010b069baf39cd05174118
 +    ];
 +  }
 +  if (platform === "linux") return [{ rustTarget: null, cmake: avx2 }];
-+  const arm = { rustTarget: "aarch64-apple-darwin", cmake: "-DGGML_NATIVE=OFF -DCMAKE_OSX_ARCHITECTURES=arm64" };
-+  const intel = { rustTarget: "x86_64-apple-darwin", cmake: `${avx2} -DCMAKE_OSX_ARCHITECTURES=x86_64` };
++  const arm = {
++    rustTarget: "aarch64-apple-darwin",
++    cmake: "-DGGML_NATIVE=OFF -DCMAKE_OSX_ARCHITECTURES=arm64",
++  };
++  const intel = {
++    rustTarget: "x86_64-apple-darwin",
++    cmake: `${avx2} -DCMAKE_OSX_ARCHITECTURES=x86_64`,
++  };
 +  return arch === "universal" ? [arm, intel] : [arch === "arm64" ? arm : intel];
 +}
 +
@@ -451,19 +463,33 @@ index 5de3c068fc6c6345963bef019e1e9eadb4faf08e..49d14c0791010b069baf39cd05174118
 +          ...(input.platform === "mac" ? { MACOSX_DEPLOYMENT_TARGET: "11.0" } : {}),
 +        },
 +      }),
-+      { label: `cargo build baton-dictation${build.rustTarget === null ? "" : ` (${build.rustTarget})`}`, verbose: input.verbose },
++      {
++        label: `cargo build baton-dictation${build.rustTarget === null ? "" : ` (${build.rustTarget})`}`,
++        verbose: input.verbose,
++      },
 +    );
-+    built.push(path.join(crate, "target", ...(build.rustTarget === null ? [] : [build.rustTarget]), "release", exe));
++    built.push(
++      path.join(
++        crate,
++        "target",
++        ...(build.rustTarget === null ? [] : [build.rustTarget]),
++        "release",
++        exe,
++      ),
++    );
 +  }
 +  const out = path.join(destination, exe);
 +  if (built.length === 1) {
 +    yield* fs.copyFile(built[0]!, out);
 +  } else {
 +    const lipo = yield* resolveSpawnCommand("lipo", ["-create", ...built, "-output", out]);
-+    yield* runCommand(ChildProcess.make(lipo.command, lipo.args, { cwd: input.repoRoot, shell: lipo.shell }), {
-+      label: "lipo baton-dictation",
-+      verbose: input.verbose,
-+    });
++    yield* runCommand(
++      ChildProcess.make(lipo.command, lipo.args, { cwd: input.repoRoot, shell: lipo.shell }),
++      {
++        label: "lipo baton-dictation",
++        verbose: input.verbose,
++      },
++    );
 +  }
 +  if (input.platform !== "win") yield* fs.chmod(out, 0o755);
 +});
@@ -471,7 +497,7 @@ index 5de3c068fc6c6345963bef019e1e9eadb4faf08e..49d14c0791010b069baf39cd05174118
  export const stageResourceMonitor = Effect.fn("stageResourceMonitor")(function* (input: {
    readonly repoRoot: string;
    readonly stageResourcesDir: string;
-@@ -2783,6 +2897,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
+@@ -2783,6 +2923,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
          : platform === "linux"
            ? LINUX_FILE_EXCLUSIONS
            : []),
@@ -479,7 +505,7 @@ index 5de3c068fc6c6345963bef019e1e9eadb4faf08e..49d14c0791010b069baf39cd05174118
      ],
      directories: {
        buildResources: "apps/desktop/resources",
-@@ -3401,6 +3516,20 @@ export const validateWindowsPackagedPayload = Effect.fn(
+@@ -3401,6 +3542,20 @@ export const validateWindowsPackagedPayload = Effect.fn(
      });
    }
  
@@ -500,7 +526,7 @@ index 5de3c068fc6c6345963bef019e1e9eadb4faf08e..49d14c0791010b069baf39cd05174118
    const wslArchivePath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_NAME);
    const wslArchiveHashPath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_HASH_NAME);
    const [hasWslArchive, hasWslArchiveHash] = yield* Effect.all([
-@@ -3762,6 +3891,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
+@@ -3762,6 +3917,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
      arch: options.arch,
      verbose: options.verbose,
    });
