@@ -266,7 +266,7 @@ import { pendingSecret } from "../vault/pendingSecret.ts";
 import { createMemorySync } from "../memory/memorySync.ts";
 import { createMemoryTab } from "../memory/memoryTab.ts";
 import { windowsHello } from "../vault/hello.ts";
-import { createPhoneRelay, nextPollMs } from "../phone/phoneRelay.ts";
+import { createPhoneRelay, guardedPhoneCall, nextPollMs } from "../phone/phoneRelay.ts";
 import { createNightlyCache, runGh } from "../presence/nightlyRead.ts";
 import { createSyncExtraCache } from "../presence/syncRead.ts";
 import { cloudLoginsFile, readCloudLogins } from "../presence/cloudLoginsRead.ts";
@@ -1798,12 +1798,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   // The phone relay: the desktop assistant answers what the phone page asked. It only talks while the app's own window is
   // already open (it never opens one to ask), so a tray-only app is "not connected" to the phone, and the ask waits.
   const phoneRelay = createPhoneRelay({
-    call: (op, args) =>
-      Electron.BrowserWindow.getAllWindows().some(
-        (w) => !w.isDestroyed() && /^https?:/.test(w.webContents.getURL()),
-      )
-        ? request({ kind: "phone", op: op as BatonPhoneBridgeRequest["op"], args })
-        : Promise.reject(new Error("The app window is not open.")),
+    call: guardedPhoneCall({
+      windowUp: async () => (await input.mainWindowUp?.()) === true,
+      request: (op, args) =>
+        request({ kind: "phone", op: op as BatonPhoneBridgeRequest["op"], args }),
+      mark: markPhase,
+    }),
     run: (text, source) =>
       input.extras?.askFromPhone === undefined
         ? Promise.reject(new Error("No assistant here."))
@@ -1812,7 +1812,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   input.extras?.setPhoneMirror?.(phoneRelay.mirror);
   let phoneQuiet = 0;
   const phoneLoop = async (): Promise<void> => {
-    const outcome = await phoneRelay.tick();
+    markPhase("phone-tick:begin");
+    const outcome = await phoneRelay.tick().finally(() => markPhase("phone-tick:end"));
     phoneQuiet = outcome === "idle" || outcome === "away" ? phoneQuiet + 1 : 0;
     setTimeout(() => void phoneLoop(), nextPollMs(phoneQuiet)).unref();
   };

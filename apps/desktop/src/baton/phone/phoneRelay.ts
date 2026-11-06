@@ -19,6 +19,41 @@ const POLL_MS = 1_500;
 export const nextPollMs = (quietTicks: number): number =>
   quietTicks < 12 ? 5_000 : quietTicks < 60 ? 15_000 : 30_000;
 
+/** A relay call that has not answered by then is a failed one: the loop goes on and the main thread is never held. */
+export const PHONE_CALL_TIMEOUT_MS = 20_000;
+
+/**
+ * The relay's call into the app: asks only while the app's window is up, never inspecting windows synchronously (an
+ * 81 s main-thread freeze sat in that check), gives up after a timeout, and marks its start and end so a stall names it.
+ * Whatever goes wrong, including a synchronous throw, comes back as a rejected promise.
+ */
+export const guardedPhoneCall =
+  (input: {
+    readonly windowUp: () => Promise<boolean>;
+    readonly request: PhoneCall;
+    readonly mark: (name: string, detail?: Record<string, unknown>) => void;
+    readonly timeoutMs?: number;
+  }): PhoneCall =>
+  async (op, args) => {
+    input.mark("phone-call:begin", { op });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      if (!(await input.windowUp())) throw new Error("The app window is not open.");
+      return await Promise.race([
+        input.request(op, args),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error("The app did not answer the phone relay in time.")),
+            input.timeoutMs ?? PHONE_CALL_TIMEOUT_MS,
+          );
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+      input.mark("phone-call:end");
+    }
+  };
+
 export const createPhoneRelay = (input: {
   readonly call: PhoneCall;
   /** The assistant, as a typed Ask; "device" words are a token's, never his own. */
