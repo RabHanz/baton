@@ -746,7 +746,7 @@ async function prompt(params) {
     } catch {}
     say(
       sessionId,
-      `This thread is not bound to a running Claude Code session, so nothing was delivered. Your message was kept: "${words}". Reattach the thread to its session, then Retry the kept message.`,
+      `This thread is not bound to a running Claude Code session, so nothing was delivered. Your message was kept: "${words}". Reattach the thread and it will be sent.`,
     );
     return { stopReason: "end_turn" };
   }
