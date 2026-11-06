@@ -307,7 +307,7 @@ export const trustControls = (data: TrustData, now: number): ReadonlyArray<HomeC
             id: `trust.${j.kind === "rule" ? "rule" : "standing"}:${j.id}`,
             section: PLAYS,
             label: j.title,
-            hint: `${hint}${j.kind === "built_in" ? " Never sends, posts or spends. Off until you turn it on." : ""}`,
+            hint: `${hint}${j.kind === "built_in" ? " Never sends, posts or spends." : ""}`,
             kind: "toggle",
             on: j.on,
           };

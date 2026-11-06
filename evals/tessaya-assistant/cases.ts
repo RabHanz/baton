@@ -292,4 +292,19 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     says: "billing",
     answers: { what_happened: overnight },
   },
+  {
+    id: "standing-jobs-list",
+    source:
+      "One spine step 8: rules, playbooks and schedules became standing jobs on the Trust page",
+    said: "which standing jobs do you run by yourself?",
+    first: ["trust_show"],
+    not: ["jobs_list"],
+  },
+  {
+    id: "standing-jobs-today",
+    source: "One spine step 8: a standing job's runs are what she did by herself today",
+    said: "what did your standing jobs do today?",
+    first: ["activity_today", "what_happened"],
+    not: ["jobs_list"],
+  },
 ];

@@ -414,6 +414,8 @@ export const startBatonDesktop = Effect.gen(function* () {
         outcome: ok ? "answered" : "failed",
         // The last calls, so the line stays whole JSON under the Record's 1000 characters.
         detail: JSON.stringify({
+          // First, so a cut line still names the turn the nightly learning pass looks for.
+          turn: typeof fields["turn"] === "number" ? fields["turn"] : null,
           calls: calls.slice(-10),
           skills: fields["skills"] ?? [],
           stoppedBy: fields["stoppedBy"] ?? null,

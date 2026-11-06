@@ -986,14 +986,14 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
     {
       name: "trust_show",
       description:
-        "What Tessaya may do right now, in plain words, and when each was last used: screen, Chrome, social, vault, standing job permissions, playbooks. Use it for 'show me what you can access'. The Trust page shows the same.",
+        "What Tessaya may do right now, in plain words, and when each was last used: screen, Chrome, social, vault, standing job permissions, and the standing jobs that run by themselves (rules, schedules, the brief) with who runs each. Use it for 'show me what you can access' or 'which standing jobs are on?'. The Trust page shows the same.",
       inputSchema: object({}),
       run: async () => ({ text: await host.jobs("trust_show", {}) }),
     },
     {
       name: "activity_today",
       description:
-        "What Tessaya did on his behalf today (actions, social, vault uses, messages to sessions, playbooks). Use it for 'what did you do today?'.",
+        "What Tessaya did on his behalf today (actions, social, vault uses, messages to sessions, what her standing jobs did by themselves). Use it for 'what did you do today?' or 'what did your standing jobs do?'.",
       inputSchema: object({}),
       run: async () => ({ text: await host.jobs("activity_today", {}) }),
     },

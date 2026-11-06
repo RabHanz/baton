@@ -9,8 +9,10 @@ import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
+import { redactText } from "@t3tools/baton-shared/diagnostics";
 import {
   matchSkills,
+  nightlyGroups,
   parseLearnedSkill,
   parseSkillStates,
   skillFileText,
@@ -20,6 +22,7 @@ import {
   verdict,
   WRITER_SYSTEM,
   writerInput,
+  type KeptTurn,
   type LearnedSkill,
   type RecordedCase,
   type Replay,
@@ -124,6 +127,17 @@ export const decideSkill = (
 };
 
 const REJECT_KEEP_MS = 30 * 24 * 60 * 60_000;
+
+/** The morning brief's line: skills learned in the last day that wait for his tap; null when none. */
+export const waitingSkillsLine = (dir: string, now: Date): string | null => {
+  const n = Object.values(readStates(dir)).filter(
+    (s) => s.state === "waiting" && now.getTime() - Date.parse(s.at) <= 86_400_000,
+  ).length;
+  if (n === 0) return null;
+  return n === 1
+    ? "I learned one thing yesterday; it's waiting for you."
+    : `I learned ${n} things yesterday; they're waiting for you.`;
+};
 
 /** The bare "What I've learned" list, with the button that learns from the last turn. */
 export const learnedControls = (
@@ -311,4 +325,96 @@ export const learnFromTurn = async (input: {
     },
   });
   return `I learned a skill for "${skill.when}" and tested it: ${result.evidence}. It waits for your yes under What I've learned.`;
+};
+
+const recentDir = (dir: string) => NodePath.join(dir, ".recent");
+const KEEP_RECENT_MS = 2 * 86_400_000;
+/** The groups the nightly pass learns from; the rest wait for the next night. */
+export const NIGHTLY_LEARN = 2;
+
+/** Deletes kept turns older than two days. */
+export const pruneRecentTurns = (dir: string, now: number): void => {
+  let names: string[] = [];
+  try {
+    names = NodeFS.readdirSync(recentDir(dir));
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    if (Number(name.replace(/\.json$/, "")) < now - KEEP_RECENT_MS)
+      NodeFS.rmSync(NodePath.join(recentDir(dir), name), { force: true });
+  }
+};
+
+/** Keeps a turn for the nightly pass on this machine, obvious secrets in its tool output taken out. */
+export const keepRecentTurn = (dir: string, kept: KeptTurn, now: number): void => {
+  NodeFS.mkdirSync(recentDir(dir), { recursive: true });
+  const answers = Object.fromEntries(
+    Object.entries(kept.answers).map(([tool, text]) => [tool, redactText(text)]),
+  );
+  NodeFS.writeFileSync(
+    NodePath.join(recentDir(dir), `${kept.turn}.json`),
+    JSON.stringify({ ...kept, answers }),
+  );
+  pruneRecentTurns(dir, now);
+};
+
+const readRecent = (dir: string): ReadonlyArray<KeptTurn> => {
+  try {
+    return NodeFS.readdirSync(recentDir(dir)).flatMap((name) => {
+      try {
+        return [
+          JSON.parse(NodeFS.readFileSync(NodePath.join(recentDir(dir), name), "utf8")) as KeptTurn,
+        ];
+      } catch {
+        return [];
+      }
+    });
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * The lead's nightly pass: the last day's slow, stopped or corrected turns the Record names, grouped by
+ * kind, and a skill learned from the worst turn of the top two groups, each tested by replay and left
+ * for his yes. A group it tried is dropped whatever the result, so a failed test is logged, not retried.
+ */
+export const learnNightly = async (input: {
+  readonly dir: string;
+  readonly traced: ReadonlySet<number>;
+  readonly ask: (system: string, user: string) => Promise<string>;
+  /** A replay on the model the turn used. */
+  readonly replay: (
+    brain: KeptTurn["brain"],
+  ) => (c: RecordedCase, extra?: string) => Promise<ReadonlyArray<string>>;
+  readonly now: Date;
+}): Promise<{ readonly text: string; readonly replays: number }> => {
+  pruneRecentTurns(input.dir, input.now.getTime());
+  const groups = nightlyGroups(readRecent(input.dir), input.traced);
+  if (groups.length === 0) return { text: "Nothing in the last day to learn from.", replays: 0 };
+  let replays = 0;
+  const lines: string[] = [];
+  for (const group of groups.slice(0, NIGHTLY_LEARN)) {
+    const worst = group[0]!;
+    const replay = input.replay(worst.brain);
+    lines.push(
+      await learnFromTurn({
+        dir: input.dir,
+        turn: worst,
+        ask: input.ask,
+        replay: (c, extra) => ((replays += 1), replay(c, extra)),
+        now: input.now,
+      }).catch(
+        (error: unknown) =>
+          `I could not learn from "${worst.trace.said.slice(0, 80)}": ${error instanceof Error ? error.message : String(error)}`,
+      ),
+    );
+    for (const k of group)
+      NodeFS.rmSync(NodePath.join(recentDir(input.dir), `${k.turn}.json`), { force: true });
+  }
+  return {
+    text: `${lines.join(" ")} Looked at ${groups.length} kind${groups.length === 1 ? "" : "s"} of request; ${replays} replays.`,
+    replays,
+  };
 };
