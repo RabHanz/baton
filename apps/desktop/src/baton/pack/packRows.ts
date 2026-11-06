@@ -13,6 +13,7 @@ import {
   DEFAULT_PACK_FILES,
   FRONT_MATTER,
   mergePack,
+  modelOf,
   splitFront,
   type OsPack,
 } from "@t3tools/baton-shared/osPack";
@@ -99,8 +100,8 @@ export const packControls = (dir: string): ReadonlyArray<HomeControl> => {
     ),
     row(
       "routing",
-      "Which model for which step",
-      "Planning on the strong one, routine work on the cheap one.",
+      "The cheap model for routine work",
+      "Rewrites and sorting run on it. Each persona's own model is in its file.",
     ),
     {
       id: "p.folder",
@@ -175,9 +176,11 @@ const fileIdOf = (personaId: string) =>
 const capital = (word: string) => `${word[0]!.toUpperCase()}${word.slice(1)}`;
 
 /** The roster on the Voice tab: each face, its wake word, and its voice to change or put back. */
-export const rosterControls = (dir: string): ReadonlyArray<HomeControl> =>
-  readPack(dir).personas.map((persona) => {
+export const rosterControls = (dir: string): ReadonlyArray<HomeControl> => {
+  const pack = readPack(dir);
+  return pack.personas.map((persona) => {
     const id = fileIdOf(persona.id);
+    const model = modelOf(pack, persona.id);
     const fallback = splitFront(defaultText(id)).fields["voice"] ?? "anna";
     let own: string | undefined;
     try {
@@ -189,7 +192,7 @@ export const rosterControls = (dir: string): ReadonlyArray<HomeControl> =>
       id: `v.persona:${persona.id}`,
       section: "Personas",
       label: persona.lead ? `${persona.name} (lead)` : persona.name,
-      hint: `${persona.wake === null ? "No wake word yet: say or type the name." : `Wake word: ${persona.wake}.`} ${persona.role}`.trim(),
+      hint: `${persona.wake === null ? "No wake word yet: say or type the name." : `Wake word: ${persona.wake}.`} Runs on ${model.model}, ${model.effort} effort. ${persona.role}`.trim(),
       kind: "choice",
       value: own === undefined || own === "" ? "default" : own.toLowerCase(),
       options: [
@@ -198,6 +201,7 @@ export const rosterControls = (dir: string): ReadonlyArray<HomeControl> =>
       ],
     };
   });
+};
 
 /** A persona's voice in its own file (made from the default when he has none); null takes the line out. */
 export const setPersonaVoice = (dir: string, personaId: string, voice: string | null): boolean => {

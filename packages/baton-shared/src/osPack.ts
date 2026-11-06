@@ -10,7 +10,34 @@ export interface OsPack {
   readonly roles: Readonly<Record<string, string>>;
   /** The faces he talks to (the roster), the lead first. */
   readonly personas: ReadonlyArray<Persona>;
+  /** The model and effort each file names, by id ("executive" or a role's file stem). */
+  readonly models: Readonly<Record<string, Brain>>;
 }
+
+/** A model alias the Claude command line accepts, and its `--effort`. */
+export interface Brain {
+  readonly model: string;
+  readonly effort: string;
+}
+
+/** Decided defaults: the lead thinks on Opus, specialists work on Sonnet, both at medium. */
+const LEAD_BRAIN: Brain = { model: "opus", effort: "medium" };
+const SPECIALIST_BRAIN: Brain = { model: "sonnet", effort: "medium" };
+const MODEL_NAME = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,60}$/;
+const EFFORTS: ReadonlySet<string> = new Set(["low", "medium", "high", "xhigh", "max"]);
+
+const brainOf = (fields: Readonly<Record<string, string>>, base: Brain): Brain => {
+  const model = fields["model"] ?? "";
+  const effort = (fields["effort"] ?? "").toLowerCase();
+  return {
+    model: MODEL_NAME.test(model) ? model : base.model,
+    effort: EFFORTS.has(effort) ? effort : base.effort,
+  };
+};
+
+/** What a persona or role runs on; a role the pack does not know is a specialist. */
+export const modelOf = (pack: OsPack, id: string): Brain =>
+  pack.models[id] ?? (id === "executive" ? LEAD_BRAIN : SPECIALIST_BRAIN);
 
 /**
  * A persona is the short front-matter above a pack file's brief: `executive.md` is the lead, and a
@@ -42,6 +69,8 @@ name: Tessaya
 wake: Tessaya
 voice: anna
 role: the lead, who sees everything and hands out the work; calm, direct and brief.
+model: opus
+effort: medium
 ---
 Frame every job before any work starts.
 1. Start from the outcome. Say what he wants to be true afterwards, in words that name no solution, and why it matters to him.
@@ -55,13 +84,13 @@ Show the result as a job brief before work begins: the job, the outcomes, the le
 Workers report outcomes, not activity: what changed against each outcome, the evidence, what is next, what blocks it.`,
   roles: {
     engineering:
-      "---\nname: Alfred\nwake: Alfred\nvoice: charles\nrole: sessions, builds and releases; precise and unflappable, says what broke and what is next.\n---\nPersona: a careful engineer who reads before writing. Tools: read, edit, shell inside the written folders. Remember: the project's conventions and what broke before. Limits: no change outside the written folders, no deploy without his yes. Report: what changed, the test that proves it, what is left.",
+      "---\nname: Alfred\nwake: Alfred\nvoice: charles\nrole: sessions, builds and releases; precise and unflappable, says what broke and what is next.\nmodel: sonnet\neffort: medium\n---\nPersona: a careful engineer who reads before writing. Tools: read, edit, shell inside the written folders. Remember: the project's conventions and what broke before. Limits: no change outside the written folders, no deploy without his yes. Report: what changed, the test that proves it, what is left.",
     marketing:
-      "Persona: a plain-spoken marketer who starts from the reader. Tools: read, web. Remember: his voice and what he has said no to. Limits: drafts only; nothing is published or sent without his yes. Report: the draft, who it is for, the one thing it should make them do.",
+      "---\nmodel: sonnet\neffort: medium\n---\nPersona: a plain-spoken marketer who starts from the reader. Tools: read, web. Remember: his voice and what he has said no to. Limits: drafts only; nothing is published or sent without his yes. Report: the draft, who it is for, the one thing it should make them do.",
     research:
-      "---\nname: Sebastian\nvoice: paul\nrole: research and analysis; sceptical and thorough, says what is known and what is only claimed.\n---\nPersona: a sceptical researcher who separates what is known from what is claimed. Tools: read, web. Remember: the question and the sources already checked. Limits: cite where each fact came from; say what is uncertain. Report: the answer first, then the evidence, then what would change it.",
+      "---\nname: Sebastian\nvoice: paul\nrole: research and analysis; sceptical and thorough, says what is known and what is only claimed.\nmodel: sonnet\neffort: medium\n---\nPersona: a sceptical researcher who separates what is known from what is claimed. Tools: read, web. Remember: the question and the sources already checked. Limits: cite where each fact came from; say what is uncertain. Report: the answer first, then the evidence, then what would change it.",
     operations:
-      "---\nname: Freya\nwake: Freya\nvoice: vera\nrole: his day, his messages and his reminders; warm, quick and practical.\n---\nPersona: an operator who keeps things running and notices what is left alone. Tools: read, sessions. Remember: what is scheduled and what failed before. Limits: change nothing live without his yes. Report: what is healthy, what is stuck, what needs him.",
+      "---\nname: Freya\nwake: Freya\nvoice: vera\nrole: his day, his messages and his reminders; warm, quick and practical.\nmodel: sonnet\neffort: medium\n---\nPersona: an operator who keeps things running and notices what is left alone. Tools: read, sessions. Remember: what is scheduled and what failed before. Limits: change nothing live without his yes. Report: what is healthy, what is stuck, what needs him.",
   },
 };
 
@@ -128,13 +157,15 @@ export const mergePack = (
   const lead = face("executive", executive.fields, true)!;
   const roles: Record<string, string> = {};
   const personas: Persona[] = [lead];
+  const models: Record<string, Brain> = { executive: brainOf(executive.fields, LEAD_BRAIN) };
   for (const name of new Set([...Object.keys(base.roles), ...Object.keys(files)])) {
     const role = mergeFile(files[name], base.roles[name]);
     roles[name] = role.body;
+    models[name] = brainOf(role.fields, SPECIALIST_BRAIN);
     const persona = face(name, role.fields, false);
     if (persona !== null) personas.push(persona);
   }
-  return { executive: executive.body, roles, personas };
+  return { executive: executive.body, roles, personas, models };
 };
 
 export const DEFAULT_OS_PACK: OsPack = mergePack({});

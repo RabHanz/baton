@@ -11,7 +11,7 @@ pnpm tessaya-assistant --out runs/assistant-haiku --model haiku --case needs-me 
 ```
 
 - It uses your own `claude` login (subscription; metered API variables are stripped). `--claude <path>` picks the binary.
-- Flags: `--model` (default `claude-opus-5-5`), `--effort` (default `medium`; Haiku takes none), `--case <id>` (repeatable), `--samples <n>` (default 2).
+- Flags: `--model` and `--effort` (default: each case's persona's own, from the default pack: the lead on Opus at medium, specialists on Sonnet at medium; Haiku takes no effort), `--case <id>` (repeatable), `--samples <n>` (default 2).
 - A case passes when more than half its samples reach first for a tool in `first` and not one in `not`.
 - A run writes `results.json` and `summary.md`, with the median time a sample took (a cold `claude` start included, so compare runs made one at a time).
 - Cost: about 25k input tokens a sample, mostly cached; a full run is 40 samples.

@@ -114,7 +114,14 @@ import { vaultFor } from "../vault/vaultInstance.ts";
 import { createMemorySync } from "../memory/memorySync.ts";
 import { plainError, stepLine } from "@t3tools/baton-shared/stepLine";
 import { createNotesStore, notesBlock } from "../memory/memoryNotes.ts";
-import { assistantFrame, personaFor, type Persona } from "@t3tools/baton-shared/osPack";
+import {
+  assistantFrame,
+  DEFAULT_OS_PACK,
+  modelOf,
+  personaFor,
+  type Brain,
+  type Persona,
+} from "@t3tools/baton-shared/osPack";
 import { accountLabel, maskEmail, pickEnv } from "./assistantAccount.ts";
 import { createAssistantAccounts } from "./assistantAccounts.ts";
 import { createInputDriver } from "./inputDriver.ts";
@@ -140,10 +147,8 @@ interface ScreenSettings {
   readonly captureApproval: CaptureApproval;
   /** His `claude` binary; on PATH by default. */
   readonly claudeBinary: string;
-  /** Answers, teaching and driving. Chosen by evals/tessaya-assistant; a default, not his choice, until he edits it. */
+  /** Looking, teaching and the older operator. The one assistant runs on each persona's own model, from its pack file. */
   readonly model: string;
-  /** The one assistant's `--effort`: medium by his standing order (Opus at medium unless he changes it). */
-  readonly effort: string;
   /** The alias that routes: every sentence, so the fast one. */
   readonly routerModel: string;
   /** Written only shows everything and plays nothing. */
@@ -183,7 +188,6 @@ const DEFAULTS: ScreenSettings = {
   captureApproval: "ask",
   claudeBinary: "claude",
   model: "claude-opus-5-5",
-  effort: "medium",
   routerModel: "haiku",
   output: "spoken",
   voice: "anna",
@@ -885,6 +889,10 @@ export const startScreenCompanion = (input: {
     wake: null,
     text: "",
   });
+  /** The model and effort the answering persona's file names. */
+  let faceModel: Brain = modelOf(DEFAULT_OS_PACK, "executive");
+  const leadBrain = () =>
+    modelOf(readPack(NodePath.join(input.stateDir, PACK_FOLDER)), "executive");
   /** Whose name the last answer carried, so a change of persona says its name. */
   let lastFace = face.name;
   let woke: string | null = null;
@@ -2288,7 +2296,7 @@ export const startScreenCompanion = (input: {
       return "Noted.";
     },
   };
-  const agentStart = async (systemPrompt: string): Promise<VisionSession> => {
+  const agentStart = async (systemPrompt: string, chosen = leadBrain()): Promise<VisionSession> => {
     await agentMcp?.close();
     agentMcp = await startBatonMcp({
       tools: withFailureGuard(buildBatonTools(toolHost), toolFailures),
@@ -2298,8 +2306,8 @@ export const startScreenCompanion = (input: {
     });
     return startVisionSession({
       claudeBinary: settings.claudeBinary,
-      model: settings.model,
-      effort: settings.effort,
+      model: chosen.model,
+      effort: chosen.effort,
       systemPrompt,
       workDir: NodePath.join(input.stateDir, "screen"),
       cwd: input.env["USERPROFILE"] ?? input.env["HOME"] ?? input.stateDir,
@@ -2364,7 +2372,13 @@ export const startScreenCompanion = (input: {
     let firstAudioAt: number | null = null;
     try {
       const voice = streamSpeech(() => (firstAudioAt ??= Date.now()));
-      const who = { wake: woke, persona: face.name, voice: voiceNow() };
+      const who = {
+        wake: woke,
+        persona: face.name,
+        voice: voiceNow(),
+        model: faceModel.model,
+        effort: faceModel.effort,
+      };
       const project =
         focusedSession === null ? null : (actions?.projectOf?.(focusedSession) ?? null);
       input.onNote?.("agent_turn_start", { said: text, ...who });
@@ -2379,6 +2393,7 @@ export const startScreenCompanion = (input: {
           session: focusedSession,
           project,
           persona: { name: face.name, role: face.role, introduce },
+          brain: faceModel,
         },
         (delta) => {
           firstTokenAt ??= Date.now();
@@ -2410,6 +2425,8 @@ export const startScreenCompanion = (input: {
         wake: woke,
         persona: face.name,
         voice: voiceNow(),
+        model: faceModel.model,
+        effort: faceModel.effort,
         said: text,
         error: error instanceof Error ? error.message : String(error),
         totalMs: Date.now() - started,
@@ -2463,10 +2480,9 @@ export const startScreenCompanion = (input: {
     const started = Date.now();
     voiceTurn = !typed;
     woke = wake;
-    face = personaFor(readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas, {
-      wake,
-      text,
-    });
+    const pack = readPack(NodePath.join(input.stateDir, PACK_FOLDER));
+    face = personaFor(pack.personas, { wake, text });
+    faceModel = modelOf(pack, face.id);
     // VAULT.md section 1: a secret never reaches a prompt, the conversation file, memory or the turn log.
     const secret = redactForHistory(text, null).secret;
     if (secret !== null) {
@@ -2619,7 +2635,7 @@ export const startScreenCompanion = (input: {
           );
         });
       }
-      if (settings.oneAssistant) agentOf().warm();
+      if (settings.oneAssistant) agentOf().warm(leadBrain());
       warmRouter();
       if (run?.mode !== "look" && spareLook?.alive() !== true) {
         spareLook?.dispose();

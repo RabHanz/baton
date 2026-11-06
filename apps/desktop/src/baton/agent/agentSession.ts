@@ -5,6 +5,7 @@
  * is recycled, and puts every turn back into that file. A new session loses nothing.
  */
 import { RECENT_TURNS, conversationBlock } from "@t3tools/baton-shared/conversation";
+import type { Brain } from "@t3tools/baton-shared/osPack";
 
 import type { ConversationLog } from "../conversation/conversationLog.ts";
 import { SessionClosed, type VisionSession } from "../screen/claudeVision.ts";
@@ -29,7 +30,7 @@ export const shouldRecycle = (state: {
 
 export interface AssistantAgent {
   /** Start the session now, so the first sentence does not wait for it. */
-  readonly warm: () => void;
+  readonly warm: (brain?: Brain) => void;
   /** What he said, with where he is; the reply streams to `onDelta` as it is written. */
   readonly say: (text: string, where: Where, onDelta?: (delta: string) => void) => Promise<string>;
   readonly dispose: () => void;
@@ -42,11 +43,13 @@ export interface Where {
   readonly project?: string | null;
   /** The persona he woke: its name and line, and whether this turn is the first under that name. */
   readonly persona?: { readonly name: string; readonly role: string; readonly introduce: boolean };
+  /** The persona's own model and effort; a change starts a session on it, seeded like any other. */
+  readonly brain?: Brain;
 }
 
 export const createAssistantAgent = (input: {
-  /** Starts the model session with this system prompt. */
-  readonly start: (systemPrompt: string) => Promise<VisionSession>;
+  /** Starts the model session with this system prompt, on this model when one is given. */
+  readonly start: (systemPrompt: string, brain?: Brain) => Promise<VisionSession>;
   readonly conversation: ConversationLog;
   readonly now?: () => number;
   readonly clockLine: () => string;
@@ -65,6 +68,7 @@ export const createAssistantAgent = (input: {
 }): AssistantAgent => {
   const now = input.now ?? Date.now;
   let session: Promise<VisionSession> | null = null;
+  let sessionBrain = "";
   let turns = 0;
   let lastAt = now();
   const imagesNow = () => input.images?.() ?? 0;
@@ -77,11 +81,13 @@ export const createAssistantAgent = (input: {
   // Bumped by a stop: sentences queued before it are dropped, not run on a fresh session.
   let generation = 0;
 
-  const ensure = async (): Promise<VisionSession> => {
+  const ensure = async (brain?: Brain): Promise<VisionSession> => {
+    const wanted = brain === undefined ? sessionBrain : `${brain.model}/${brain.effort}`;
     if (session !== null) {
       const current = await session.catch(() => null);
       if (
         current !== null &&
+        wanted === sessionBrain &&
         !shouldRecycle({
           alive: current.alive(),
           turns,
@@ -95,6 +101,7 @@ export const createAssistantAgent = (input: {
       session = null;
     }
     turns = 0;
+    sessionBrain = wanted;
     imagesAtStart = imagesNow();
     // A new session gets as much as the old one held: the latest turns in full, the rest clipped.
     const window = input.conversation.recent(RECYCLE_TURNS);
@@ -110,6 +117,7 @@ export const createAssistantAgent = (input: {
             earlier: window.slice(0, -RECENT_TURNS),
             notes,
           }),
+          brain,
         ),
       );
     return session;
@@ -121,7 +129,7 @@ export const createAssistantAgent = (input: {
     onDelta?: (delta: string) => void,
   ): Promise<string> => {
     input.beginTurn(text);
-    const agent = await ensure();
+    const agent = await ensure(where.brain);
     // Turns answered without it (a refusal, the older router) since it last looked.
     const meanwhile = input.conversation
       .recent(RECYCLE_TURNS)
@@ -190,7 +198,12 @@ export const createAssistantAgent = (input: {
   };
 
   return {
-    warm: () => void ensure().catch(() => undefined),
+    // In line with the sentences, and only when there is no session: a live one (any persona's) is never replaced.
+    warm: (brain) => {
+      queue = queue
+        .then(() => (session === null ? ensure(brain) : undefined))
+        .catch(() => undefined);
+    },
     say: (text, where, onDelta) => {
       const asked = generation;
       const run = queue.then(() => {

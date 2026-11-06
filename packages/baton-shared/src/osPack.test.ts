@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { DEFAULT_OS_PACK, mergePack, packPrompt, PACK_PROMPT_CHARS, personaFor } from "./osPack.ts";
+import {
+  DEFAULT_OS_PACK,
+  mergePack,
+  modelOf,
+  packPrompt,
+  PACK_PROMPT_CHARS,
+  personaFor,
+} from "./osPack.ts";
 
 describe("the operating-system pack", () => {
   it("lets a user's files win by name, ignores bad names and empty files, and keeps the rest", () => {
@@ -54,5 +61,26 @@ describe("the roster", () => {
     expect(who(pack, "Onyx")).toBe("Lex/paul");
     // A file with no front-matter keeps the default face.
     expect(who(mergePack({ roles: { engineering: "Mine." } }), "Alfred")).toBe("Alfred/charles");
+  });
+  it("runs each persona on the model and effort its file names: the lead on Opus, specialists on Sonnet", () => {
+    const opus = { model: "opus", effort: "medium" };
+    const sonnet = { model: "sonnet", effort: "medium" };
+    expect(modelOf(DEFAULT_OS_PACK, "executive")).toEqual(opus);
+    expect(modelOf(DEFAULT_OS_PACK, "operations")).toEqual(sonnet);
+    // A role with no face of its own is still a specialist.
+    expect(modelOf(DEFAULT_OS_PACK, "marketing")).toEqual(sonnet);
+    const pack = mergePack({
+      executive: "---\neffort: high\n---\n",
+      roles: {
+        research: "---\nmodel: haiku\neffort: low\n---\nMine.",
+        legal: "A lawyer.",
+        operations: "---\nmodel: rm -rf /\neffort: brutal\n---\nMine.",
+      },
+    });
+    expect(modelOf(pack, "executive")).toEqual({ model: "opus", effort: "high" });
+    expect(modelOf(pack, "research")).toEqual({ model: "haiku", effort: "low" });
+    expect(modelOf(pack, "legal")).toEqual(sonnet);
+    expect(modelOf(pack, "operations")).toEqual(sonnet);
+    expect(modelOf(pack, "nobody")).toEqual(sonnet);
   });
 });

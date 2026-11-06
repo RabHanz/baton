@@ -16,15 +16,16 @@ import { startBatonMcp } from "../../apps/desktop/src/baton/agent/batonMcp.ts";
 import { buildBatonTools, type ToolHost } from "../../apps/desktop/src/baton/agent/batonTools.ts";
 import { createConversationLog } from "../../apps/desktop/src/baton/conversation/conversationLog.ts";
 import { startVisionSession } from "../../apps/desktop/src/baton/screen/claudeVision.ts";
-import { DEFAULT_OS_PACK, personaFor } from "../../packages/baton-shared/src/osPack.ts";
+import { DEFAULT_OS_PACK, modelOf, personaFor } from "../../packages/baton-shared/src/osPack.ts";
 import { assistantCases, type AssistantCase } from "./cases.ts";
 import { casePasses, firstTool, type Sample } from "./grade.ts";
 
 const { values } = NodeUtil.parseArgs({
   options: {
     out: { type: "string" },
-    model: { type: "string", default: "claude-opus-5-5" },
-    effort: { type: "string", default: "medium" },
+    // Unset: each case runs on the model and effort its persona's pack file names, as it ships.
+    model: { type: "string" },
+    effort: { type: "string" },
     case: { type: "string", multiple: true },
     samples: { type: "string", default: "2" },
     claude: { type: "string", default: "claude" },
@@ -60,11 +61,11 @@ const sample = async (c: AssistantCase): Promise<Sample> => {
   });
   const mcp = await startBatonMcp({ tools, gate: refuse });
   const agent = createAssistantAgent({
-    start: async (systemPrompt) =>
+    start: async (systemPrompt, brain) =>
       startVisionSession({
         claudeBinary: values.claude!,
-        model: values.model!,
-        effort: values.effort!,
+        model: values.model ?? brain!.model,
+        effort: values.effort ?? brain!.effort,
         systemPrompt,
         workDir: dir,
         env: process.env,
@@ -87,6 +88,7 @@ const sample = async (c: AssistantCase): Promise<Sample> => {
     const reply = await agent.say(c.said, {
       window: c.window ?? "Notepad",
       session: null,
+      brain: modelOf(DEFAULT_OS_PACK, face?.id ?? "executive"),
       ...(face === undefined
         ? {}
         : { persona: { name: face.name, role: face.role, introduce: !face.lead } }),
@@ -134,7 +136,7 @@ const median = times[Math.floor(times.length / 2)] ?? 0;
 NodeFS.writeFileSync(
   NodePath.join(out, "summary.md"),
   [
-    `model ${values.model} (effort ${values.effort}), ${samples} samples a case: ${passed} of ${rows.length} pass, median sample ${(median / 1000).toFixed(1)} s`,
+    `model ${values.model ?? "per persona"} (effort ${values.effort ?? "per persona"}), ${samples} samples a case: ${passed} of ${rows.length} pass, median sample ${(median / 1000).toFixed(1)} s`,
     "",
     ...rows.map(
       (r) => `- ${r.pass ? "pass" : "FAIL"} ${r.id} ("${r.said}"): ${r.firsts.join(", ")}`,
