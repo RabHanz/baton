@@ -2433,7 +2433,7 @@ export const stageBatonVoice = Effect.fn("stageBatonVoice")(function* (input: {
   yield* fs.remove(destination, { recursive: true, force: true }).pipe(Effect.ignore);
   yield* fs.makeDirectory(destination, { recursive: true });
   yield* fs.copy(path.join(crate, "models"), path.join(destination, "models"));
-  const exe = input.platform === "win" ? "tessaya-voice.exe" : "baton-dictation";
+  const exe = input.platform === "win" ? "tessaya-voice.exe" : "tessaya-voice";
   const built: string[] = [];
   for (const build of batonSidecarBuild(input.platform, input.arch ?? "x64")) {
     const spawnCommand = yield* resolveSpawnCommand("cargo", [
