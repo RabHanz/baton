@@ -12,6 +12,7 @@
  * legacy file is never written, so rolling back to a pre-v2 build keeps working.
  */
 // @effect-diagnostics nodeBuiltinImport:off
+import * as Schema from "effect/Schema";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeSqlite from "node:sqlite";
@@ -112,15 +113,21 @@ const setup = Layer.effectDiscard(
   }),
 );
 
+export class BatonDatabaseSeedError extends Schema.TaggedError<BatonDatabaseSeedError>()(
+  "BatonDatabaseSeedError",
+  { cause: Schema.Defect() },
+) {}
+
 /** The SqlClient Baton's repositories are built with. Never provided to upstream's layers. */
 export const layer = Layer.unwrap(
   Effect.gen(function* () {
     const { dbPath } = yield* ServerConfig.ServerConfig;
     const dir = NodePath.dirname(dbPath);
     const batonPath = NodePath.join(dir, BATON_DB_FILE);
-    const report = yield* Effect.try(() =>
-      seedBatonDatabase(batonPath, NodePath.join(dir, LEGACY_STATE_FILE)),
-    );
+    const report = yield* Effect.try({
+      try: () => seedBatonDatabase(batonPath, NodePath.join(dir, LEGACY_STATE_FILE)),
+      catch: (cause) => new BatonDatabaseSeedError({ cause }),
+    });
     if (report.seeded) {
       yield* Effect.log("Tessaya database seeded").pipe(Effect.annotateLogs({ rows: report.rows }));
     }

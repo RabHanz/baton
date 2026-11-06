@@ -870,6 +870,7 @@ const make = Effect.gen(function* () {
       config: { source: "local", commandPath: node, commandArgs: [script], customModels: [MODEL] },
     };
     const current = (yield* settings.getSettings).providerInstances[LIVE_INSTANCE_ID];
+    // @effect-diagnostics-next-line globalJsonInEffect:off - settings values, always serialisable.
     if (JSON.stringify(current) === JSON.stringify(wanted)) return;
     yield* settings.updateProviderInstance({
       operation: "upsert",

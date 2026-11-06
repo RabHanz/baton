@@ -4,6 +4,7 @@
  * (off unless set) over ssh with the key and herdr path given there. A remote box is the same
  * Herdr adapter over an ssh command, so the rules for delivery are the same everywhere.
  */
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as NodeChildProcess from "node:child_process";
 import * as NodePath from "node:path";
 
@@ -119,7 +120,7 @@ export const layer = Layer.effect(
   BatonWeaveBoxes,
   Effect.gen(function* () {
     const local = yield* AdoptedRuntimeAdapter;
-    const { hosts } = parseWeaveHosts(process.env["BATON_WEAVE_HOSTS"]);
+    const { hosts } = parseWeaveHosts((yield* HostProcess.Environment)["BATON_WEAVE_HOSTS"]);
     const remote = yield* Effect.forEach(hosts, (host) =>
       Effect.map(
         makeHerdrAdapter.pipe(Effect.provideService(HerdrCli, sshCli(host))),

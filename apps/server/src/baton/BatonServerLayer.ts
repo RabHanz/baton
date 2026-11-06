@@ -11,6 +11,7 @@
  *
  * Later entries provide to earlier ones, so the order below is the dependency order.
  */
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as NodePath from "node:path";
 
 import { setClaudeAccountInstances } from "@t3tools/baton-contracts";
@@ -59,7 +60,10 @@ const readClaudeAccountInstances = Layer.effectDiscard(
     const settings = yield* ServerSettingsService;
     const existing = Object.keys((yield* settings.getSettings).providerInstances);
     setClaudeAccountInstances(
-      claudeAccountInstances(process.env.BATON_CLAUDE_ACCOUNT_INSTANCES, existing),
+      claudeAccountInstances(
+        (yield* HostProcess.Environment).BATON_CLAUDE_ACCOUNT_INSTANCES,
+        existing,
+      ),
     );
   }),
 );
