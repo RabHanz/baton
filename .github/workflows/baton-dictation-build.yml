@@ -4,7 +4,7 @@ name: Tessaya dictation build
 # one the app shipped with; Linux x64 and macOS arm64 + x64 are built and tested here the same way.
 on:
   push:
-    branches: [main, baton/one-brain]
+    branches: [main]
     paths: ["native/baton-dictation/**", ".github/workflows/baton-dictation-build.yml"]
   pull_request:
     paths: ["native/baton-dictation/**", ".github/workflows/baton-dictation-build.yml"]

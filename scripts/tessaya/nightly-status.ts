@@ -33,6 +33,7 @@ checks.push(
     outcome: needs["voice-release"]?.result,
   },
   { name: "hands loop", ref: "main", outcome: needs["hands"]?.result },
+  { name: "every Tessaya test", ref: "main", outcome: needs["tessaya-tests"]?.result },
 );
 
 const status = buildNightly({

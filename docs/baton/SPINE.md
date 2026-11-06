@@ -68,7 +68,7 @@ no regressions, and one spine with memory and tools. This is the reconciliation,
 
 1. Done: the reachability fix, the three tools, the matrix, this page.
 2. The update prompt and the vocab toast onto `windows.ask` and the card.
-3. Done: the Windows proof run (`baton-teach-proof.yml`, with the UI Automation sidecar, cue playback logged). Still to do: drive it through the tools path instead of only the prefixes.
+3. Done: the Windows proof run (the since-retired `baton-teach-proof.yml` workflow, with the UI Automation sidecar, cue playback logged). Still to do: drive it through the tools path instead of only the prefixes.
 4. Done: the router is deleted (item 6).
 
 ## 7. A session started from the app, and the app crashing

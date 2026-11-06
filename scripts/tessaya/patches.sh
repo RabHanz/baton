@@ -37,6 +37,12 @@ pin="$(tr -d '[:space:]' < "$dir/PIN")"
 series() { grep -vE '^\s*(#|$)' "$dir/series" || true; }
 regenerated() { [ -f "$dir/REGENERATED" ] && grep -vE '^\s*(#|$)' "$dir/REGENERATED" || true; }
 patch_paths() { sed -n 's|^diff --git a/\(.*\) b/.*$|\1|p' "$1"; }
+# Blob ids on stdin, fetched from the pin's remote in one request rather than one lazy fetch per
+# file. The flags are git's own lazy fetch's; without noop negotiation a batch fails its connectivity check.
+fetch_blobs() {
+  git -c fetch.negotiationAlgorithm=noop fetch --quiet --no-tags --no-write-fetch-head \
+    --recurse-submodules=no --filter=blob:none --stdin t3code-pin 2> /dev/null || true
+}
 
 # main carries no upstream history (upstream enters as squashed imports), so a fresh clone may not
 # have the pin. Fetch it blobless from upstream through a remote that exists only for this run and,
@@ -53,9 +59,9 @@ if [ "$have_pin" -eq 0 ]; then
   echo "patches: fetching PIN $pin from $upstream_url" >&2
   git fetch --quiet --no-tags --filter=blob:none t3code-pin "$pin" ||
     die "PIN $pin is not a commit here and could not be fetched from $upstream_url"
-  # The blobs the series patches, in one request rather than one lazy fetch per file.
+  # The blobs the series patches.
   git ls-tree -r "$pin" -- $(while read -r p; do patch_paths "$dir/$p"; done < <(series)) |
-    awk '$2 == "blob" { print $3 }' | git fetch --quiet --no-tags --filter=blob:none --stdin t3code-pin || true
+    awk '$2 == "blob" { print $3 }' | fetch_blobs
 fi
 
 # The pin's index with the whole series applied, as a tree id. Never touches the working tree.
@@ -156,6 +162,9 @@ cmd_rebase() {
   fi
 
   echo "==> Upstream paths to $(git rev-parse --short "$new")"
+  # The clone is blobless: the changed files, before checkout fetches them one by one (about
+  # 10,000 took 20 minutes in the 25b53299b7 import).
+  git diff --no-renames --raw --no-abbrev "$pin" "$new" | awk '$2 != "160000" && $4 !~ /^0+$/ { print $4 }' | fetch_blobs
   git checkout -q "$new" -- .
   git diff --no-renames --name-only --diff-filter=D "$pin" "$new" | xargs -r -d '\n' git rm -q --ignore-unmatch --
 

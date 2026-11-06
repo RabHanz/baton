@@ -92,8 +92,20 @@ jobs:
   hands:
     uses: ./.github/workflows/baton-hands-loop.yml
 
+  # Every Tessaya test file on main. baton-ci runs only the files a PR changes, so a test that a later change made
+  # stale would otherwise never run again (GEN-22).
+  tessaya-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      # The run's own commit: main when scheduled, the dispatched branch when run by hand.
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-ci-deps
+      - name: Every Tessaya test file
+        run: bash scripts/tessaya/tessaya-tests.sh
+
   report:
-    needs: [plan, checks, voice-main, voice-release, hands]
+    needs: [plan, checks, voice-main, voice-release, hands, tessaya-tests]
     if: always()
     runs-on: ubuntu-latest
     permissions:
