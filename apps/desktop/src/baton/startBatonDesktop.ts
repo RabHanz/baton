@@ -311,8 +311,9 @@ export const startBatonDesktop = Effect.gen(function* () {
     });
     Electron.app.on("will-quit", pocket.dispose);
     const spokenThisTurn: string[] = [];
-    /** The voice is taking dictation: a wake word then changes no persona. */
+    /** The voice is taking dictation, and the wake word heard last. */
     let dictating = false;
+    let lastWake: string | null = null;
     /** Tessaya's own voice, waited for while it loads. The OS voice only when he chose it. */
     const chooseVoice = (name: PocketVoice | "system"): VoiceChoice => {
       if (name === "system") return { kind: "system" };
@@ -606,9 +607,14 @@ export const startBatonDesktop = Effect.gen(function* () {
             onEvent: (event) => {
               turnLog.event(event);
               // He is about to say something: have the sessions up before he finishes.
-              // A name said mid-dictation does not change who is taking it down.
+              if (event.type === "wake") {
+                screen?.warm();
+                lastWake = event.word;
+              }
               if (event.type === "state") dictating = event.state === "dictation";
-              if (event.type === "wake") screen?.warm(dictating ? null : event.word);
+              // A turn (or the dictation it starts) answers as the persona named; a name mid-dictation changes nothing.
+              if (event.type === "transcript" && !dictating && lastWake !== null)
+                screen?.addressed(lastWake);
               onEvent(event);
             },
             vocabulary,

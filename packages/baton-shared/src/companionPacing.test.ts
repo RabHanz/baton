@@ -36,23 +36,17 @@ describe("how long things stay up", () => {
 });
 
 describe("queueSpeech", () => {
-  it("says when each sentence starts sounding, which is when the one before has finished", async () => {
-    const ends: Array<() => void> = [];
-    const started: string[] = [];
-    const speech = queueSpeech(() => new Promise<void>((done) => ends.push(done)));
-    const starts = (text: string) =>
-      new Promise<void>((begun) =>
-        speech.add(text, () => {
-          started.push(text);
-          begun();
-        }),
-      );
-    const one = starts("One.");
-    const two = starts("Two.");
-    await one;
-    expect(started).toEqual(["One."]);
-    ends[0]!();
-    await two;
-    expect(started).toEqual(["One.", "Two."]);
+  it("starts each sentence's caption after the one before has played, and all of them before it is done", async () => {
+    const played: string[] = [];
+    const startedAfter: Record<string, ReadonlyArray<string>> = {};
+    const speech = queueSpeech((text) => Promise.resolve().then(() => void played.push(text)));
+    for (const text of ["One.", "Two.", "Done."])
+      speech.add(text, () => (startedAfter[text] = [...played]));
+    await speech.finished();
+    // A one-sentence reply's card is up by now too, so lingering after `finished` never misses it.
+    expect(Object.keys(startedAfter)).toEqual(["One.", "Two.", "Done."]);
+    expect(startedAfter["One."]).toEqual([]);
+    expect(startedAfter["Two."]).toContain("One.");
+    expect(startedAfter["Done."]).toEqual(expect.arrayContaining(["One.", "Two."]));
   });
 });

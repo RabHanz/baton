@@ -454,11 +454,10 @@ export interface ScreenCompanion {
   readonly setTransformHotkeys: (on: boolean) => void;
   /** The tray's Clear the screen, also what a spoken stop does. */
   readonly dismiss: () => void;
-  /**
-   * He has woken Baton by this name (null: a key): from here the persona it names answers, in its own
-   * voice, dictation and its confirmations too. Also starts the sessions a turn will need, at no quota.
-   */
-  readonly warm: (wake: string | null) => void;
+  /** He has woken Baton: starts the sessions a turn will need, which costs no quota. */
+  readonly warm: () => void;
+  /** A turn or dictation began from this wake word: its persona answers from here, in its own voice. */
+  readonly addressed: (wake: string) => void;
   readonly openAskBox: () => void;
   /** The phone's words, run as a typed ask; the short reply and the card text come back instead of only being shown. */
   readonly askFromPhone: (
@@ -1299,8 +1298,8 @@ export const startScreenCompanion = (input: {
     }
   };
   /**
-   * Sentences spoken as they arrive, each shown as the voice reaches it (the model writes far ahead of
-   * the voice), so the card always holds what is being said; stopped by a hush like everything else.
+   * Sentences spoken as they arrive, each shown when the one before it has finished playing (the model
+   * writes far ahead of the voice), so the card follows the voice; stopped by a hush like everything else.
    */
   const streamSpeech = (firstSentence: () => void) => {
     const voiceTurnAt = hushes;
@@ -1339,12 +1338,18 @@ export const startScreenCompanion = (input: {
       },
       /** Leaves the answer up until it has been heard and read. Written only, it turns pages at reading pace. */
       linger: (whole: string) => {
-        if (!aloud || card === null) return linger(face.name, whole);
+        if (!aloud) return linger(face.name, whole);
         if (phoneCapture !== null && whole.trim().length > 0) phoneCapture.card = whole.trim();
-        const mine = card;
-        void retreatAfterSpeech(pageText(soFar).at(-1)!, () => mine === showing).catch(
-          () => undefined,
-        );
+        // Every caption is up by the time the voice is done (queueSpeech starts each before `finished`),
+        // so a one-sentence reply has its card here too.
+        void speech
+          .finished()
+          .then(() => {
+            const mine = card;
+            if (mine === null) return;
+            return retreatAfterSpeech(pageText(soFar).at(-1)!, () => mine === showing);
+          })
+          .catch(() => undefined);
       },
     };
   };
@@ -2848,12 +2853,13 @@ export const startScreenCompanion = (input: {
     active: () => runningMode() !== null,
     hush,
     dismiss,
-    warm: (wake) => {
-      if (wake !== null)
-        face = personaFor(readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas, {
-          wake,
-          text: "",
-        });
+    addressed: (wake) => {
+      face = personaFor(readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas, {
+        wake,
+        text: "",
+      });
+    },
+    warm: () => {
       // First run: a Chrome that is already connected turns this on, once; otherwise it stays off and asks again next time.
       if (!settings.browserChromeSet) {
         void refreshChrome().then((check) => {
