@@ -29,6 +29,8 @@ export TMPDIR="${TMPDIR:-/mnt/HC_Volume_106652742/tmp/lanes}"
 source scripts/tessaya/toolchain.sh
 
 step() { printf '\n==> %s\n' "$*"; }
+# The box's one-heavy-job-at-a-time lock. Set only by a caller that does not already hold it.
+heavy_lock="${BATON_HEAVY_LOCK:-}"
 started="$(date +%s)"
 
 step "patch series"
@@ -59,9 +61,14 @@ if [ "$tests" -eq 1 ]; then
       echo "(no pkg-config: skipping scripts/browser-secret-native.test.mjs)"
     fi
     # Upstream's browser tests carry 15 s timeouts that a loaded box misses; a retry tells a
-    # flake from a failure without hiding a test that fails every time.
-    [ "$pkg" = apps/web ] && extra+=(--retry 2 --maxWorkers 2)
-    (cd "$pkg" && nice -n 10 pnpm -s test "${extra[@]}")
+    # flake from a failure without hiding a test that fails every time. Chromium also drops its
+    # connection at load 20+, so the suite runs one file at a time under the box's heavy-work lock.
+    lock=()
+    if [ "$pkg" = apps/web ]; then
+      extra+=(--retry 2 --maxWorkers 1)
+      [ -n "$heavy_lock" ] && lock=(flock "$heavy_lock")
+    fi
+    (cd "$pkg" && nice -n 10 "${lock[@]}" pnpm -s test "${extra[@]}")
   done
 fi
 

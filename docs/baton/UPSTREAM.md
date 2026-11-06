@@ -151,20 +151,9 @@ going past `024d49520e` is a **port**, not a conflict resolution.
 
 ### Patch points after the v2 port (2026-10-26)
 
-`vendor-patches/t3code/series` is the list and `scripts/tessaya/patches.sh files` prints the paths:
-six patches over 13 upstream files, about 300 lines.
-
-| Patch                      | Upstream files                                                        |
-| -------------------------- | --------------------------------------------------------------------- |
-| `0001-build`               | `pnpm-workspace.yaml`; five `package.json` (the Tessaya package deps) |
-| `0002-server-hooks`        | `apps/server/src/server.ts`, `apps/server/src/ws.ts` (+1 line, D83)   |
-| `0003-herdr-terminal`      | `apps/server/src/terminal/Manager.ts` (D81)                           |
-| `0004-claude-account-home` | `apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts` (D52)  |
-| `0005-client-rpc`          | `packages/client-runtime/src/rpc/protocol.ts`, `rpc/client.ts`        |
-| `0006-web-sidebar`         | `apps/web/src/components/Sidebar.tsx`                                 |
-
-Not yet back on v2: the desktop voice IPC (built on the laptop, never deployed to the boxes) and
-the mobile Tessaya route's entry point. Each returns as its own patch.
+`vendor-patches/t3code/series` is the list, one concern per patch, and
+`scripts/tessaya/patches.sh files [<patch>]` prints the upstream paths each one edits. No count is
+kept here because every import changes it.
 
 ### Patch points before the port (2026-10-26, measured at `024d49520e`)
 

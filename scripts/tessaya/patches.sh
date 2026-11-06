@@ -156,6 +156,12 @@ cmd_rebase() {
   fi
 
   echo "==> Upstream paths to $(git rev-parse --short "$new")"
+  # This clone is blobless: fetch the changed files in one request, not one lazy fetch per file
+  # (about 10,000 of them took 20 minutes in the 25b53299b7 import; one batch took 11 s). The
+  # flags are git's own lazy fetch's; without noop negotiation the batch fails its connectivity check.
+  git diff --no-renames --raw --no-abbrev "$pin" "$new" | awk '$2 != "160000" && $4 !~ /^0+$/ { print $4 }' |
+    git -c fetch.negotiationAlgorithm=noop fetch --quiet --no-tags --no-write-fetch-head \
+      --recurse-submodules=no --filter=blob:none --stdin t3code-pin 2> /dev/null || true
   git checkout -q "$new" -- .
   git diff --no-renames --name-only --diff-filter=D "$pin" "$new" | xargs -r -d '\n' git rm -q --ignore-unmatch --
 

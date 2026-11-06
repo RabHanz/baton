@@ -56,12 +56,19 @@ patched="$(git show "$base:vendor-patches/t3code/series" | grep -vE '^\s*(#|$)' 
 upstream_changed="$(git diff --no-renames --name-only "$pin" "$target" | grep -v '^\.repos/' | sort -u || true)"
 touched="$(comm -12 <(printf '%s\n' "$patched") <(printf '%s\n' "$upstream_changed") || true)"
 
+effect_of() { git show "$1:pnpm-workspace.yaml" 2> /dev/null | sed -n 's/^  effect: *//p' | sed -n 1p; }
+effect_from="$(effect_of "$pin")" effect_to="$(effect_of "$target")"
 {
   printf '## Upstream sync\n\n| | |\n| --- | --- |\n'
   printf '| Pin now | `%s` (%s) |\n' "$(git rev-parse --short "$pin")" "$(git log -1 --format=%cs "$pin")"
   printf '| Moving to | `%s` (%s) |\n' "$(git rev-parse --short "$target")" "$(git log -1 --format=%cs "$target")"
   printf '| Upstream commits | %s (%s days of upstream) |\n' "$ahead" "$behind_days"
   printf '| Patched paths upstream also changed | %s |\n\n' "$(printf '%s' "$touched" | grep -c . || true)"
+  # Tessaya's own code is written against upstream's Effect; a new Effect version is the usual reason it breaks.
+  if [ "$effect_from" != "$effect_to" ]; then
+    printf '**Upstream moves Effect from %s to %s.** Expect Tessaya code (apps/*/src/baton, packages/baton-*) to need\n' "$effect_from" "$effect_to"
+    printf 'changes for its new APIs and diagnostics: a red typecheck or lint in those paths is that, not a conflict.\n\n'
+  fi
   if [ -n "$touched" ]; then printf '%s\n' "$touched" | sed 's/^/- `/; s/$/`/'; printf '\n'; fi
   printf '### Upstream commits (newest 60)\n\n'
   git log --no-merges --pretty='- `%h` %s' "$pin..$target" | sed -n "1,60p"
@@ -106,7 +113,11 @@ if [ "$gates" -eq 1 ]; then
   rc="${PIPESTATUS[0]}"
   set -e
   if [ "$rc" -ne 0 ]; then
-    printf '\n### Result\n\nGates failed. Log: `%s`\n' "${report%.md}.gates.log" >> "$report"
+    { printf '\n### Result\n\nGates failed at **%s**. Log: `%s`\n' \
+        "$(grep '^==> ' "${report%.md}.gates.log" | tail -1 | sed 's/^==> //')" "${report%.md}.gates.log"
+      [ "$effect_from" = "$effect_to" ] || printf '\nUpstream moved Effect %s -> %s in this range (see above).\n' "$effect_from" "$effect_to"
+      printf '\n```\n'; grep -E 'error|FAIL|✗|×' "${report%.md}.gates.log" | head -30 || true; printf '```\n'
+    } >> "$report"
     exit 3
   fi
   printf '\n### Result\n\nSeries applied, lockfile regenerated, gates passed (typecheck, lint, tests, build).\n' >> "$report"

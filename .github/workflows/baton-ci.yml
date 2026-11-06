@@ -12,7 +12,34 @@ concurrency:
 permissions:
   contents: read
 
+# Tessaya's own checks on GitHub-hosted runners: upstream's ci.yml needs Blacksmith runners this repository does
+# not have (D77). `verify` and `baton-ci` are the required check names.
 jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: blob:none
+      - name: Nothing private ships by default
+        run: node scripts/tessaya/guard-private.mjs
+      - name: Every shipped third-party piece has a notice
+        run: |
+          node scripts/tessaya/check-notices.mjs
+          node --test scripts/tessaya/check-notices.test.mjs
+      - name: Status-file writer
+        run: node --test scripts/tessaya/status-file.test.mjs scripts/tessaya/cloud-logins.test.mjs scripts/tessaya/live/answer-review.test.mjs
+      - name: Upstream paths equal PIN + series
+        run: bash scripts/tessaya/patches.sh verify
+      - name: patches.sh self-test
+        run: |
+          git config --global user.email ci@baton.invalid
+          git config --global user.name ci
+          bash scripts/tessaya/patches.test.sh
+          bash scripts/tessaya/tessaya-resume.test.sh
+
   baton-ci:
     name: baton-ci
     runs-on: ubuntu-latest

@@ -34,6 +34,8 @@ for a in "$@"; do
 done
 
 export TMPDIR="${TMPDIR:-/mnt/HC_Volume_106652742/tmp/lanes}"
+# gates.sh runs the web browser suite under it, so it does not share the box with a lane's checks.
+export BATON_HEAVY_LOCK="${BATON_HEAVY_LOCK:-/mnt/HC_Volume_106652742/tmp/lanes/heavy.lock}"
 export PATH="$HOME/.local/bin:$HOME/bin:$PATH"
 log_dir="$HOME/.t3/baton-autosync"
 mkdir -p "$log_dir" "$TMPDIR"
@@ -61,10 +63,22 @@ echo "pin $(git rev-parse --short "$pin"); upstream is $behind commits ahead; ol
 
 # The box's disk guard (VentureOS scripts/ops/disk-guard.sh) when present, else 8 GB free on the
 # volume: a build that starts into less can fail mid-write, which is worse than not starting.
+free_gb() { df -BG --output=avail "$work" | tail -1 | tr -dc 0-9; }
 disk_ok() {
   local guard=/home/onnyx/VentureOS/scripts/ops/disk-guard.sh
   if [ -f "$guard" ]; then bash "$guard" --quiet; return; fi
-  [ "$(df -BG --output=avail "$work" | tail -1 | tr -dc 0-9)" -ge 8 ]
+  [ "$(free_gb)" -ge 8 ]
+}
+# VentureOS CI borrows about 10 GB of the same volume while its jobs run and gives it back after, so
+# a low reading is often temporary: look again every 5 minutes for up to an hour before giving up.
+wait_for_disk() {
+  local tries="${BATON_DISK_WAIT_TRIES:-12}"
+  until disk_ok; do
+    tries=$((tries - 1))
+    [ "$tries" -gt 0 ] || return 1
+    echo "disk: $(free_gb) GB free, below the floor; looking again in 5 minutes"
+    sleep 300
+  done
 }
 
 issue() { # issue <title> <body-file>: one open issue per title, commented on after that
@@ -114,9 +128,9 @@ if [ "$behind" -eq 0 ]; then
 fi
 if [ "$dry" -eq 1 ]; then bash scripts/tessaya/upstream-sync.sh --report-only; exit 0; fi
 
-if ! disk_ok; then
+if ! wait_for_disk; then
   body="$(mktemp)"
-  printf 'The daily sync did not start: the volume is below its free-space floor.\n\nLog: `%s`\n' "$log" > "$body"
+  printf 'The daily sync did not start: after an hour the volume still had %s GB free, below its floor.\n\nLog: `%s`\n' "$(free_gb)" "$log" > "$body"
   issue "Upstream sync skipped: disk" "$body"
   publish_status disk
   exit 5
@@ -134,8 +148,10 @@ set -e
 
 if [ "$rc" -ne 0 ]; then
   what=$([ "$rc" -eq 2 ] && echo "a patch no longer applies" || echo "the gates failed")
+  # A write that ran out of room mid-run (VentureOS CI took the space after the check) is not a code problem.
+  grep -q "No space left on device" "$log" && what="the volume ran out of space mid-run"
   body="$(mktemp)"
-  { printf 'The daily sync stopped: %s (exit %s).\n\n' "$what" "$rc"
+  { printf 'The daily sync stopped: %s (exit %s). The volume has %s GB free now.\n\n' "$what" "$rc" "$(free_gb)"
     cat "$report" 2> /dev/null || true
     printf '\n<details><summary>Log tail</summary>\n\n```\n'; tail -80 "$log"; printf '```\n</details>\n'
     printf '\nA Claude fix session was started in Herdr session `fab-baton-autosync` on signzart; it shows in Tessaya.\n'
