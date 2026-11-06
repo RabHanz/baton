@@ -101,6 +101,7 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "wizard.rerun": "Take the tour again",
     "wizard.offer.title": "A two-minute tour of",
     "wizard.offer.em": "Tessaya",
+    "memory.sync.codePlaceholder": "Code from that machine",
     "wizard.offer.text":
       "Your microphone, wake words and voices, what she may do on your screen, your privacy, and how to stop her. Skip any step.",
     "wizard.offer.start": "Start the tour",
