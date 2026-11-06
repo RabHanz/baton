@@ -121,8 +121,10 @@ like any other. Exports are plain markdown the user owns; they leave the machine
 - Walls (decision 6): a project named in the lead's `walled:` pack field keeps its items for its team, the personas
   whose `projects:` or `leads:` name it, and the lead. The wall is a filter on `scope`/`scopeRef` at recall and at an
   agent's search, never a second store. A search that names no persona sees nothing walled unless it says `admin`
-  (his own view, refused unless the caller is the desktop app's own session), so a new caller that forgets the persona
-  fails closed. The standing block is shared by every persona in
+  (his own view), so a new caller that forgets the persona fails closed. Only the desktop app's own session may name a
+  persona or ask for `admin`: for any other token (a phone, a browser, an agent, a linked server's sync) every read
+  (list, search, recall, used, export, sync pull) hides walled items, and a walled item is "no such memory" to its
+  writes. The server's own upkeep sees everything (`MemoryViewer`). The standing block is shared by every persona in
   a session, so it carries nothing walled; walled items reach a persona only through its own sentence's block. The
   extractor is shown only what the turn's persona may recall, and what a turn in a walled project learns is kept in that
   project whatever scope the model chose. His Memory page lists everything.
@@ -147,8 +149,11 @@ like any other. Exports are plain markdown the user owns; they leave the machine
 Last-writer-wins with tombstones, behind a setting (`baton-memory.json` in the state folder, `{"sync": true}`; off by
 default, switched in the Memory tab).
 
-- **The window carries it.** Tessaya's window is already connected to every server he uses, so it relays: servers
-  never need credentials for each other. For each ordered pair (to, from) of distinct servers it asks `to` for its
+- **The window carries it.** Tessaya's window is already connected to every server he uses, so it relays. Sync carries
+  walled items and can overwrite or delete any item, so `syncHello`/`syncPull`/`syncPush` answer only the desktop app's
+  own session or a sync-only credential (`baton:memory-sync`, which a grant can carry only alone, minted on the server
+  it reads). A server the window reaches with an ordinary paired token does not sync. A credential's first pull starts
+  from the beginning, so items its server skipped before come over. For each ordered pair (to, from) of distinct servers it asks `to` for its
   `cursors` (`baton.memory.syncHello`), pulls what `from` wrote since that cursor (`syncPull`) and hands it to `to`
   (`syncPush`). The window runs a round every ten minutes and on "Sync now". A laptop whose window sees only its own
   server simply has nothing to sync with.

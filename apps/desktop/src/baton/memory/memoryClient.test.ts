@@ -84,6 +84,21 @@ describe("desktop memory", () => {
     expect(await memory.used()).toBe("- likes tea (note)");
   });
 
+  it("names the turn's persona only when there is one: a device's turn reads the walled view", async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    let persona: string | undefined = "engineering";
+    const memory = createDesktopMemory({
+      call: async (_op, args) => (calls.push(args), { block: "", ids: [] }),
+      notes: notes(),
+      agent: () => persona,
+    });
+    await memory.forSentence("deploy key");
+    persona = undefined;
+    await memory.forSentence("deploy key");
+    expect(calls[0]).toMatchObject({ agent: "engineering" });
+    expect(calls[1]).not.toHaveProperty("agent");
+  });
+
   it("a stuck server costs the turn no more than the wait", async () => {
     vi.useFakeTimers();
     const memory = createDesktopMemory({

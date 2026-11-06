@@ -11,7 +11,12 @@ import * as TestClock from "effect/testing/TestClock";
 
 import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
 import * as ServerConfig from "../config.ts";
-import { BatonMemoryService, layer as memoryLayer } from "./BatonMemoryService.ts";
+import {
+  BatonMemoryService,
+  MemoryViewer,
+  SyncCredential,
+  layer as memoryLayer,
+} from "./BatonMemoryService.ts";
 
 const layer = it.layer(memoryLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)));
 const DAY = 86_400_000;
@@ -226,7 +231,64 @@ it.effect(
       assert.isFalse(yield* found());
       const own = yield* memory.search({ text: "deploy key", admin: true });
       assert.isTrue(own.some((h) => h.item.scopeRef === "shop"));
+      yield* memory.recall({ text: "deploy key", agent: "engineering", turnRef: "t1" });
+      assert.isTrue((yield* memory.used("t1")).some((i) => i.scopeRef === "shop"));
+      assert.include(yield* memory.exportMarkdown, "shop deploy key");
+
+      // Any token but the desktop app's own: no persona, no admin view, nothing walled on any read.
+      const asClient = <A, E>(effect: Effect.Effect<A, E>) =>
+        effect.pipe(Effect.provideService(MemoryViewer, "client"));
+      const shop = (items: ReadonlyArray<{ readonly scopeRef: string | null } | null>) =>
+        items.some((i) => i?.scopeRef === "shop");
+      assert.isFalse(yield* asClient(recalled("engineering")));
+      assert.isFalse(yield* asClient(found("engineering")));
+      const hits = yield* asClient(memory.search({ text: "deploy key", admin: true }));
+      assert.isFalse(shop(hits.map((h) => h.item)));
+      assert.isFalse(shop(yield* asClient(memory.list({ admin: true }))));
+      assert.isFalse(shop(yield* asClient(memory.used("t1"))));
+      assert.notInclude(yield* asClient(memory.exportMarkdown), "shop deploy key");
+      const pulled = yield* asClient(memory.changesSince(null));
+      assert.isFalse(shop(pulled.changes.map((c) => c.item)));
+      assert.isTrue(shop((yield* memory.changesSince(null)).changes.map((c) => c.item)));
+      // A sync credential's first pull starts over, whatever cursor it sends; later pulls keep to the cursor.
+      const later = "2999-01-01T00:00:00.000Z";
+      const asSync = <A, E>(effect: Effect.Effect<A, E>) =>
+        effect.pipe(
+          Effect.provideService(MemoryViewer, "server"),
+          Effect.provideService(SyncCredential, "sync-1"),
+        );
+      assert.isTrue(shop((yield* asSync(memory.changesSince(later))).changes.map((c) => c.item)));
+      assert.lengthOf((yield* asSync(memory.changesSince(later))).changes, 0);
+
+      // To a client a walled item does not exist: it neither merges into it, replaces it, nor changes it.
+      const walled = (yield* memory.list({ admin: true })).find((i) => i.scopeRef === "shop")!;
+      const added = yield* asClient(
+        memory.add({
+          kind: "fact",
+          text: "The shop deploy key rotates on Fridays",
+          source: "user",
+          scope: "project",
+          scopeRef: "shop",
+          supersedes: walled.id,
+        }),
+      );
+      assert.notStrictEqual(added.id, walled.id);
+      const after = yield* memory.list({ admin: true, includeSuperseded: true });
+      assert.deepStrictEqual(
+        after.find((i) => i.id === walled.id),
+        { ...walled, supersededBy: null },
+      );
+      for (const change of [
+        memory.edit(walled.id, { text: "changed" }),
+        memory.pin(walled.id, true),
+        memory.accept(walled.id),
+      ]) {
+        assert.strictEqual((yield* asClient(Effect.flip(change)))._tag, "BatonMemoryRefusedError");
+      }
+      assert.isFalse(yield* asClient(memory.forget(walled.id)));
+      assert.isTrue((yield* memory.list({ admin: true })).some((i) => i.id === walled.id));
     }).pipe(
+      Effect.provideService(MemoryViewer, "desktop"),
       Effect.provide(
         Layer.mergeAll(memoryLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)), config),
       ),

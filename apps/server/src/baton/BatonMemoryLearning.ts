@@ -23,7 +23,7 @@ import * as NodePath from "node:path";
 import * as ServerConfig from "../config.ts";
 import { BatonOneShot } from "./BatonOneShot.ts";
 import { dayOf } from "./BatonMemoryEpisode.ts";
-import { BatonMemoryService } from "./BatonMemoryService.ts";
+import { BatonMemoryService, MemoryViewer } from "./BatonMemoryService.ts";
 import { readPack, readRouting } from "./OperatingSystemPack.ts";
 import { isWalled } from "@t3tools/baton-shared/osPack";
 
@@ -135,7 +135,8 @@ export const make = Effect.gen(function* () {
       yield* memory.forget(drop.id);
     }
     return { merged: plans.length, swept: yield* memory.sweep };
-  });
+    // Upkeep sees, merges and forgets every item, walled or not.
+  }).pipe(Effect.provideService(MemoryViewer, "server"));
 
   const rewriteNearDuplicates = Effect.gen(function* () {
     const all = yield* memory.list({ includeSuperseded: true, limit: 100_000 });
@@ -146,7 +147,7 @@ export const make = Effect.gen(function* () {
       done++;
     }
     return done;
-  });
+  }).pipe(Effect.provideService(MemoryViewer, "server"));
 
   return BatonMemoryLearning.of({ learn, consolidate, rewriteNearDuplicates });
 });

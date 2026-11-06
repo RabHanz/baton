@@ -12,7 +12,7 @@ import { BatonMemoryRefusedError } from "@t3tools/baton-contracts";
 import { parseLearningFile } from "@t3tools/baton-shared/memory";
 import * as Effect from "effect/Effect";
 
-import { BatonMemoryService } from "./BatonMemoryService.ts";
+import { BatonMemoryService, MemoryViewer } from "./BatonMemoryService.ts";
 
 const MAX_FILES = 500;
 const same = (text: string): string => text.trim().replace(/\s+/g, " ");
@@ -49,54 +49,58 @@ const readSmallFile = (file: string): string | null => {
   }
 };
 
-export const importFolder = Effect.fn("BatonMemoryImport.importFolder")(function* (folder: string) {
-  const memory = yield* BatonMemoryService;
-  if (!NodePath.isAbsolute(folder)) {
-    return yield* new BatonMemoryRefusedError({ reason: "give the full path of the folder" });
-  }
-  const listed = yield* Effect.sync(() => {
-    try {
-      return markdownFiles(folder);
-    } catch {
-      return null;
+export const importFolder = Effect.fn("BatonMemoryImport.importFolder")(
+  function* (folder: string) {
+    const memory = yield* BatonMemoryService;
+    if (!NodePath.isAbsolute(folder)) {
+      return yield* new BatonMemoryRefusedError({ reason: "give the full path of the folder" });
     }
-  });
-  if (listed === null) {
-    return yield* new BatonMemoryRefusedError({ reason: "that folder cannot be read" });
-  }
-  const files: ReadonlyArray<string> = listed;
-  let added = 0;
-  let refused = 0;
-  let unchanged = 0;
-  for (const file of files) {
-    const text = readSmallFile(file);
-    if (text === null) {
-      refused++;
-      continue;
+    const listed = yield* Effect.sync(() => {
+      try {
+        return markdownFiles(folder);
+      } catch {
+        return null;
+      }
+    });
+    if (listed === null) {
+      return yield* new BatonMemoryRefusedError({ reason: "that folder cannot be read" });
     }
-    const rel = NodePath.relative(folder, file).split(NodePath.sep).join("/");
-    const digest = NodeCrypto.createHash("sha1").update(text).digest("hex");
-    if (!(yield* memory.noteOnce(`import:${folder}:${rel}`, digest))) {
-      unchanged++;
-      continue;
+    const files: ReadonlyArray<string> = listed;
+    let added = 0;
+    let refused = 0;
+    let unchanged = 0;
+    for (const file of files) {
+      const text = readSmallFile(file);
+      if (text === null) {
+        refused++;
+        continue;
+      }
+      const rel = NodePath.relative(folder, file).split(NodePath.sep).join("/");
+      const digest = NodeCrypto.createHash("sha1").update(text).digest("hex");
+      if (!(yield* memory.noteOnce(`import:${folder}:${rel}`, digest))) {
+        unchanged++;
+        continue;
+      }
+      // An edited file: lines he removed are forgotten, unchanged lines are left alone (not reinforced).
+      const drafts = parseLearningFile(text);
+      const fresh = new Set(drafts.map((d) => same(d.text)));
+      // The file's full path: another folder's file of the same name is a different source.
+      const ref = NodePath.join(folder, rel);
+      const before = (yield* memory.list({ includeProposed: true, limit: 100_000 })).filter(
+        (i) => i.source === "import" && i.sourceRef === ref,
+      );
+      const kept = new Set(before.map((i) => same(i.text)));
+      for (const old of before) if (!fresh.has(same(old.text))) yield* memory.forget(old.id);
+      for (const draft of drafts.filter((d) => !kept.has(same(d.text)))) {
+        const item = yield* memory
+          .add({ ...draft, source: "import", sourceRef: ref })
+          .pipe(Effect.orElseSucceed(() => null));
+        if (item === null) refused++;
+        else added++;
+      }
     }
-    // An edited file: lines he removed are forgotten, unchanged lines are left alone (not reinforced).
-    const drafts = parseLearningFile(text);
-    const fresh = new Set(drafts.map((d) => same(d.text)));
-    // The file's full path: another folder's file of the same name is a different source.
-    const ref = NodePath.join(folder, rel);
-    const before = (yield* memory.list({ includeProposed: true, limit: 100_000 })).filter(
-      (i) => i.source === "import" && i.sourceRef === ref,
-    );
-    const kept = new Set(before.map((i) => same(i.text)));
-    for (const old of before) if (!fresh.has(same(old.text))) yield* memory.forget(old.id);
-    for (const draft of drafts.filter((d) => !kept.has(same(d.text)))) {
-      const item = yield* memory
-        .add({ ...draft, source: "import", sourceRef: ref })
-        .pipe(Effect.orElseSucceed(() => null));
-      if (item === null) refused++;
-      else added++;
-    }
-  }
-  return { files: files.length, added, refused, unchanged };
-});
+    return { files: files.length, added, refused, unchanged };
+    // Reading his own folder is upkeep: it replaces what the same file put in, walled or not.
+  },
+  Effect.provideService(MemoryViewer, "server"),
+);

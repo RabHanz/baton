@@ -8,6 +8,8 @@ import { HttpRouter } from "effect/http";
 
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import * as ServerConfig from "../config.ts";
+import { AuthBatonHandsHostScope, AuthStandardClientScopes } from "@t3tools/contracts";
+import { BatonMemoryService, MemoryViewer } from "./BatonMemoryService.ts";
 import { BatonRuntime } from "./BatonRpcHandlers.ts";
 import { routes } from "./BatonTessayaRoutes.ts";
 
@@ -15,13 +17,20 @@ const platformLayer = NodeHttpPlatform.layer.pipe(Layer.provideMerge(NodeService
 
 // The real router with the real routes: a path registered twice (a trailing-slash twin, say) throws when it is built, which
 // is how the server crashed at start after the router changed under it.
-const serve = (path: string) =>
+const serve = (
+  path: string,
+  over: {
+    readonly session?: EnvironmentAuth.AuthenticatedSession;
+    readonly runtime?: Context.Context<never>;
+    readonly init?: RequestInit;
+  } = {},
+) =>
   Effect.gen(function* () {
     const handler = yield* Effect.acquireRelease(
       Effect.sync(() =>
         HttpRouter.toWebHandler(
           routes.pipe(
-            Layer.provide(Layer.succeed(BatonRuntime, Context.empty() as never)),
+            Layer.provide(Layer.succeed(BatonRuntime, (over.runtime ?? Context.empty()) as never)),
             Layer.provide(
               Layer.succeed(ServerConfig.ServerConfig, {
                 dbPath: "/nowhere/state.sqlite",
@@ -30,7 +39,10 @@ const serve = (path: string) =>
             Layer.provide(platformLayer),
             Layer.provideMerge(
               Layer.mock(EnvironmentAuth.EnvironmentAuth, {
-                authenticateHttpRequest: () => Effect.fail(new Error("no session") as never),
+                authenticateHttpRequest: () =>
+                  over.session === undefined
+                    ? Effect.fail(new Error("no session") as never)
+                    : Effect.succeed(over.session),
               }),
             ),
           ),
@@ -39,7 +51,9 @@ const serve = (path: string) =>
       ),
       ({ dispose }) => Effect.promise(dispose),
     );
-    return yield* Effect.promise(() => handler.handler(new Request(`http://t3.test${path}`)));
+    return yield* Effect.promise(() =>
+      handler.handler(new Request(`http://t3.test${path}`, over.init)),
+    );
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer));
 
 it.effect("registers the phone routes without a duplicate and serves each of them", () =>
@@ -61,5 +75,39 @@ it.effect("registers the phone routes without a duplicate and serves each of the
 it.effect("keeps the API behind a session", () =>
   Effect.gen(function* () {
     expect((yield* serve("/tessaya/api/state")).status).toBe(401);
+  }),
+);
+
+it.effect("tells memory who reads on the desktop's direct door, from the session", () =>
+  Effect.gen(function* () {
+    const readers: string[] = [];
+    const memory = BatonMemoryService.of({
+      search: () =>
+        Effect.gen(function* () {
+          readers.push(yield* MemoryViewer);
+          return [];
+        }),
+    } as never);
+    for (const scopes of [
+      AuthStandardClientScopes,
+      [...AuthStandardClientScopes, AuthBatonHandsHostScope],
+    ]) {
+      const response = yield* serve("/tessaya/desk/baton.memory.search", {
+        session: {
+          sessionId: "s" as never,
+          subject: "x",
+          method: "bearer-access-token",
+          scopes,
+        },
+        runtime: Context.make(BatonMemoryService, memory) as never,
+        init: {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ text: "deploy key" }),
+        },
+      });
+      expect(response.status).toBe(200);
+    }
+    expect(readers).toEqual(["client", "desktop"]);
   }),
 );

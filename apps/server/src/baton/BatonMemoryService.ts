@@ -96,6 +96,22 @@ export interface MemoryRecall {
   readonly ids: ReadonlyArray<string>;
 }
 
+/**
+ * Who is reading memory, set from the session by the transport (Baton's RPC middleware, the desk route): "desktop" is the
+ * desktop app's own session, which may name a persona and ask for his own view (`admin`); "client" is any other token,
+ * which sees nothing walled and whose `agent` is ignored. "server" is this server's own upkeep. Unset means "client".
+ */
+export const MemoryViewer = Context.Reference<"server" | "desktop" | "client">(
+  "t3/baton/BatonMemoryService/MemoryViewer",
+  { defaultValue: () => "client" },
+);
+
+/** The sync-only credential pulling, by session id; null for anyone else. Set by the transport like `MemoryViewer`. */
+export const SyncCredential = Context.Reference<string | null>(
+  "t3/baton/BatonMemoryService/SyncCredential",
+  { defaultValue: () => null },
+);
+
 export class BatonMemoryService extends Context.Service<
   BatonMemoryService,
   {
@@ -193,6 +209,13 @@ export const make = Effect.gen(function* () {
     Effect.flatMap(read(id), (item) =>
       item === null ? Effect.fail(refuse("there is no such memory")) : Effect.succeed(item),
     );
+  /** An item this reader may change: one behind a wall it cannot see is "no such memory" to it. */
+  const requireSeen = (id: string) =>
+    Effect.flatMap(requireItem(id), (item) =>
+      Effect.flatMap(viewFor(undefined, true), (visible) =>
+        visible(item) ? Effect.succeed(item) : Effect.fail(refuse("there is no such memory")),
+      ),
+    );
 
   const matches = (item: MemoryItem, query: MemoryQuery): boolean =>
     (query.includeSuperseded === true || item.supersededBy === null) &&
@@ -200,7 +223,7 @@ export const make = Effect.gen(function* () {
     (query.kinds === undefined || query.kinds.length === 0 || query.kinds.includes(item.kind)) &&
     (query.scope === undefined || item.scope === query.scope);
 
-  const list = Effect.fn("BatonMemoryService.list")(function* (query: MemoryQuery = {}) {
+  const listAll = Effect.fn("BatonMemoryService.listAll")(function* (query: MemoryQuery = {}) {
     const rows = yield* sql<ItemRow>`
       SELECT * FROM fabric_memory_items ORDER BY pinned DESC, updated_at DESC
     `.pipe(Effect.orDie);
@@ -220,13 +243,28 @@ export const make = Effect.gen(function* () {
       item.scope !== "project" || item.scopeRef === null || mayRecall(pack, agent, item.scopeRef);
   });
 
+  /** What this reader may see: walled unless it is upkeep or his own view on the desktop; a persona only from the desktop. */
+  const viewFor = Effect.fn("BatonMemoryService.viewFor")(function* (
+    agent: string | undefined,
+    admin: boolean | undefined,
+  ) {
+    const viewer = yield* MemoryViewer;
+    if (viewer === "server" || (viewer === "desktop" && admin === true)) return () => true;
+    return yield* walls(viewer === "desktop" ? agent : undefined);
+  });
+
+  const list = Effect.fn("BatonMemoryService.list")(function* (query: MemoryQuery = {}) {
+    const seen = yield* viewFor(query.agent, query.admin);
+    return (yield* listAll({ ...query, limit: 100_000 })).filter(seen).slice(0, query.limit ?? 500);
+  });
+
   const search = Effect.fn("BatonMemoryService.search")(function* (query: MemoryQuery) {
     const words = tokens(query.text ?? "");
     const limit = query.limit ?? DEFAULT_LIMIT;
-    // Walled unless it is his own view: a caller that forgets to name its persona sees nothing walled.
-    const seen = query.admin === true ? () => true : yield* walls(query.agent);
+    // A caller that forgets to name its persona sees nothing walled.
+    const seen = yield* viewFor(query.agent, query.admin);
     if (words.length === 0) {
-      const items = (yield* list(query)).filter(seen);
+      const items = (yield* listAll(query)).filter(seen);
       return items.slice(0, limit).map((item) => ({ item, score: item.pinned ? 1 : 0.5 }));
     }
     const expression = words.map((w) => `"${w}"*`).join(" OR ");
@@ -274,7 +312,11 @@ export const make = Effect.gen(function* () {
       WHERE superseded_by IS NULL AND scope = ${scope} AND scope_ref IS ${scopeRef}
       ORDER BY updated_at DESC LIMIT 500
     `.pipe(Effect.orDie);
-    const same = peers.map(fromRow).find((p) => similarity(p.text, text) >= SAME_ITEM_OVERLAP);
+    // A reader that cannot see a walled item neither merges into it nor replaces it: it gets its own.
+    const visible = yield* viewFor(undefined, true);
+    const same = peers
+      .map(fromRow)
+      .find((p) => visible(p) && similarity(p.text, text) >= SAME_ITEM_OVERLAP);
     if (same !== undefined) {
       const hers = draft.source === "user";
       yield* sql`
@@ -309,7 +351,7 @@ export const make = Effect.gen(function* () {
 
     if (draft.supersedes !== undefined && draft.supersedes !== id) {
       const old = yield* read(draft.supersedes);
-      if (old !== null) {
+      if (old !== null && visible(old)) {
         // His words beat a model's; otherwise the newer one, then the more certain (MEMORY.md).
         // The new one first: on a tie in time it is still the later statement.
         const loser = winner(created, old).id === old.id ? created : old;
@@ -332,7 +374,7 @@ export const make = Effect.gen(function* () {
     id: string,
     patch: { readonly text?: string | undefined; readonly kind?: MemoryKind | undefined },
   ) {
-    const current = yield* requireItem(id);
+    const current = yield* requireSeen(id);
     const at = yield* nowIso;
     const text = patch.text === undefined ? current.text : patch.text.trim().replace(/\s+/g, " ");
     const reason = refuseToStore(text, privateTexts());
@@ -360,7 +402,7 @@ export const make = Effect.gen(function* () {
   });
 
   const pin = Effect.fn("BatonMemoryService.pin")(function* (id: string, pinned: boolean) {
-    yield* requireItem(id);
+    yield* requireSeen(id);
     yield* sql`UPDATE fabric_memory_items SET pinned = ${pinned ? 1 : 0} WHERE id = ${id}`.pipe(
       Effect.orDie,
     );
@@ -378,13 +420,14 @@ export const make = Effect.gen(function* () {
     );
 
   const forget = Effect.fn("BatonMemoryService.forget")(function* (id: string) {
-    if ((yield* read(id)) === null) return false;
+    const item = yield* read(id);
+    if (item === null || !(yield* viewFor(undefined, true))(item)) return false;
     yield* remove(id, yield* nowIso);
     return true;
   });
 
   const accept = Effect.fn("BatonMemoryService.accept")(function* (id: string) {
-    yield* requireItem(id);
+    yield* requireSeen(id);
     yield* sql`UPDATE fabric_memory_items SET proposed = 0 WHERE id = ${id}`.pipe(Effect.orDie);
     yield* touch(id, yield* nowIso);
     return yield* requireItem(id);
@@ -413,7 +456,7 @@ export const make = Effect.gen(function* () {
     readonly agent?: string | undefined;
   }) {
     const now = yield* nowMs;
-    const seen = yield* walls(context.agent);
+    const seen = yield* viewFor(context.agent, false);
     const words = context.text === undefined ? [] : tokens(context.text);
     // A sentence gets what matches it: the standing set is already in the session's system prompt.
     const hits =
@@ -424,7 +467,7 @@ export const make = Effect.gen(function* () {
             ...(context.agent === undefined ? {} : { agent: context.agent }),
             limit: 40,
           })).filter((hit) => hit.score >= RECALL_FLOOR)
-        : (yield* list({ kinds: ["note", "preference", "correction", "decision"] }))
+        : (yield* listAll({ kinds: ["note", "preference", "correction", "decision"] }))
             .filter((item) => item.pinned || item.source === "user" || item.confidence >= 0.6)
             .slice(0, 40)
             .map((item) => ({ item, score: effectiveConfidence(item, now) }));
@@ -457,13 +500,17 @@ export const make = Effect.gen(function* () {
       )
       ORDER BY i.pinned DESC, i.updated_at DESC
     `.pipe(Effect.orDie);
-    return rows.map(fromRow);
+    return rows.map(fromRow).filter(yield* viewFor(undefined, true));
   });
 
   const sweep = Effect.gen(function* () {
     const now = yield* nowMs;
     const at = yield* nowIso;
-    const all = yield* list({ includeSuperseded: true, includeProposed: true, limit: 100_000 });
+    const all = yield* listAll({
+      includeSuperseded: true,
+      includeProposed: true,
+      limit: 100_000,
+    });
     const gone = all.filter((item) => shouldDelete(item, now));
     for (const item of gone) yield* remove(item.id, at);
     return gone.length;
@@ -525,7 +572,10 @@ export const make = Effect.gen(function* () {
   const changesSince = Effect.fn("BatonMemoryService.changesSince")(function* (
     since: string | null,
   ) {
-    const from = since ?? "";
+    // A sync credential's first pull starts over: before it, pulls came through walls and skipped walled items.
+    const credential = yield* SyncCredential;
+    const fresh = credential !== null && (yield* noteOnce(`sync-credential:${credential}`, "1"));
+    const from = fresh ? "" : (since ?? "");
     // Paged by when this server got the change, not when its writer made it: a change relayed
     // from a third server can carry an older stamp than a cursor that has already passed.
     const rows = yield* sql<ItemRow & { readonly arrived: string }>`
@@ -543,8 +593,11 @@ export const make = Effect.gen(function* () {
       WHERE COALESCE(received_at, deleted_at) >= ${from}
       ORDER BY arrived LIMIT ${BATCH}
     `.pipe(Effect.orDie);
+    const seen = yield* viewFor(undefined, true);
     const changes: MemoryChange[] = [
-      ...rows.map((row) => ({ item: fromRow(row), tombstone: null, writer: row.origin })),
+      ...rows
+        .map((row) => ({ item: fromRow(row), tombstone: null, writer: row.origin }))
+        .filter(({ item }) => seen(item)),
       ...stones.map((s) => ({
         item: null,
         tombstone: { id: s.id, deletedAt: s.deleted_at, origin: s.origin },
@@ -639,7 +692,7 @@ export const make = Effect.gen(function* () {
     recall,
     markUsed,
     used,
-    exportMarkdown: Effect.map(list({ limit: 100_000 }), exportMarkdown),
+    exportMarkdown: Effect.map(list({ limit: 100_000, admin: true }), exportMarkdown),
     sweep,
     noteOnce,
     flag,

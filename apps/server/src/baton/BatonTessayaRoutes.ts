@@ -21,7 +21,14 @@ import { BatonWeaveService } from "./BatonWeaveService.ts";
 import { BatonSessionCatalogService } from "./BatonSessionCatalogService.ts";
 import * as BatonRpcHandlers from "./BatonRpcHandlers.ts";
 import { BatonRuntime } from "./BatonRpcHandlers.ts";
-import { DESK_METHODS, askSourceOf, missingBatonScope } from "./BatonRpcAuthorization.ts";
+import {
+  DESK_METHODS,
+  askSourceOf,
+  memoryViewerOf,
+  missingBatonScope,
+  syncCredentialOf,
+} from "./BatonRpcAuthorization.ts";
+import { MemoryViewer, SyncCredential } from "./BatonMemoryService.ts";
 import * as FleetQuery from "./FleetQuery.ts";
 import { AskSource, BatonPhoneInbox } from "./BatonPhoneInbox.ts";
 import { createHandsBroker } from "@t3tools/baton-shared/remoteHands";
@@ -295,7 +302,12 @@ export const routes = HttpRouter.use((router) =>
           unknown,
           { reason?: unknown; message?: unknown }
         >
-      ).pipe(Effect.flatMap(codec.encode), Effect.result);
+      ).pipe(
+        Effect.provideService(MemoryViewer, memoryViewerOf(session.value)),
+        Effect.provideService(SyncCredential, syncCredentialOf(session.value)),
+        Effect.flatMap(codec.encode),
+        Effect.result,
+      );
       if (result._tag === "Failure") {
         const failure: { reason?: unknown; message?: unknown } = result.failure;
         const reason =

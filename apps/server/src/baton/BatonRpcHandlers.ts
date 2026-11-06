@@ -112,7 +112,7 @@ export const BatonRuntime = Context.Reference<Context.Context<BatonServices> | n
   { defaultValue: () => null },
 );
 
-/** Captures Baton's services for the routes; part of `BatonServerLayer.services`. */
+/** Captures Baton's services for the routes; part of `BatonServerLayer.services`. A `MemoryViewer` provided here would override every caller's. */
 export const runtimeLayer = Layer.effect(BatonRuntime, Effect.context<BatonServices>());
 
 const unavailable = () => new Error("Tessaya's services are not running on this server.");
