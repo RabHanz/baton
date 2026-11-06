@@ -9,5 +9,8 @@ export const parseAppearance = (value: unknown): Appearance =>
 export const resolveTheme = (appearance: Appearance, systemIsDark: boolean): Theme =>
   appearance === "system" ? (systemIsDark ? "dark" : "light") : appearance;
 
+/** What Electron's native theme is told: the system material (Acrylic's tint, the title bar) then matches the page. */
+export const themeSourceFor = (appearance: Appearance): "system" | Theme => appearance;
+
 /** The window's own colour before the page paints, so opening it never flashes the other theme. */
 export const THEME_GROUND: Readonly<Record<Theme, string>> = { light: "#f3f0e8", dark: "#121110" };

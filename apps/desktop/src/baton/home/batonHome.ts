@@ -16,7 +16,7 @@ import * as NodePath from "node:path";
 import { markCompanionWindow } from "../lastAppWindow.ts";
 import { markPhase } from "../lifecycle/mainStall.ts";
 import { homeDocumentFor } from "./homeDocument.ts";
-import { THEME_GROUND, resolveTheme, type Appearance } from "./theme.ts";
+import { THEME_GROUND, resolveTheme, themeSourceFor, type Appearance } from "./theme.ts";
 import { tabOf, type TabId } from "./tabs.ts";
 import {
   applyLookScript,
@@ -475,6 +475,9 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
   const applyTheme = () => {
     const open = live();
     if (open === null) return;
+    // Set only on a change: each set fires nativeTheme "updated", which calls this again.
+    const source = themeSourceFor(input.appearance());
+    if (Electron.nativeTheme.themeSource !== source) Electron.nativeTheme.themeSource = source;
     open.setBackgroundColor(
       process.platform === "win32" && seeThrough(material()) ? "#00000000" : THEME_GROUND[theme()],
     );

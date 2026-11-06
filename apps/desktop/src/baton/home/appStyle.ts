@@ -4,7 +4,7 @@ import { PALETTE_CSS } from "./palette.ts";
 /**
  * Woad (#14505A, #5FB3B3 on dark) is the one primary accent; each page group adds a hint dye and three semantic colours say state.
  * Glass: one still ambient field fills the window; the sidebar and top bar sit on it with no tint of their own, the page is one
- * blurred sheet, and cards inside are lit, not outlined (rim light above, soft shade below). Blur only on layers that never move. Motion is transform and opacity, once, behind html.live.
+ * translucent sheet (no backdrop blur: it would only blur our own field, at a GPU cost on every repaint), and cards inside are lit, not outlined (rim light above, soft shade below). Blur only on layers that never move. Motion is transform and opacity, once, behind html.live.
  * The "spring" easing is critically damped: it settles with no overshoot.
  */
 /** The dark theme: a near-black ground, panels one step lighter, hairline rules, edge light instead of shadow. */
@@ -53,7 +53,7 @@ ${FONT_FACES}
   --side-fill:color-mix(in srgb,var(--side) 56%,transparent);--glass-fill:color-mix(in srgb,var(--panel) 58%,transparent);--sheet-fill:color-mix(in srgb,var(--panel) 80%,transparent);
   --blur:blur(12px);--scrim:blur(7px);
   --glass-panel:color-mix(in srgb,var(--panel) 76%,transparent);--sheen:linear-gradient(165deg,rgba(255,255,255,.55),rgba(255,255,255,0) 34%);--glass-card:rgba(255,255,255,.6);--glass-hi:rgba(255,255,255,.95);
-  --glass-rim:rgba(255,255,255,.6);--rule:color-mix(in srgb,var(--line) 75%,transparent);--panel-blur:blur(30px) saturate(160%);
+  --glass-rim:rgba(255,255,255,.6);--rule:color-mix(in srgb,var(--line) 75%,transparent);
   --glass-shade:0 1px 2px rgba(23,40,45,.06),0 14px 32px -18px rgba(23,40,45,.36);--sheet-shade:0 24px 60px -40px rgba(23,40,45,.45);
   --glow-a:26%;--glow-b:18%;
   --field:radial-gradient(70% 60% at 0% 0%,color-mix(in srgb,var(--accent) var(--glow-a),transparent),transparent),radial-gradient(60% 70% at 100% 100%,color-mix(in srgb,var(--indigo) var(--glow-b),transparent),transparent),radial-gradient(50% 45% at 62% 0%,color-mix(in srgb,var(--hue) 14%,transparent),transparent);
@@ -66,9 +66,9 @@ ${PALETTE_CSS}
 [data-g=knowledge]{--hue:var(--damson);--hue-text:var(--damson)}
 [data-g=settings]{--hue:var(--lichen);--hue-text:var(--lichen)}
 #app,:root,.nav,.glabel,#navind,.log .tag{--hue-wash:color-mix(in srgb,var(--hue) 11%,var(--panel));--hue-edge:color-mix(in srgb,var(--hue) 34%,var(--panel))}
-html.glass-reduced,html.glass-off{--side-fill:var(--side);--glass-fill:var(--panel);--sheet-fill:var(--panel);--blur:none;--scrim:none;--glass-panel:var(--panel);--glass-card:var(--card);--panel-blur:none}
+html.glass-reduced,html.glass-off{--side-fill:var(--side);--glass-fill:var(--panel);--sheet-fill:var(--panel);--blur:none;--scrim:none;--glass-panel:var(--panel);--glass-card:var(--card)}
 html.glass-off{--field:none}
-@media (prefers-reduced-transparency:reduce){:root{--side-fill:var(--side);--glass-fill:var(--panel);--sheet-fill:var(--panel);--blur:none;--scrim:none;--glass-panel:var(--panel);--glass-card:var(--card);--panel-blur:none}}
+@media (prefers-reduced-transparency:reduce){:root{--side-fill:var(--side);--glass-fill:var(--panel);--sheet-fill:var(--panel);--blur:none;--scrim:none;--glass-panel:var(--panel);--glass-card:var(--card)}}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
 body{background:var(--field),var(--ground);color:var(--ink);font:14px/1.45 var(--sans);-webkit-font-smoothing:antialiased;user-select:none;cursor:default;overflow:hidden}
@@ -141,7 +141,7 @@ html.live #navind.go{transition:transform var(--dur-slow) var(--ease-settle),opa
 .dot[data-tone=warn]{background:var(--warn);box-shadow:0 0 0 3px color-mix(in srgb,var(--warn) 22%,transparent)}
 .dot[data-tone=off]{background:var(--bad);box-shadow:0 0 0 3px color-mix(in srgb,var(--bad) 22%,transparent)}
 .dot::after{content:"";position:absolute;inset:0;border-radius:50%;background:inherit;opacity:0}
-#panel{position:relative;flex:1;min-height:0;background:var(--sheen),var(--glass-panel);-webkit-backdrop-filter:var(--panel-blur);backdrop-filter:var(--panel-blur);border-radius:var(--r);box-shadow:inset 0 1px 0 var(--glass-hi),inset 0 0 0 1px var(--glass-rim),var(--sheet-shade);overflow:auto}
+#panel{position:relative;flex:1;min-height:0;background:var(--sheen),var(--glass-panel);border-radius:var(--r);box-shadow:inset 0 1px 0 var(--glass-hi),inset 0 0 0 1px var(--glass-rim),var(--sheet-shade);overflow:auto}
 #page{position:relative;max-width:900px;margin:0 auto;padding:40px 40px 64px}
 #page.wide{max-width:1100px}
 #page>*{position:relative}
@@ -415,4 +415,6 @@ html.motion-reduced *,html.motion-off *{animation:none!important;transition:none
 html.motion-reduced #page.enter{animation:fade var(--dur-quick) ease backwards!important}
 html.motion-off #navind{transition:none!important}
 @media (max-width:1020px){.split{grid-template-columns:1fr}}
+/* Forced colours drop shadows and fills: the lit surfaces get a real edge back. */
+@media (forced-colors:active){.card,.group,.log,.stats,.tiles .stat,.sidecard,.state,#panel,#top .search,.pill,.btn{border:1px solid CanvasText}}
 `;
