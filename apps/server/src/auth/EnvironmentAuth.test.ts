@@ -369,6 +369,13 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodePlatformCrypto.layer))(
         expect(
           EnvironmentAuth.delegatesAsToken({ method: "bearer-access-token", subject: "x" }, false),
         ).toBe(true);
+        // Unknown provenance fails closed.
+        expect(
+          EnvironmentAuth.delegatesAsToken(
+            { method: "browser-session-cookie", subject: "new-path" },
+            false,
+          ),
+        ).toBe(true);
         expect(
           EnvironmentAuth.delegatesAsToken({ method: "bearer-access-token", subject: "x" }, true),
         ).toBe(false);

@@ -1875,7 +1875,7 @@ export const startScreenCompanion = (input: {
       write: (text) => Electron.clipboard.writeText(text),
       clear: () => Electron.clipboard.clear(),
     },
-    tainted: () => agentTaint.on(),
+    tainted: () => outsideTurn || agentTaint.on(),
     audit: vaultState.audit,
     hello: (message) => windowsHello(message, input.platform),
     askToUnlock: () => input.onOpenTab?.("vault"),
@@ -2370,7 +2370,7 @@ export const startScreenCompanion = (input: {
         memory.learn(
           said,
           reply,
-          agentTaint.on(),
+          outsideTurn || agentTaint.on(),
           project,
           before === undefined ? "" : `he said: ${before.said}\nyou replied: ${before.reply}`,
         );
@@ -2586,8 +2586,9 @@ export const startScreenCompanion = (input: {
     phoneCapture = mine;
     phoneTurn = true;
     if (source === "device") {
-      if (outsideSaid.size > 200) outsideSaid.clear();
       outsideSaid.add(text);
+      // The oldest goes first, so recent device sentences are never forgotten as not his.
+      if (outsideSaid.size > 200) outsideSaid.delete(outsideSaid.values().next().value!);
     }
     try {
       await typed(text, source === "device");

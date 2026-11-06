@@ -5,10 +5,10 @@ upstream's reactors. ws.ts merges BatonRpcGroup onto the socket's group, adds it
 its own scope middleware (upstream's throws for methods its table does not list).
 
 diff --git a/apps/server/src/auth/EnvironmentAuth.test.ts b/apps/server/src/auth/EnvironmentAuth.test.ts
-index 3c05047e4a4c3ed60ced53af81026dadfdd77a60..1a2d9a5f6352ba43556ece7e3d1356842822f11a 100644
+index 3c05047e4a4c3ed60ced53af81026dadfdd77a60..c431d3c627a53cc61523b571a7a8bb54314ffc89 100644
 --- a/apps/server/src/auth/EnvironmentAuth.test.ts
 +++ b/apps/server/src/auth/EnvironmentAuth.test.ts
-@@ -337,6 +337,44 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodePlatformCrypto.layer))(
+@@ -337,6 +337,51 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodePlatformCrypto.layer))(
        }).pipe(Effect.provide(layerEnvironmentAuth({ mode: "web", host: "192.168.1.50" }))),
      );
  
@@ -44,6 +44,13 @@ index 3c05047e4a4c3ed60ced53af81026dadfdd77a60..1a2d9a5f6352ba43556ece7e3d135684
 +        expect(
 +          EnvironmentAuth.delegatesAsToken({ method: "bearer-access-token", subject: "x" }, false),
 +        ).toBe(true);
++        // Unknown provenance fails closed.
++        expect(
++          EnvironmentAuth.delegatesAsToken(
++            { method: "browser-session-cookie", subject: "new-path" },
++            false,
++          ),
++        ).toBe(true);
 +        expect(
 +          EnvironmentAuth.delegatesAsToken({ method: "bearer-access-token", subject: "x" }, true),
 +        ).toBe(false);
@@ -54,10 +61,10 @@ index 3c05047e4a4c3ed60ced53af81026dadfdd77a60..1a2d9a5f6352ba43556ece7e3d135684
        Effect.gen(function* () {
          const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
 diff --git a/apps/server/src/auth/EnvironmentAuth.ts b/apps/server/src/auth/EnvironmentAuth.ts
-index b6bf63792bf62b2e6bfe47b886d0c354f1683155..84c1e5bd8964d6f5da2b955eab8b9ed053abf208 100644
+index b6bf63792bf62b2e6bfe47b886d0c354f1683155..30c18cf29467610658b0c298bdd5c682fc7183cd 100644
 --- a/apps/server/src/auth/EnvironmentAuth.ts
 +++ b/apps/server/src/auth/EnvironmentAuth.ts
-@@ -85,6 +85,20 @@ export interface McpClientSession {
+@@ -85,6 +85,34 @@ export interface McpClientSession {
    readonly peerLink: boolean;
  }
  
@@ -67,18 +74,32 @@ index b6bf63792bf62b2e6bfe47b886d0c354f1683155..84c1e5bd8964d6f5da2b955eab8b9ed0
 + */
 +export const TOKEN_DELEGATED_SUBJECT = "token-delegated";
 +
-+/** A pairing this session mints carries its provenance: a token's, or a cookie session that itself came from one. */
++/**
++ * The pairings a person made: on the host (`t3 pair`, `t3 auth pairing create`), from the desktop app or a browser he
++ * paired, the startup link, dev auth and his T3 Connect account. Any other subject, including one added later, is a
++ * token's until it is listed here.
++ */
++export const OWN_PAIRING_SUBJECTS: ReadonlySet<string> = new Set([
++  "one-time-token",
++  "desktop-bootstrap",
++  INTERNAL_ADMINISTRATIVE_BOOTSTRAP_SUBJECT,
++  "reusable-dev-token",
++  "reusable-dev-token-child",
++  "cloud-connect",
++]);
++
++/** Whether a pairing this session mints is a token's: only the desktop app and a browser he paired mint his own. */
 +export const delegatesAsToken = (
 +  session: Pick<AuthenticatedSession, "method" | "subject">,
 +  isDesktopApp: boolean,
 +): boolean =>
-+  session.subject === TOKEN_DELEGATED_SUBJECT ||
-+  (session.method !== "browser-session-cookie" && !isDesktopApp);
++  !isDesktopApp &&
++  !(session.method === "browser-session-cookie" && OWN_PAIRING_SUBJECTS.has(session.subject));
 +
  export interface AuthenticatedSession {
    readonly sessionId: AuthSessionId;
    readonly subject: string;
-@@ -494,6 +508,7 @@ export class EnvironmentAuth extends Context.Service<
+@@ -494,6 +522,7 @@ export class EnvironmentAuth extends Context.Service<
      >;
      readonly issuePairingCredential: (
        input?: AuthCreatePairingCredentialInput,
@@ -86,7 +107,7 @@ index b6bf63792bf62b2e6bfe47b886d0c354f1683155..84c1e5bd8964d6f5da2b955eab8b9ed0
      ) => Effect.Effect<
        AuthPairingCredentialResult,
        ServerAuthInternalError | ManagedLimits.ManagedPolicyRefusedError
-@@ -1130,10 +1145,13 @@ export const make = Effect.gen(function* () {
+@@ -1130,10 +1159,13 @@ export const make = Effect.gen(function* () {
        Effect.withSpan("EnvironmentAuth.revokeOtherSessionsExcept"),
      );
  

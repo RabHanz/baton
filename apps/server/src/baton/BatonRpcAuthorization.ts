@@ -37,7 +37,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type * as RpcGroup from "effect/rpc/RpcGroup";
 
-import { TOKEN_DELEGATED_SUBJECT, type AuthenticatedSession } from "../auth/EnvironmentAuth.ts";
+import { OWN_PAIRING_SUBJECTS, type AuthenticatedSession } from "../auth/EnvironmentAuth.ts";
 import { rpcAuthorizationError } from "../auth/RpcAuthorization.ts";
 import { AskSource } from "./BatonPhoneInbox.ts";
 
@@ -228,13 +228,14 @@ export const missingBatonScope = (
 
 /**
  * Whose words an ask carries: his own from a browser he paired (the phone page, the web app) or the desktop app's own
- * session; any token's are a device's, which may be an agent's, and so is a cookie a token bought (its pairing's subject).
+ * session; any token's are a device's, which may be an agent's, and so is any cookie whose pairing is not one of his own
+ * (a token bought it, or a path not yet listed in OWN_PAIRING_SUBJECTS).
  */
 export const askSourceOf = (
   session: Pick<AuthenticatedSession, "method" | "scopes" | "subject">,
 ) =>
   session.scopes.includes(AuthBatonHandsHostScope) ||
-  (session.method === "browser-session-cookie" && session.subject !== TOKEN_DELEGATED_SUBJECT)
+  (session.method === "browser-session-cookie" && OWN_PAIRING_SUBJECTS.has(session.subject))
     ? ("phone" as const)
     : ("device" as const);
 

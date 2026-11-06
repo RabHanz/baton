@@ -141,6 +141,10 @@ describe("whose words an ask carries", () => {
         subject: TOKEN_DELEGATED_SUBJECT,
       }),
     ).toBe("device");
+    // A cookie from a pairing path nobody listed as his is not his either.
+    expect(
+      askSourceOf({ method: "browser-session-cookie", scopes: standard, subject: "new-path" }),
+    ).toBe("device");
     expect(
       askSourceOf({
         method: "bearer-access-token",

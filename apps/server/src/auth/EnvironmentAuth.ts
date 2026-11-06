@@ -91,13 +91,27 @@ export interface McpClientSession {
  */
 export const TOKEN_DELEGATED_SUBJECT = "token-delegated";
 
-/** A pairing this session mints carries its provenance: a token's, or a cookie session that itself came from one. */
+/**
+ * The pairings a person made: on the host (`t3 pair`, `t3 auth pairing create`), from the desktop app or a browser he
+ * paired, the startup link, dev auth and his T3 Connect account. Any other subject, including one added later, is a
+ * token's until it is listed here.
+ */
+export const OWN_PAIRING_SUBJECTS: ReadonlySet<string> = new Set([
+  "one-time-token",
+  "desktop-bootstrap",
+  INTERNAL_ADMINISTRATIVE_BOOTSTRAP_SUBJECT,
+  "reusable-dev-token",
+  "reusable-dev-token-child",
+  "cloud-connect",
+]);
+
+/** Whether a pairing this session mints is a token's: only the desktop app and a browser he paired mint his own. */
 export const delegatesAsToken = (
   session: Pick<AuthenticatedSession, "method" | "subject">,
   isDesktopApp: boolean,
 ): boolean =>
-  session.subject === TOKEN_DELEGATED_SUBJECT ||
-  (session.method !== "browser-session-cookie" && !isDesktopApp);
+  !isDesktopApp &&
+  !(session.method === "browser-session-cookie" && OWN_PAIRING_SUBJECTS.has(session.subject));
 
 export interface AuthenticatedSession {
   readonly sessionId: AuthSessionId;

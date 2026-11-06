@@ -35,4 +35,36 @@ describe("words a paired device or agent left, not his", () => {
     await device.gate(typing);
     expect(device.asked).toHaveLength(2);
   });
+
+  it("ask before every act One Trust lets his own words do quietly, and read Tessaya's state without asking", async () => {
+    const acts = [
+      { tool: "mcp__baton__click_element", input: { label: "Save", why: "w" } },
+      { tool: "mcp__baton__scroll", input: { x: 1, y: 1, dy: 3, why: "w" } },
+      { tool: "mcp__baton__press_keys", input: { keys: ["delete"], why: "w" } },
+      { tool: "mcp__baton__press_keys", input: { keys: ["ctrl", "a"], why: "w" } },
+      { tool: "mcp__baton__text_undo", input: {} },
+      { tool: "mcp__baton__cloud_cancel", input: { id: "c1" } },
+      { tool: "mcp__baton__job_stop", input: { id: "j1" } },
+      { tool: "mcp__baton__job_revoke", input: { id: "j1", what: "email" } },
+      { tool: "mcp__baton__permission_off", input: { what: "screen" } },
+      { tool: "mcp__baton__memory_pin", input: { id: "m1", pinned: true } },
+      { tool: "mcp__baton__session_resume", input: { id: "s1" } },
+      { tool: "mcp__baton__window_focus", input: { title: "Notepad" } },
+      {
+        tool: "mcp__baton__act_batch",
+        input: { steps: [{ tool: "click_element", args: { label: "Save" } }], why: "w" },
+      },
+    ];
+    const his = rig(false);
+    for (const act of acts) await his.gate(act);
+    const device = rig(true);
+    for (const act of acts) await device.gate(act);
+    expect(device.asked.length).toBe(acts.length);
+    expect(device.asked.length).toBeGreaterThan(his.asked.length);
+
+    const reads = rig(true);
+    await reads.gate({ tool: "mcp__baton__jobs_list", input: {} });
+    await reads.gate({ tool: "mcp__baton__needs_me", input: {} });
+    expect(reads.asked).toEqual([]);
+  });
 });

@@ -89,6 +89,33 @@ export interface ConfirmPrompt {
   readonly noOnExpiry: boolean;
 }
 
+/** What a device's or agent's turn may do without asking him: reading Tessaya's own state. Nothing on screen, no files. */
+const OUTSIDE_READS: ReadonlySet<string> = new Set([
+  "sessions_list",
+  "sessions_find",
+  "session_show",
+  "fleet_status",
+  "memory_search",
+  "memory_used",
+  "vault_list",
+  "history_search",
+  "wait",
+  "jobs_list",
+  "watch_report",
+  "what_happened",
+  "morning_brief",
+  "needs_me",
+  "commit_list",
+  "trust_show",
+  "cloud_status",
+  "cloud_list",
+  "cloud_usage",
+  "activity_today",
+  "weave_list",
+  "note_search",
+  "approvals_list",
+]);
+
 export const createAgentGate = (input: {
   readonly actWithoutAsking: () => boolean;
   readonly taint: TurnTaint;
@@ -200,13 +227,18 @@ export const createAgentGate = (input: {
       typeof jobId === "string"
         ? ((await input.jobProjects?.(jobId).catch(() => null)) ?? null)
         : null;
-    const judged = decideTrust({
+    const trusted = decideTrust({
       call,
       context,
       plan: input.inPlan?.() ?? null,
       jobProjects,
       ...(agent === undefined ? {} : { agent }),
     });
+    // A device's turn reads quietly; anything else it would do asks him first, whatever One Trust allows his own words.
+    const judged =
+      outside && trusted.verdict === "allow" && !OUTSIDE_READS.has(name)
+        ? { verdict: "ask" as const, why: "A paired device asked for this, not you." }
+        : trusted;
     const action = describeToolCall(call);
     /** A click names the box that typing goes to; Enter or a send ends any yes given to typing. */
     const after = () => {
