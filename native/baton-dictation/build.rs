@@ -16,7 +16,7 @@ fn main() {
 }
 
 const STRINGS: [(&str, &str); 5] = [
-    ("CompanyName", "T3 Tools"),
+    ("CompanyName", "Tessaya"),
     ("FileDescription", "Tessaya voice"),
     ("InternalName", "tessaya-voice"),
     ("OriginalFilename", "tessaya-voice.exe"),
