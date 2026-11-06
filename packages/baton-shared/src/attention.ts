@@ -2,7 +2,7 @@
  * What Tessaya says without being asked (D146): a line when something first needs him, only
  * outside his quiet hours, and a morning brief. Pure: it takes what the watch and the jobs report.
  */
-import type { BatonJob, WatchFinding } from "@t3tools/baton-contracts";
+import type { BatonJob, BatonRecordEntry, WatchFinding } from "@t3tools/baton-contracts";
 
 /** Only these are worth interrupting for; "unseen" is left for the morning brief. */
 const INTERRUPTING: ReadonlySet<WatchFinding["kind"]> = new Set([
@@ -95,6 +95,8 @@ export const morningBrief = (input: {
   readonly now: number;
   /** Further plain sentences, such as the commitments due. */
   readonly extra?: ReadonlyArray<string>;
+  /** The Record's `background_turns` notes: who passed the day's guide. Never a stop. */
+  readonly guide?: ReadonlyArray<BatonRecordEntry>;
 }): string => {
   const day = 24 * 3_600_000;
   const recent = input.jobs.filter((j) => input.now - Date.parse(j.lastActivityAt) <= day);
@@ -119,6 +121,15 @@ export const morningBrief = (input: {
   if (running.length > 0) parts.push(`Still running: ${list(running)}.`);
   const stuck = input.findings.filter((f) => f.kind === "stalled").map((f) => f.title);
   if (stuck.length > 0) parts.push(`Looks stalled: ${list(stuck)}.`);
+  const guide = (input.guide ?? [])
+    .filter((e) => e.kind === "background_turns" && input.now - Date.parse(e.at) <= day)
+    .map((e) =>
+      `${e.actor === "team" ? "the team" : e.actor} ${/\d+/.exec(e.subject)?.[0] ?? ""}`.trim(),
+    );
+  if (guide.length > 0)
+    parts.push(
+      `Past the daily guide for background turns: ${list([...new Set(guide)])}. Nothing was stopped.`,
+    );
   parts.push(...(input.extra ?? []));
   return parts.length === 0
     ? "Good morning. Nothing happened overnight and nothing is waiting."

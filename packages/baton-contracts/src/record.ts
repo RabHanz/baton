@@ -28,6 +28,7 @@ export const BatonRecordListInput = Schema.Struct({
   /** ISO time; only what happened after it. */
   since: Schema.optionalKey(Schema.String),
   project: Schema.optionalKey(Line(200)),
+  kind: Schema.optionalKey(Line(40)),
   limit: Schema.optionalKey(Schema.Number.check(Schema.isBetween({ minimum: 1, maximum: 500 }))),
 });
 export const BatonRecordListResult = Schema.Struct({ entries: Schema.Array(BatonRecordEntry) });

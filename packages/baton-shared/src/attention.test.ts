@@ -1,5 +1,5 @@
 // @effect-diagnostics globalDate:off
-import type { BatonJob, WatchFinding } from "@t3tools/baton-contracts";
+import type { BatonJob, BatonRecordEntry, WatchFinding } from "@t3tools/baton-contracts";
 import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -62,6 +62,26 @@ describe("the morning brief", () => {
       "Good morning. Finished: Site. Failed: Work 9. Waiting for you: Tax. Still running: Audit.",
     );
     expect(morningBrief({ jobs: [], findings: [], now: NOW })).toContain("Nothing happened");
+  });
+
+  it("carries the Record's note when a persona or the team passed the turn guide in the last day", () => {
+    const note = (actor: string, n: number, hoursAgo: number) =>
+      ({
+        kind: "background_turns",
+        actor,
+        at: DateTime.formatIso(DateTime.makeUnsafe(NOW - hoursAgo * 3_600_000)),
+        subject: `${actor} has used ${n} background turns today, past the guide of 40. Nothing was stopped.`,
+      }) as unknown as BatonRecordEntry;
+    expect(
+      morningBrief({
+        jobs: [],
+        findings: [],
+        now: NOW,
+        guide: [note("Freya", 41, 3), note("team", 130, 2), note("Alfred", 50, 30)],
+      }),
+    ).toBe(
+      "Good morning. Past the daily guide for background turns: Freya 41, the team 130. Nothing was stopped.",
+    );
   });
 });
 
