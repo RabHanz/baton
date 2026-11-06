@@ -21,9 +21,9 @@ import { BatonWeaveService } from "./BatonWeaveService.ts";
 import { BatonSessionCatalogService } from "./BatonSessionCatalogService.ts";
 import * as BatonRpcHandlers from "./BatonRpcHandlers.ts";
 import { BatonRuntime } from "./BatonRpcHandlers.ts";
-import { DESK_METHODS, missingBatonScope } from "./BatonRpcAuthorization.ts";
+import { DESK_METHODS, askSourceOf, missingBatonScope } from "./BatonRpcAuthorization.ts";
 import * as FleetQuery from "./FleetQuery.ts";
-import { BatonPhoneInbox } from "./BatonPhoneInbox.ts";
+import { AskSource, BatonPhoneInbox } from "./BatonPhoneInbox.ts";
 import { createHandsBroker } from "@t3tools/baton-shared/remoteHands";
 import { handleHands } from "./BatonHandsApi.ts";
 import { handlePhone, readCapped, uploadRefusal, type PhoneDeps } from "./BatonTessayaApi.ts";
@@ -145,17 +145,29 @@ export const routes = HttpRouter.use((router) =>
         request.method === "POST" && !raw
           ? yield* request.json.pipe(Effect.orElseSucceed(() => ({})))
           : undefined;
+      const source = askSourceOf(session.value);
       const answer = yield* Effect.promise(() =>
-        handlePhone(deps, {
-          method: request.method,
-          path,
-          scopes: new Set(session.value.scopes),
-          ...(json === undefined ? {} : { json }),
-          ...(bytes === undefined ? {} : { bytes }),
-          ...(request.headers["x-client-id"] === undefined
-            ? {}
-            : { clientId: request.headers["x-client-id"] }),
-        }),
+        handlePhone(
+          {
+            ...deps,
+            ask: (id, text) =>
+              run(
+                Effect.flatMap(BatonPhoneInbox, (inbox) => inbox.post({ id, text })).pipe(
+                  Effect.provideService(AskSource, source),
+                ),
+              ),
+          },
+          {
+            method: request.method,
+            path,
+            scopes: new Set(session.value.scopes),
+            ...(json === undefined ? {} : { json }),
+            ...(bytes === undefined ? {} : { bytes }),
+            ...(request.headers["x-client-id"] === undefined
+              ? {}
+              : { clientId: request.headers["x-client-id"] }),
+          },
+        ),
       );
       return HttpServerResponse.jsonUnsafe(answer.json, {
         status: answer.status,

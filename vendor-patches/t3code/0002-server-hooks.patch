@@ -528,7 +528,7 @@ index 5c9ab9c433ffc56e8536f7d0b3ce7da440777ad2..778262f9628a2f209289d6054ef24f56
      Ws.layer,
      speechStreamRouteLayer,
 diff --git a/apps/server/src/ws.ts b/apps/server/src/ws.ts
-index 035f8b1688d44a9c4ff39ebad30099fffdc3a9d2..73927347a27f8e492cb628f683c22bf8f1ede552 100644
+index 035f8b1688d44a9c4ff39ebad30099fffdc3a9d2..52a48d55b3a64d3fcc3a61d707336d2739f6511f 100644
 --- a/apps/server/src/ws.ts
 +++ b/apps/server/src/ws.ts
 @@ -232,6 +232,10 @@ import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
@@ -596,7 +596,7 @@ index 035f8b1688d44a9c4ff39ebad30099fffdc3a9d2..73927347a27f8e492cb628f683c22bf8
                          .pipe(Effect.ignore);
                  }),
 -                rpcInstrumentationLayer,
-+                Layer.merge(rpcInstrumentationLayer, BatonRpcAuthorization.layer(session.scopes)),
++                Layer.merge(rpcInstrumentationLayer, BatonRpcAuthorization.layer(session)),
                ),
              ),
              Effect.forkScoped,

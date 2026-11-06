@@ -11,7 +11,7 @@ import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
 
 import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
-import { BatonPhoneInbox, layer as inboxLayer, phoneCall } from "./BatonPhoneInbox.ts";
+import { AskSource, BatonPhoneInbox, layer as inboxLayer, phoneCall } from "./BatonPhoneInbox.ts";
 
 const layer = it.layer(inboxLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)));
 
@@ -19,16 +19,21 @@ layer("BatonPhoneInbox", (it) => {
   it.effect("queues in order, marks the source, and a repeat of the same client id asks once", () =>
     Effect.gen(function* () {
       const inbox = yield* BatonPhoneInbox;
-      const first = yield* inbox.post({ id: "client-aaaa-0001", text: "  what needs me " });
+      const first = yield* inbox
+        .post({ id: "client-aaaa-0001", text: "  what needs me " })
+        .pipe(Effect.provideService(AskSource, "phone"));
       assert.isTrue(first.ok);
       if (!first.ok) return;
       assert.strictEqual(first.ask.source, "phone");
       assert.strictEqual(first.ask.text, "what needs me");
       assert.isTrue((yield* inbox.post({ id: "client-aaaa-0001", text: "something else" })).ok);
       assert.strictEqual((yield* inbox.get("client-aaaa-0001"))?.text, "what needs me");
+      // Nobody said whose words these are: a device's, never his.
       yield* inbox.post({ id: "client-aaaa-0002", text: "second" });
       assert.strictEqual((yield* inbox.take)?.id, "client-aaaa-0001");
-      assert.strictEqual((yield* inbox.take)?.id, "client-aaaa-0002");
+      const second = yield* inbox.take;
+      assert.strictEqual(second?.id, "client-aaaa-0002");
+      assert.strictEqual(second?.source, "device");
       assert.isNull(yield* inbox.get("web-dddd-0001"));
       // Earlier cases leave asks in the shared queue; taking them counts the desktop as connected.
       while ((yield* inbox.take) !== null);

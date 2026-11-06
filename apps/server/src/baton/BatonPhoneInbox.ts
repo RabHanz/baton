@@ -1,7 +1,8 @@
 /**
  * The phone's durable inbox for the desktop assistant: what the phone page asked, kept until the desktop answers it or it
  * expires, and the desktop's own questions mirrored so the phone can answer them. The desktop is the only worker; the
- * server never runs an ask. Every ask is the user's own typed or spoken words, marked source "phone".
+ * server never runs an ask. An ask is marked source "phone" only when the caller is his own (`AskSource`); any other
+ * token's words are "device", which the desktop's gate never treats as his.
  */
 import {
   ASK_LEASE_MS,
@@ -14,6 +15,7 @@ import {
   QUEUE_MAX,
   askLine,
   isConnected,
+  type AskSource as AskSourceType,
   type AskStatus,
   type PhoneAsk,
   type PhonePrompt,
@@ -53,7 +55,7 @@ interface PromptRow {
 const fromAsk = (r: AskRow): PhoneAsk => ({
   id: r.id,
   text: r.text,
-  source: "phone",
+  source: r.source === "phone" ? "phone" : "device",
   status: r.status as AskStatus,
   createdAt: r.created_at,
   expiresAt: r.expires_at,
@@ -67,6 +69,11 @@ export const MAX_BUTTONS = 8;
 const ButtonsJson = Schema.fromJsonString(Schema.Array(Schema.String));
 const encodeButtons = Schema.encodeSync(ButtonsJson);
 const decodeButtons = Schema.decodeSync(ButtonsJson);
+
+/** Who left the words: set by the transport from the caller's session, and "device" (not his) when nobody set it. */
+export const AskSource = Context.Reference<AskSourceType>("t3/baton/BatonPhoneInbox/AskSource", {
+  defaultValue: () => "device",
+});
 
 export type PostResult =
   | { readonly ok: true; readonly ask: PhoneAsk }
@@ -141,6 +148,7 @@ export const make = Effect.gen(function* () {
     const again = yield* read(input.id);
     if (again !== null) return { ok: true as const, ask: again };
     const now = yield* Clock.currentTimeMillis;
+    const source = yield* AskSource;
     const waiting = yield* sql<{
       n: number;
     }>`SELECT COUNT(*) AS n FROM fabric_phone_asks WHERE status IN ('queued','taken')`.pipe(
@@ -151,7 +159,7 @@ export const make = Effect.gen(function* () {
     }
     yield* sql`
       INSERT INTO fabric_phone_asks (id, text, source, status, created_at, expires_at)
-      VALUES (${input.id}, ${trimmed}, 'phone', 'queued', ${now}, ${now + (input.ttlMs ?? ASK_TTL_MS)})
+      VALUES (${input.id}, ${trimmed}, ${source}, 'queued', ${now}, ${now + (input.ttlMs ?? ASK_TTL_MS)})
     `.pipe(Effect.orDie);
     return { ok: true as const, ask: (yield* read(input.id))! };
   });

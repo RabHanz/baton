@@ -4,6 +4,8 @@
  * like a typed Ask, and sends the short reply and the card text back. It also mirrors the questions it asks him to the phone.
  * It never throws; a server that does not answer just means the desktop is away.
  */
+import type { AskSource } from "@t3tools/baton-shared/phoneRelay";
+
 import type { PhoneMirror } from "../screen/ScreenCompanion.ts";
 
 export type PhoneCall = (op: string, args: Record<string, unknown>) => Promise<unknown>;
@@ -19,8 +21,11 @@ export const nextPollMs = (quietTicks: number): number =>
 
 export const createPhoneRelay = (input: {
   readonly call: PhoneCall;
-  /** The assistant, as a typed Ask. */
-  readonly run: (text: string) => Promise<{ readonly spoken: string; readonly card: string }>;
+  /** The assistant, as a typed Ask; "device" words are a token's, never his own. */
+  readonly run: (
+    text: string,
+    source: AskSource,
+  ) => Promise<{ readonly spoken: string; readonly card: string }>;
   readonly wait?: (ms: number) => Promise<void>;
   readonly newId?: () => string;
 }) => {
@@ -33,16 +38,17 @@ export const createPhoneRelay = (input: {
     if (busy) return "busy";
     busy = true;
     try {
-      let item: { id?: unknown; text?: unknown } | null;
+      let item: { id?: unknown; text?: unknown; source?: unknown } | null;
       try {
-        item = (await input.call("take", {})) as { id?: unknown; text?: unknown } | null;
+        item = (await input.call("take", {})) as typeof item;
       } catch {
         return "away";
       }
       if (item === null || typeof item.id !== "string" || typeof item.text !== "string")
         return "idle";
       try {
-        const reply = await input.run(item.text);
+        // Only the server's "phone" is his; anything else, or an older server's silence, is a device's.
+        const reply = await input.run(item.text, item.source === "phone" ? "phone" : "device");
         await input.call("answer", { id: item.id, spoken: reply.spoken, card: reply.card });
         return "answered";
       } catch {

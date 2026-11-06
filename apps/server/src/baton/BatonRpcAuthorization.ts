@@ -37,7 +37,9 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type * as RpcGroup from "effect/rpc/RpcGroup";
 
+import type { AuthenticatedSession } from "../auth/EnvironmentAuth.ts";
 import { rpcAuthorizationError } from "../auth/RpcAuthorization.ts";
+import { AskSource } from "./BatonPhoneInbox.ts";
 
 type BatonRpcMethod = RpcGroup.Rpcs<typeof BatonRpcGroup>["_tag"];
 
@@ -220,8 +222,19 @@ export const missingBatonScope = (
   return [...all, ...walls].find((scope) => !scopes.includes(scope)) ?? null;
 };
 
-export const layer = (scopes: ReadonlyArray<AuthEnvironmentScope>) =>
+/**
+ * Whose words an ask carries: his own from a paired browser (the phone page, the web app) or the desktop app's own session;
+ * any bearer token's are a device's, which may be an agent holding a token.
+ */
+export const askSourceOf = (session: Pick<AuthenticatedSession, "method" | "scopes">) =>
+  session.method === "browser-session-cookie" || session.scopes.includes(AuthBatonHandsHostScope)
+    ? ("phone" as const)
+    : ("device" as const);
+
+export const layer = (session: Pick<AuthenticatedSession, "method" | "scopes">) =>
   Layer.succeed(BatonRpcScopeAuthorization)((effect, { rpc, payload }) => {
-    const missing = missingBatonScope(rpc._tag, scopes, payload);
-    return missing === null ? effect : Effect.fail(rpcAuthorizationError(missing));
+    const missing = missingBatonScope(rpc._tag, session.scopes, payload);
+    return missing === null
+      ? Effect.provideService(effect, AskSource, askSourceOf(session))
+      : Effect.fail(rpcAuthorizationError(missing));
   });

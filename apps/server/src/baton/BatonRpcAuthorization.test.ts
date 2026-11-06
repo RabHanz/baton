@@ -17,6 +17,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   BATON_RPC_REQUIRED_SCOPES,
   DESK_METHODS,
+  askSourceOf,
   missingBatonScope,
 } from "./BatonRpcAuthorization.ts";
 
@@ -105,5 +106,17 @@ describe("who may write the Record", () => {
     expect(decodes({ kind: "standing_job", outcome: "held" })).toBe(true);
     expect(decodes({ kind: "assistant_turn", outcome: "approved" })).toBe(false);
     expect(decodes({ kind: "approval", outcome: "ran" })).toBe(false);
+describe("whose words an ask carries", () => {
+  it("is his from a paired browser or the desktop app's own session, and a device's from any other token", () => {
+    const standard = AuthStandardClientScopes;
+    expect(askSourceOf({ method: "browser-session-cookie", scopes: standard })).toBe("phone");
+    expect(
+      askSourceOf({
+        method: "bearer-access-token",
+        scopes: [...standard, AuthBatonHandsHostScope],
+      }),
+    ).toBe("phone");
+    expect(askSourceOf({ method: "bearer-access-token", scopes: standard })).toBe("device");
+    expect(askSourceOf({ method: "dpop-access-token", scopes: standard })).toBe("device");
   });
 });

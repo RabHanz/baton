@@ -94,6 +94,8 @@ export const createAgentGate = (input: {
   readonly taint: TurnTaint;
   /** The text is his own words or Baton's own earlier reply, from the conversation. */
   readonly textIsHis: (text: string) => boolean;
+  /** This turn's words came from a device or agent, not him: nothing counts as his, and every act follows a read. */
+  readonly outside?: () => boolean;
   /** The window with the keyboard: its name, and whether it is a command line or cannot be told apart from one. */
   readonly focusedWindow: () => Promise<{
     readonly label: string;
@@ -158,6 +160,7 @@ export const createAgentGate = (input: {
     const social = callHost !== null && isSocialHost(callHost);
     const now = input.chrome?.now() ?? 0;
     const recent = socialAt.filter((t) => now - t < HOUR).length;
+    const outside = input.outside?.() === true;
     const context = {
       ...(chromeCall
         ? {
@@ -168,12 +171,14 @@ export const createAgentGate = (input: {
             },
           }
         : {}),
-      actWithoutAsking: input.actWithoutAsking(),
+      actWithoutAsking: !outside && input.actWithoutAsking(),
       weaveStanding:
         name === "weave_send" && weaveKey(call) !== null && weaveApproved.has(weaveKey(call)!),
-      tainted: input.taint.on() && !(scope !== null && input.taint.typingAllowedFor(scope)),
+      tainted:
+        outside || (input.taint.on() && !(scope !== null && input.taint.typingAllowedFor(scope))),
       ...(focus === null ? {} : { focusedShell: focus.shell }),
       textIsHis:
+        !outside &&
         (name === "type_text" ||
           name === "act_batch" ||
           name === "session_send" ||

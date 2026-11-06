@@ -77,7 +77,10 @@ T3 way first (the page uses that session), and add it to the home screen (a mani
   window is open and connected, takes the oldest ask and runs it through the one assistant exactly like a typed Ask: same
   gate, same approvals. The short reply and the card text go back and the phone shows them (Asked tab, and the line under the
   bar). If the desktop is away the phone says "Your computer is not connected; it will answer when it is back" and the ask waits.
-  Phone text is marked source phone: it is the user's own words (not tainted); web content quoted inside it is still data.
+  The server marks each ask from the caller's session: source phone (his own words, not tainted) only from a paired
+  browser (this page, the web app) or the desktop app's own session; source device from any bearer token, which may be
+  an agent's. A device's ask always goes to the one assistant, nothing in it counts as his words, every act asks him,
+  and the box says a paired device asked. Web content quoted inside either is still data.
 - **Approvals round trip:** any question the desktop asks him (a drive's plan, a screen-capture yes, a vault use) is mirrored to
   the phone's Approvals with the exact text; the first answer, on the desktop or on the phone, counts and the other box comes
   down. A mirrored question that nobody answers is dropped after two minutes.

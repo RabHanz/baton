@@ -782,9 +782,10 @@ export const resampleTo16k = (pcm: Int16Array, rate: number): Int16Array => {
 export interface TrayExtras extends BrainVoiceHook {
   /** The lead's nightly learning pass over the turns these Record rows trace. */
   readonly learnNightly?: (rows: ReadonlyArray<BatonRecordEntry>) => Promise<string>;
-  /** The phone's words run as a typed ask; the reply comes back. */
+  /** The phone's words run as a typed ask; the reply comes back. "device" words are never his own. */
   readonly askFromPhone?: (
     text: string,
+    source: "phone" | "device",
   ) => Promise<{ readonly spoken: string; readonly card: string }>;
   readonly setPhoneMirror?: (mirror: PhoneMirror | null) => void;
   readonly menuItems: () => ReadonlyArray<Electron.MenuItemConstructorOptions>;
@@ -1735,10 +1736,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       )
         ? request({ kind: "phone", op: op as BatonPhoneBridgeRequest["op"], args })
         : Promise.reject(new Error("The app window is not open.")),
-    run: (text) =>
+    run: (text, source) =>
       input.extras?.askFromPhone === undefined
         ? Promise.reject(new Error("No assistant here."))
-        : input.extras.askFromPhone(text),
+        : input.extras.askFromPhone(text, source),
   });
   input.extras?.setPhoneMirror?.(phoneRelay.mirror);
   let phoneQuiet = 0;

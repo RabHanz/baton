@@ -5,7 +5,7 @@ import { createPhoneRelay, nextPollMs } from "./phoneRelay.ts";
 const make = (
   over: {
     take?: unknown;
-    run?: () => Promise<{ spoken: string; card: string }>;
+    run?: (text: string, source: "phone" | "device") => Promise<{ spoken: string; card: string }>;
     poll?: Array<number | null>;
   } = {},
 ) => {
@@ -42,6 +42,17 @@ describe("the desktop's phone relay", () => {
       "answer",
       { id: "c-1", spoken: "Two jobs.", card: "Two jobs are running." },
     ]);
+  });
+
+  it("runs only the server's phone words as his; a device's or an unmarked ask is a device's", async () => {
+    const sources: string[] = [];
+    for (const source of ["phone", "device", undefined]) {
+      await make({
+        take: { id: "c-3", text: "x", source },
+        run: async (_text, from) => (sources.push(from), { spoken: "", card: "" }),
+      }).relay.tick();
+    }
+    expect(sources).toEqual(["phone", "device", "device"]);
   });
 
   it("reports a failed turn instead of leaving the ask hanging", async () => {
