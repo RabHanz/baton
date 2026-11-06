@@ -196,8 +196,12 @@ export const rosterControls = (dir: string): ReadonlyArray<HomeControl> => {
       kind: "choice",
       value: own === undefined || own === "" ? "default" : own.toLowerCase(),
       options: [
-        { value: "default", label: `Default (${capital(fallback)})` },
-        ...POCKET_VOICES.map((v) => ({ value: v, label: capital(v) })),
+        {
+          value: "default",
+          label: `Default (${capital(fallback)})`,
+          voice: fallback.toLowerCase(),
+        },
+        ...POCKET_VOICES.map((v) => ({ value: v, label: capital(v), voice: v })),
       ],
     };
   });

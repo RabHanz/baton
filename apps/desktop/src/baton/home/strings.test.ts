@@ -5,7 +5,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { APP_SCRIPT } from "./appScript.ts";
 import { fill, STRINGS, tableFor, text } from "./strings.ts";
-import { TABS } from "./tabs.ts";
+import { SETTINGS, TABS } from "./tabs.ts";
 
 const read = (relative: string) => NodeFS.readFileSync(new URL(relative, import.meta.url), "utf8");
 
@@ -13,7 +13,8 @@ describe("the window's words", () => {
   it("has English for every page, introduction and dialog the script names", () => {
     const en = STRINGS.en;
     for (const { id } of TABS) expect(en[`tab.${id}`], `tab.${id}`).toBeTruthy();
-    for (const id of ["now", "trust", "help", "checks", "sessions", "jobs"]) {
+    for (const { id } of SETTINGS) expect(en[`cat.${id}`], `cat.${id}`).toBeTruthy();
+    for (const id of ["now", "trust", "help", "sessions", "jobs"]) {
       expect(en[`intro.${id}.title`], id).toBeTruthy();
       expect(en[`intro.${id}.text`], id).toBeTruthy();
     }

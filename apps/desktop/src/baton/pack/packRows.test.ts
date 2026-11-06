@@ -93,6 +93,12 @@ describe("the roster in the window", () => {
       ["v.persona:operations", "default"],
     ]);
     expect(rosterControls(dir)[3]).toMatchObject({ label: "Freya" });
+    // The page plays an option's own voice; Default carries the persona's default as data.
+    const freya = rosterControls(dir)[3];
+    expect(freya?.kind === "choice" ? freya.options[0] : null).toMatchObject({
+      value: "default",
+      voice: expect.stringMatching(/^[a-z]+$/),
+    });
     expect(setPersonaVoice(dir, "operations", "nobody")).toBe(false);
     expect(setPersonaVoice(dir, "operations", "anna")).toBe(true);
     expect(rows()[3]).toEqual(["v.persona:operations", "anna"]);

@@ -2902,16 +2902,16 @@ export const startScreenCompanion = (input: {
       },
       {
         id: "s.voice",
-        section: "Answers and voice",
-        label: "Voice",
-        hint: "Each persona speaks in its own voice; change one under Personas. Quick is smaller and less accurate, and one voice for all. System uses your computer's voice.",
+        section: "Personas",
+        label: "Voices",
+        hint: "Tessaya's voices: each persona speaks in the voice chosen beside it below. Quick is one smaller voice for all, less natural. System uses your computer's voice.",
         kind: "choice",
         value: settings.voice,
         options: [
           {
             value:
               settings.voice === "quick" || settings.voice === "system" ? "anna" : settings.voice,
-            label: "Each persona's own",
+            label: "Tessaya's voices",
           },
           { value: "quick", label: "Quick" },
           { value: "system", label: "System voice" },

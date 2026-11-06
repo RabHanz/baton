@@ -56,13 +56,16 @@ if (real) {
     if (p) set('tf.file', p);
   });
 }
-const GROUPS = [['Now', ['home','now','sessions','approvals','jobs','cloud']], ['Voice', ['dictation','history','snippets','transforms','style','scratchpad','insights']], ['Knowledge', ['memory','vault','tools']], ['Settings', ['assistant','voice','screen','usage','trust','checks','help']]];
+// The sidebar holds the work; every setting is in the Settings window (CATS), reached from the foot of the sidebar.
+const GROUPS = [['Now', ['home','now','sessions','approvals','jobs','cloud','trust','usage']], ['Dictation', ['dictation','history','snippets','transforms','style','scratchpad','insights']], ['Knowledge', ['memory','vault','tools']]];
 const GROUP_OF = {}; for (const [gname, ids] of GROUPS) for (const gid of ids) GROUP_OF[gid] = gname.toLowerCase();
-const foldedGroups = (() => { try { return new Set(JSON.parse(localStorage.getItem('tessaya.folded') || '[]')); } catch (e) { return new Set(); } })();
+const foldedGroups = (() => { try { return new Set(JSON.parse(localStorage.getItem('tessaya.folded') || '[]').map(g => g === 'Voice' ? 'Dictation' : g).filter(g => g !== 'Settings')); } catch (e) { return new Set(); } })();
 const saveFolded = () => { try { localStorage.setItem('tessaya.folded', JSON.stringify([...foldedGroups])); } catch (e) {} };
-const TABS = ['home','now','snippets','insights','scratchpad','style','transforms','sessions','approvals','jobs','cloud','dictation','history','memory','vault','tools','assistant','voice','screen','usage','trust','checks','help'].map(id => [id, L('tab.' + id)]);
+const TABS = ['home','now','snippets','insights','scratchpad','style','transforms','sessions','approvals','jobs','cloud','dictation','history','memory','vault','tools','usage','trust','help'].map(id => [id, L('tab.' + id)]);
+const CATS = ['general','voice','personas','assistant','privacy','appearance','keys','advanced','about'].map(id => [id, L('cat.' + id)]);
+const MOVED = { screen: 'assistant', checks: 'advanced', settings: 'general', system: 'advanced', updates: 'general', account: 'assistant' };
 const INTRO = {};
-for (const id of ['scratchpad','insights','style','transforms','snippets','now','sessions','approvals','jobs','cloud','dictation','tools','memory','vault','history','assistant','voice','screen','usage','trust','help','checks']) INTRO[id] = [L('intro.' + id + '.title'), L('intro.' + id + '.text')];
+for (const id of ['scratchpad','insights','style','transforms','snippets','now','sessions','approvals','jobs','cloud','dictation','tools','memory','vault','history','usage','trust','help']) INTRO[id] = [L('intro.' + id + '.title'), L('intro.' + id + '.text')];
 let cur = 'home', collapsed = false, modal = null, S = null, query = '';
 let aboutSeen = false, bellOpen = false;
 const open = new Set(), shown = new Set(), drafts = new Map(), changing = new Set();
@@ -91,7 +94,9 @@ function control(c) {
     }
     const s = $('select'); s.setAttribute('aria-label', c.label);
     for (const o of c.options) { const p = $('option', null, o.label); p.value = o.value; p.selected = o.value === c.value; s.appendChild(p); }
-    s.onchange = () => set(c.id, s.value); return s;
+    s.onchange = () => set(c.id, s.value);
+    if (c.id.indexOf('v.persona:') === 0) { const o = c.options.find(x => x.value === c.value), name = (o && o.voice) || c.value; const pl = $('button', 'btn quiet', 'Play'); pl.setAttribute('aria-label', 'Play the voice of ' + c.label); pl.onclick = () => set('v.audition', name); const w = $('div', 'pair'); w.append(pl, s); return w; }
+    return s;
   }
   if (c.kind === 'secret') { const b = $('button', 'btn', shown.has(c.id) ? c.revealed : c.masked); b.setAttribute('aria-label', 'Show address'); b.onclick = () => { if (shown.has(c.id)) shown.delete(c.id); else shown.add(c.id); b.textContent = shown.has(c.id) ? c.revealed : c.masked; }; return b; }
   const b = $('button', 'btn', c.button); b.onclick = () => set(c.id, null);
@@ -555,7 +560,7 @@ function usage(p) {
   }
   p.appendChild(g);
 }
-let hmenu = null, hq = '', hrows = null, hopen = new Set(), hask = null, hnote = '', htimer = null, hbusy = new Set(), hrec = false, hday = null, hrange = 'all', hdaylim = {}, hexp = (() => { try { return JSON.parse(localStorage.getItem('tessaya.hdays') || '{}'); } catch (e) { return {}; } })();
+let hmenu = null, hq = '', hrows = null, hopen = new Set(), hask = null, hnote = '', htimer = null, hbusy = new Set(), hday = null, hrange = 'all', hdaylim = {}, hexp = (() => { try { return JSON.parse(localStorage.getItem('tessaya.hdays') || '{}'); } catch (e) { return {}; } })();
 function loadHistory() {
   const run = real ? ipc.invoke('baton-history:list', hq) : Promise.resolve((window.__BATON_HISTORY__ || []).filter(t => !hq || (t.raw + ' ' + (t.cleaned || '') + ' ' + t.app).toLowerCase().includes(hq.toLowerCase())));
   run.then(r => { hrows = r; render(); });
@@ -581,16 +586,8 @@ let haudio = null;
 function hplay(url) { if (haudio) { haudio.pause(); haudio = null; } haudio = new Audio(url); haudio.onended = () => { haudio = null; hnote = ''; render(); }; hnote = 'Playing the recording.'; haudio.play().catch(() => { hnote = 'The recording could not be played.'; render(); }); render(); }
 const STATUS = { ok: 'Tidied', raw: 'Inserted as heard', failed: 'Clean-up failed', none: 'Heard' };
 function recordings(p) {
-  const keep = find('v.keepVoice'), space = find('v.keepSpace');
-  const items = ['v.keepVoice', 'v.keepDays', 'v.keepCap', 'v.keepSpace'].map(find).filter(Boolean);
-  if (!items.length) return;
-  const used = space ? String(space.hint || '').split('.')[0] : '';
-  const wrap = $('div', 'recs');
-  const head = $('button', 'rechead'); head.setAttribute('aria-expanded', String(hrec));
-  head.append($('b', null, 'Recordings'), $('span', 'hint', keep && keep.on ? 'On · ' + used : 'Off · your voice is not saved'), icon('chev', 12));
-  head.onclick = () => { hrec = !hrec; render(); }; wrap.appendChild(head);
-  if (hrec) wrap.appendChild(group('Voice recordings', items));
-  p.appendChild(wrap);
+  const keep = find('v.keepVoice'); if (!keep) return;
+  const n = $('p', 'hint'); n.style.marginTop = '16px'; n.append(document.createTextNode((keep.on ? 'Your voice recordings are kept. ' : 'Your voice is not recorded. ') + 'Change it in '), (() => { const a = $('button', 'reveal', 'Settings, Memory and privacy'); a.onclick = () => go('privacy'); return a; })(), document.createTextNode('.')); p.appendChild(n);
 }
 const NONE = 'Nothing in this range.', SEE_ALL = 'See all in History';
 function historyPage(p) {
@@ -693,14 +690,14 @@ function historyPage(p) {
   }
   recordings(p);
 }
-const tabName = id => (TABS.find(t => t[0] === id) || [id, 'Settings'])[1];
+const tabName = id => ((TABS.find(t => t[0] === id) || CATS.find(t => t[0] === id)) || [id, 'Settings'])[1];
 /** Every setting whose words contain every word typed, shown as the real rows, with the page each one lives on. */
 function searchPage(p) {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-  const hits = S.controls.filter(c => c.kind !== 'session' && words.every(w => (c.label + ' ' + (c.hint || '') + ' ' + (c.section || '')).toLowerCase().includes(w)));
+  const hits = S.controls.filter(c => c.kind !== 'session' && c.tab !== 'setup' && words.every(w => (c.label + ' ' + (c.hint || '') + ' ' + (c.section || '')).toLowerCase().includes(w)));
   p.appendChild(pageHead('Search', hits.length ? hits.length + (hits.length === 1 ? ' setting' : ' settings') + ' for \u201c' + query + '\u201d' : 'Nothing matches \u201c' + query + '\u201d. Try a shorter word.'));
-  const by = new Map(); for (const c of hits) { const t = c.tab || 'settings'; if (!by.has(t)) by.set(t, []); by.get(t).push(c); }
-  for (const [t, list] of by) { const h = $('h2', null, tabName(t)); const go2 = $('button', 'moreBtn', 'Open ' + tabName(t)); go2.onclick = () => { query = ''; go(t); }; h.appendChild(go2); p.appendChild(h); const g = $('div', 'group'); rowsOf(list, g); p.appendChild(g); }
+  const by = new Map(); for (const c of hits) { const t = c.tab || 'advanced'; if (!by.has(t)) by.set(t, []); by.get(t).push(c); }
+  for (const [t, list] of by) { const h = $('h2', null, tabName(t)); const go2 = $('button', 'moreBtn', 'Open ' + (CATS.some(c => c[0] === t) ? 'Settings, ' : '') + tabName(t)); go2.onclick = () => { query = ''; go(t); }; h.appendChild(go2); p.appendChild(h); const g = $('div', 'group'); rowsOf(list, g); p.appendChild(g); }
 }
 function tabPage(p) {
   if (query.trim() && !modal) return searchPage(p);
@@ -713,22 +710,10 @@ function tabPage(p) {
   if (!items.length && EMPTY[cur]) p.appendChild($('div', 'empty', EMPTY[cur]));
   for (const s of sections(items)) { if (sections(items).length > 1 || s.name !== intro[0]) p.appendChild($('h2', null, s.name)); p.appendChild(group(s.name, s.items)); }
   if (cur === 'dictation') { vocabulary(p); keys(p, ['dictation']); }
-  if (cur === 'voice') keys(p, ['voice']);
-  if (cur === 'screen') {
-    p.insertBefore($('h2', null, 'Actions'), p.firstChild.nextSibling.nextSibling);
-    const ag = $('div', 'group');
-    for (const [l, h, b, id] of [['Ask Tessaya', 'Type a question about your screen or a job to do.', 'Ask', 'q.ask'], ['Clear the screen', 'Remove the pointer and any card Tessaya left up.', 'Clear', 'q.clear'], ['Stop', 'End a lesson or a drive, and quiet Tessaya\u2019s voice.', 'Stop', 'q.stop']]) { const r = $('div', 'row'); const t = $('div', 'text'); t.append($('div', 'label', l), $('div', 'hint', h)); const bt = $('button', 'btn', b); bt.onclick = () => set(id, null); r.append(t, bt); ag.appendChild(r); }
-    p.insertBefore(ag, p.firstChild.nextSibling.nextSibling.nextSibling);
-    p.appendChild($('h2', null, 'What Tessaya can do with your screen'));
-    const hg = $('div', 'group');
-    for (const [l, h] of [['Look', 'Ask what is on your screen. Tessaya takes one screenshot of each display and answers.'], ['Teach', 'Ask how to do something. Tessaya shows each step on your screen, one at a time.'], ['Drive', 'Ask Tessaya to do it. It moves the pointer, you can take over, and Escape stops it.']]) { const r = $('div', 'kv'); const t = $('div'); t.append($('div', 'label', l), $('div', 'hint', h)); r.appendChild(t); hg.appendChild(r); }
-    p.appendChild(hg);
-    keys(p, ['screen']);
-  }
-  if (cur === 'checks') { if (!items.some(c => c.kind === 'check')) { const e = $('div', 'empty', 'Nothing has run yet. Press Run checks.'); e.style.marginTop = '16px'; p.appendChild(e); } const x = S.extra || {}; if ((x.lifecycle || []).length) { p.appendChild($('h2', null, 'Why Tessaya last went down')); const g = $('div', 'group'); for (const l of x.lifecycle) { const r = $('div', 'kv'); r.append($('div', null, l.text), $('time', 'hint', clock(l.at))); g.appendChild(r); } p.appendChild(g); } }
+
 }
 
-const MODAL = ['general','system','keys','account','updates','cloud','about'].map(id => [L('modal.' + id), id]);
+
 let capturing = null, capNote = '';
 function keyName(e) { const k = e.key; if (['Control', 'Shift', 'Alt', 'Meta', 'AltGraph', 'Dead', 'Unidentified'].includes(k)) return null; const m = { ' ': 'Space', ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right', Enter: 'Return', Escape: 'Escape' }; return m[k] || (k.length === 1 ? k.toUpperCase() : k); }
 function accel(e) { const k = keyName(e); if (!k) return null; const mods = [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift', e.metaKey && 'Meta'].filter(Boolean); return mods.concat([k]).join('+'); }
@@ -789,17 +774,39 @@ addEventListener('mousedown', e => {
   if (!button) return;
   e.preventDefault(); const id = capturing; capturing = null; capNote = ''; set('b.add:' + id, JSON.stringify({ type: 'mouse', button }));
 }, true);
+function catSections(b, id) {
+  const items = S.controls.filter(c => c.tab === id);
+  for (const s of sections(items)) { b.appendChild($('h2', null, s.name)); b.appendChild(group(s.name, s.items)); }
+  return items;
+}
+function plainGroup(rows) { const g = $('div', 'group'); for (const [l, h, btn, id] of rows) { const r = $('div', btn ? 'row' : 'kv'); const t = $('div', 'text'); t.append($('div', 'label', l), $('div', 'hint', h)); r.appendChild(t); if (btn) { const bt = $('button', 'btn', btn); bt.onclick = typeof id === 'function' ? id : () => set(id, null); r.appendChild(bt); } g.appendChild(r); } return g; }
 function modalPage(b) {
   const x = S.extra || {};
-  const rows = ids => S.controls.filter(c => ids.includes(c.id));
-  if (modal === 'general') { b.appendChild($('h1', null, 'General')); const g = $('div', 'group'); const items = rows(['v.appearance', 'v.palette', 'v.motion', 'v.glass', 'v.login']); for (const c of items) g.appendChild(row(c)); const q = $('div', 'row'); const t = $('div', 'text'); t.append($('div', 'label', 'Quit Tessaya'), $('div', 'hint', 'Closing the window keeps Tessaya in the tray. Quit ends it.')); const qb = $('button', 'btn', 'Quit'); qb.onclick = () => set('q.quit', null); q.append(t, qb); g.appendChild(q); b.appendChild(g); }
-  else if (modal === 'system') { b.appendChild($('h1', null, 'System')); const g = $('div', 'group'); for (const c of rows(['v.file'])) g.appendChild(row(c)); for (const p of (x.paths || [])) { const r = $('div', 'kv'); const t = $('div'); t.append($('div', 'label', p.label), $('div', 'hint', p.path)); const ob = $('button', 'btn', 'Open'); ob.onclick = () => set('q.open:' + p.id, null); r.append(t, ob); g.appendChild(r); } b.appendChild(g); }
-  else if (modal === 'keys') bindingsPage(b);
-  else if (modal === 'cloud') { b.appendChild($('h1', null, L('modal.cloud'))); b.appendChild($('p', 'hint', L('cloudmodal.text'))).style.marginBottom = '14px'; const o1 = $('button', 'btn', L('cloudmodal.open')); o1.onclick = () => { modal = null; go('cloud'); }; const o2 = $('button', 'btn', L('cloudmodal.setup')); o2.style.marginLeft = '8px'; o2.onclick = () => { const sp = (S.extra || {}).setup; setupStep = sp ? Math.max(0, sp.steps.findIndex(s => s.id === 'cloud')) : 0; modal = 'setup'; render(); }; b.append(o1, o2); }
-  else if (modal === 'setup') setupPage(b);
-  else if (modal === 'account') { b.appendChild($('h1', null, 'Account')); const g = $('div', 'group'); for (const c of rows(['s.account', 's.accountEmail'])) g.appendChild(row(c)); b.appendChild(g); const n = $('p', 'hint', 'Tessaya uses your own subscription through the claude and codex programs. It never uses an API key.'); n.style.marginTop = '12px'; b.appendChild(n); }
-  else if (modal === 'updates') { b.appendChild($('h1', null, 'Updates')); const g = $('div', 'group'); for (const c of rows(['u.act'])) g.appendChild(row(c)); const ab = x.about || {}; for (const [l, v] of [['Installed version', ab.version], ['Updates come from', ab.source]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); b.appendChild($('p', 'hint', 'Tessaya downloads an update in the background and tells you before it restarts.')).style.marginTop = '12px'; }
-  else { const am = $('div', 'aboutmark'); am.id = 'aboutmark'; markButton(am, 'about'); am.innerHTML = markHtml('about'); b.appendChild(am); if (!aboutSeen) { aboutSeen = true; setTimeout(() => startSting('about'), 50); } b.appendChild($('h1', null, 'About')); const a = x.about || {}; const g = $('div', 'group'); for (const [l, v] of [['Version', a.version], ['Installed from', a.source], ['Licence', a.licence], ['Third-party notices', a.notices]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); const rr = $('button', 'btn', L('wizard.rerun')); rr.style.marginTop = '14px'; rr.onclick = () => { setupStep = 0; modal = 'setup'; render(); }; b.appendChild(rr); }
+  if (modal === 'setup') return setupPage(b);
+  if (modal === 'keys') return bindingsPage(b);
+  if (modal === 'about') { const am = $('div', 'aboutmark'); am.id = 'aboutmark'; markButton(am, 'about'); am.innerHTML = markHtml('about'); b.appendChild(am); if (!aboutSeen) { aboutSeen = true; setTimeout(() => startSting('about'), 50); } b.appendChild($('h1', null, 'About')); const a = x.about || {}; const g = $('div', 'group'); for (const [l, v] of [['Version', a.version], ['Installed from', a.source], ['Licence', a.licence], ['Third-party notices', a.notices]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); const rr = $('button', 'btn', L('wizard.rerun')); rr.style.marginTop = '14px'; rr.onclick = () => { setupStep = 0; modal = 'setup'; render(); }; b.appendChild(rr); ; return; }
+  b.appendChild(pageHead(L('cat.' + modal), L('cat.' + modal + '.text')));
+  const items = catSections(b, modal);
+  if (modal === 'general') {
+    const ab = x.about || {}; const facts = [['Installed version', ab.version], ['Updates come from', ab.source]].filter(f => f[1]);
+    if (facts.length) { b.appendChild($('h2', null, 'Version')); b.appendChild(plainGroup(facts.map(([l, v]) => [l, v]))); }
+    b.appendChild($('h2', null, 'Quit'));
+    b.appendChild(plainGroup([['Quit Tessaya', 'Closing the window keeps Tessaya in the tray. Quit ends it.', 'Quit', 'q.quit']]));
+  }
+  if (modal === 'voice') keys(b, ['voice']);
+  if (modal === 'assistant') {
+    b.appendChild($('h2', null, 'What Tessaya can do with your screen'));
+    b.appendChild(plainGroup([['Look', 'Ask what is on your screen. Tessaya takes one screenshot of each display and answers.'], ['Teach', 'Ask how to do something. Tessaya shows each step on your screen, one at a time.'], ['Drive', 'Ask Tessaya to do it. It moves the pointer, you can take over, and Escape stops it.']]));
+    b.appendChild($('h2', null, 'Right now'));
+    b.appendChild(plainGroup([['Ask Tessaya', 'Type a question about your screen or a job to do.', 'Ask', 'q.ask'], ['Clear the screen', 'Remove the pointer and any card Tessaya left up.', 'Clear', 'q.clear'], ['Stop', 'End a lesson or a drive, and quiet Tessaya’s voice.', 'Stop', 'q.stop']]));
+    keys(b, ['screen']);
+    b.appendChild($('p', 'hint', 'Tessaya uses your own subscription through the claude and codex programs. It never uses an API key.')).style.marginTop = '12px';
+  }
+  if (modal === 'advanced') {
+    if (!items.some(c => c.kind === 'check')) { const e = $('div', 'empty', 'No checks have run yet. Press Run checks.'); e.style.marginTop = '16px'; b.appendChild(e); }
+    if ((x.lifecycle || []).length) { b.appendChild($('h2', null, 'Why Tessaya last went down')); const g = $('div', 'group'); for (const l of x.lifecycle) { const r = $('div', 'kv'); r.append($('div', null, l.text), $('time', 'hint', clock(l.at))); g.appendChild(r); } b.appendChild(g); }
+    if ((x.paths || []).length) { b.appendChild($('h2', null, 'Files and folders')); b.appendChild(plainGroup(x.paths.map(p => [p.label, p.path, 'Open', 'q.open:' + p.id]))); }
+  }
 }
 let setupStep = 0, setupAuto = false, meterTimer = null;
 function stopMeter() { if (meterTimer) { clearInterval(meterTimer); meterTimer = null; } }
@@ -865,7 +872,7 @@ function syncModal() {
   setRegion(document.getElementById('mnav'), nav => {
     if (modal === 'setup') { nav.appendChild($('h4', null, 'Setup')); const sp = (S.extra || {}).setup; for (const [i, st] of ((sp && sp.steps) || []).entries()) { const b = $('button', 'nav', (i + 1) + '. ' + st.title); if (i === setupStep) b.setAttribute('aria-current', 'step'); b.onclick = () => { setupStep = i; render(); }; nav.appendChild(b); } return; }
     nav.appendChild($('h4', null, 'Settings'));
-    for (const [l, id] of MODAL) { if (id === 'account') nav.appendChild($('h4', null, 'Account')); const b = $('button', 'nav', l); if (modal === id) b.setAttribute('aria-current', 'page'); b.onclick = () => { modal = id; render(); }; nav.appendChild(b); }
+    for (const [id, l] of CATS) { const b = $('button', 'nav', l); if (modal === id) b.setAttribute('aria-current', 'page'); b.onclick = () => { modal = id; render(); }; nav.appendChild(b); }
     nav.appendChild($('div', 'ver', 'Tessaya ' + (((S.extra || {}).about || {}).version || '')));
   });
   const mbody = document.getElementById('mbody');
@@ -873,7 +880,7 @@ function syncModal() {
   if (shownModal !== modal) { mbody.scrollTop = 0; shownModal = modal; }
 }
 function closeModal() { if (modal === 'setup') return setupFinish(); stopMeter(); modal = null; aboutSeen = false; render(); }
-function go(t) { if (t !== cur) { try { enter(); } catch (e) {} } cur = t; render(); if (real) ipc.send('baton-home:tab', t); document.getElementById('panel').scrollTop = 0; }
+function go(t) { t = MOVED[t] || t; if (CATS.some(c => c[0] === t)) { modal = t; render(); return; } if (t !== cur) { try { enter(); } catch (e) {} } cur = t; render(); if (real) ipc.send('baton-home:tab', t); document.getElementById('panel').scrollTop = 0; }
 
 /** Ctrl+K: pages, settings, commands and sessions in one list, all by keyboard. */
 function paletteRank(items, q) {
@@ -890,6 +897,7 @@ function paletteRank(items, q) {
 function paletteItems() {
   const items = [];
   for (const [id, name] of TABS) items.push({ kind: 'Page', label: name, hint: 'Open the ' + name + ' page', run: () => { modal = null; go(id); } });
+  for (const [id, name] of CATS) items.push({ kind: 'Settings', label: name, hint: 'Open Settings, ' + name, run: () => go(id) });
   const on = id => { const c = find(id); return !!(c && c.on); };
   const cmd = (label, hint, run) => items.push({ kind: 'Command', label, hint, run });
   cmd('Start listening', 'Wake Tessaya without the wake word', () => set('q.wake', null));
@@ -905,7 +913,7 @@ function paletteItems() {
   for (const c of S.controls) {
     if (c.id.indexOf('trust.standing:') === 0 || c.id.indexOf('trust.rule:') === 0) cmd((c.on ? 'Turn off standing job: ' : 'Turn on standing job: ') + c.label, 'Unattended work, counted and logged', () => set(c.id, !c.on));
     else if (c.kind === 'session' && c.canOpen) items.push({ kind: 'Session', label: 'Open session ' + c.label, hint: c.project + ' ' + c.box, run: () => set(c.id, null) });
-    else if (c.kind === 'toggle' || c.kind === 'choice' || c.kind === 'action') items.push({ kind: 'Setting', label: c.label, hint: c.hint || '', run: () => { modal = null; go(c.tab || 'settings'); } });
+    else if (c.kind === 'toggle' || c.kind === 'choice' || c.kind === 'action') items.push({ kind: 'Setting', label: c.label, hint: c.hint || '', run: () => { modal = null; go(c.tab || 'advanced'); } });
   }
   return items;
 }
@@ -980,9 +988,10 @@ function render(state) {
   }
   side.appendChild(nav);
   if (up && up.lead) { const c = $('div', 'sidecard go'); c.append($('b', null, 'Update ready'), $('p', null, 'Tessaya restarts itself and reopens this window.')); const bt = $('button', 'btn', up.button); bt.onclick = () => set('u.act', null); c.appendChild(bt); side.appendChild(c); }
-  const foot = $('div', 'foot'); const st = $('button', 'nav'); st.append(icon('settings'), $('span', null, 'Settings')); st.onclick = () => { modal = 'general'; render(); };
+  const foot = $('div', 'foot'); const st = $('button', 'nav'); st.append(icon('settings'), $('span', null, 'Settings')); st.onclick = () => go('general');
+  const hp = $('button', 'nav'); hp.append(icon('help'), $('span', null, 'Help')); if (cur === 'help') hp.setAttribute('aria-current', 'page'); hp.onclick = () => go('help');
   const t3 = $('button', 'nav'); t3.append(icon('external'), $('span', null, 'Open T3 sessions')); t3.onclick = () => real && ipc.send('baton-home:sessions');
-  foot.append(t3, st); side.appendChild(foot);
+  foot.append(t3, hp, st); side.appendChild(foot);
   }, 'brand');
   setRegion(document.getElementById('top'), top => {
   const sb = $('input', 'search'); sb.id = 'q'; sb.type = 'search'; sb.placeholder = 'Search settings'; sb.setAttribute('aria-label', 'Search settings'); sb.value = query; sb.oninput = () => { query = sb.value; render(); }; sb.onkeydown = e => { if (e.key === 'Escape' && query) { query = ''; render(); } };
@@ -995,7 +1004,7 @@ function render(state) {
     if (up && up.lead) { const b = $('button', 'btn', L('alerts.update', { name: up.button })); b.onclick = () => { bellOpen = false; set('u.act', null); }; pop.appendChild(b); }
     if (!need && !(up && up.lead)) pop.appendChild($('p', null, L('alerts.none')));
     top.appendChild(pop); }
-  const ac = $('button', 'ibtn'); ac.setAttribute('aria-label', 'Account'); ac.appendChild(icon('user')); ac.onclick = () => { modal = 'account'; render(); }; top.appendChild(sb); top.appendChild(ac);
+  const ac = $('button', 'ibtn'); ac.setAttribute('aria-label', 'Account'); ac.appendChild(icon('user')); ac.onclick = () => go('assistant'); top.appendChild(sb); top.appendChild(ac);
   });
   const page = document.getElementById('page'); const pageClass = (cur === 'home' ? 'wide' : '') + (entering ? ' enter' : ''); if (page.className !== pageClass) page.className = pageClass; setRegion(page, tabPage);
   syncModal(); try { syncChrome(); } catch (e) {}

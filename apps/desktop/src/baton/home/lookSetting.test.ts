@@ -4,7 +4,6 @@ import * as NodePath from "node:path";
 
 import { describe, expect, it } from "vite-plus/test";
 
-import { APP_SCRIPT } from "./appScript.ts";
 import { tabOf } from "./tabs.ts";
 
 const source = (file: string) =>
@@ -20,11 +19,8 @@ describe("the Motion and Glass settings are wired end to end", () => {
     expect(voice).toContain("look: () => ({ motion: settings.motion, glass: settings.glass })");
     expect(voice).toContain("save({ palette: parsePalette(value) })");
     expect(voice).toContain("palette: settings.palette })");
-    expect(APP_SCRIPT).toContain(
-      "rows(['v.appearance', 'v.palette', 'v.motion', 'v.glass', 'v.login'])",
-    );
-    expect(tabOf("v.motion")).toBe("settings");
-    expect(tabOf("v.glass")).toBe("settings");
+    expect(tabOf("v.motion")).toBe("appearance");
+    expect(tabOf("v.glass")).toBe("appearance");
     // Each push applies the look when it changed, so a change shows without a reload.
     expect(source("./batonHome.ts")).toMatch(/applyTheme\(\);\s*applyLook\(false\);/);
   });

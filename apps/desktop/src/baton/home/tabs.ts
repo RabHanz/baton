@@ -1,5 +1,5 @@
 /**
- * The tabs of Baton's window (D140) and which tab each control lives on. Producers keep their own
+ * The pages of Baton's window (D140), the categories of its Settings window, and where each control lives. Producers keep their own
  * ids; this one table decides where they appear, so moving a control is a one-line change.
  */
 export const TABS = [
@@ -19,44 +19,51 @@ export const TABS = [
   { id: "memory", label: "Memory" },
   { id: "vault", label: "Vault" },
   { id: "tools", label: "Skills" },
-  { id: "assistant", label: "Assistant" },
-  { id: "voice", label: "Voice" },
-  { id: "screen", label: "Screen" },
   { id: "usage", label: "Usage" },
   { id: "trust", label: "Trust" },
   { id: "help", label: "Help" },
-  { id: "checks", label: "Checks" },
 ] as const;
 
-export type TabId = (typeof TABS)[number]["id"] | "settings";
+/** Settings has one home: the Settings window, in these categories. Every setting lives in exactly one of them. */
+export const SETTINGS = [
+  { id: "general", label: "General" },
+  { id: "voice", label: "Voice and wake words" },
+  { id: "personas", label: "Personas and voices" },
+  { id: "assistant", label: "Working for you" },
+  { id: "privacy", label: "Memory and privacy" },
+  { id: "appearance", label: "Appearance" },
+  { id: "keys", label: "Keyboard and mouse" },
+  { id: "advanced", label: "Advanced" },
+  { id: "about", label: "About" },
+] as const;
+
+export type TabId = (typeof TABS)[number]["id"] | (typeof SETTINGS)[number]["id"] | "setup";
 
 const EXACT: Readonly<Record<string, TabId>> = {
   "v.enabled": "voice",
   "v.muted": "voice",
+  "v.mic": "voice",
+  "v.direct": "voice",
   "v.listenAfterWake": "voice",
   "v.conversation": "voice",
   "v.waitMs": "voice",
-  "v.direct": "voice",
-  "v.mic": "voice",
-  "v.sounds": "voice",
-  "v.cues": "voice",
   "v.verifyWake": "voice",
   "v.quietSpeech": "voice",
   "v.headphones": "voice",
   "v.voiceBargeIn": "voice",
+  "v.silence": "voice",
+  "s.output": "voice",
+  "s.volume": "voice",
+  "v.cues": "voice",
   "v.holdKeyCues": "voice",
+  "v.pillPlace": "voice",
+  "v.pillMove": "voice",
   "v.pillRest": "voice",
   "v.pillHide": "voice",
   "v.pillFull": "voice",
-  "v.silence": "voice",
-  "v.duck": "dictation",
-  "v.pillPlace": "voice",
-  "v.pillMove": "voice",
   "v.volume": "voice",
-  "s.voice": "voice",
-  "v.audition": "voice",
-  "s.volume": "voice",
-  "s.output": "voice",
+  "s.voice": "personas",
+  "v.audition": "setup",
   "v.dictation": "dictation",
   "v.download": "dictation",
   "v.cleanup": "dictation",
@@ -67,31 +74,51 @@ const EXACT: Readonly<Record<string, TabId>> = {
   "v.learnWords": "dictation",
   "v.doubleTap": "dictation",
   "v.language": "dictation",
+  "v.duck": "dictation",
   "d.import": "dictation",
-  "v.keepVoice": "history",
-  "v.keepDays": "history",
-  "v.keepCap": "history",
-  "v.keepSpace": "history",
   "s.brain": "assistant",
   "s.brainCheck": "assistant",
-  "s.act": "assistant",
-  "s.chrome": "assistant",
-  "s.social": "assistant",
   "s.account": "assistant",
-  "v.notice": "assistant",
-  "v.quiet": "assistant",
-  "v.brief": "assistant",
   "s.accountEmail": "assistant",
-  "s.capture": "screen",
-  "v.check": "checks",
-  "v.diag": "checks",
-  "v.micTest": "checks",
-  "v.login": "settings",
-  "v.appearance": "settings",
-  "v.motion": "settings",
-  "v.glass": "settings",
-  "v.file": "settings",
-  "u.act": "settings",
+  "s.act": "assistant",
+  "s.capture": "assistant",
+  "s.chrome": "assistant",
+  "s.chromeCheck": "assistant",
+  "s.social": "assistant",
+  "s.cursor": "assistant",
+  "s.hands": "assistant",
+  "s.handsAway": "assistant",
+  "pr.initiative": "assistant",
+  "pr.perHour": "assistant",
+  "pr.needsRepos": "assistant",
+  "pr.ciRepos": "assistant",
+  "pr.feeds": "assistant",
+  "pr.expect": "assistant",
+  "pr.deadlines": "assistant",
+  "v.keepVoice": "privacy",
+  "v.keepDays": "privacy",
+  "v.keepCap": "privacy",
+  "v.keepSpace": "privacy",
+  "v.hideFromCapture": "privacy",
+  "pr.awWindow": "privacy",
+  "pr.awIdle": "privacy",
+  "pr.awFocus": "privacy",
+  "pr.awJobs": "privacy",
+  "v.login": "general",
+  "v.notice": "general",
+  "v.dnd": "general",
+  "v.snooze": "general",
+  "v.quiet": "general",
+  "v.brief": "general",
+  "v.appearance": "appearance",
+  "v.palette": "appearance",
+  "v.motion": "appearance",
+  "v.glass": "appearance",
+  "v.check": "advanced",
+  "v.diag": "advanced",
+  "v.micTest": "advanced",
+  "v.file": "advanced",
+  "setup.hold": "setup",
   "n.empty": "sessions",
   "n.note": "sessions",
 };
@@ -99,8 +126,11 @@ const EXACT: Readonly<Record<string, TabId>> = {
 export const tabOf = (id: string): TabId => {
   const exact = EXACT[id];
   if (exact !== undefined) return exact;
-  if (id.startsWith("v.wake:") || id.startsWith("v.persona:")) return "voice";
-  if (id.startsWith("v.result:")) return "checks";
+  if (id.startsWith("v.wake:")) return "voice";
+  if (id.startsWith("v.persona:")) return "personas";
+  if (id.startsWith("v.result:")) return "advanced";
+  if (id.startsWith("rs.")) return "privacy";
+  if (id.startsWith("setup.cloud.")) return "cloud";
   if (id.startsWith("n:") || id.startsWith("c:") || id.startsWith("c.")) return "sessions";
   if (/^now[:.]/.test(id)) return "now";
   if (/^cl\.(p|a|ok|deny|head|busy|done|denied|fail)\./.test(id)) return "approvals";
@@ -120,6 +150,7 @@ export const tabOf = (id: string): TabId => {
   if (id.startsWith("vt:") || id.startsWith("vt.")) return "vault";
   if (id === "s.learn" || id.startsWith("s.learned:")) return "memory";
   if (id.startsWith("m:") || id.startsWith("m.")) return "memory";
-  if (id.startsWith("u.")) return "settings";
-  return "settings";
+  if (id.startsWith("u.")) return "general";
+  // Anything new and unplaced is still reachable, never drawn nowhere.
+  return "advanced";
 };
