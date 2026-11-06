@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { createVoiceCore, type VoiceCoreEvent } from "./core.ts";
+import { SET_ASIDE } from "./types.ts";
 
 /** The stop path runs beside the core's queue, a few promise turns away. */
 const settled = async () => {
@@ -210,6 +211,19 @@ describe("silence after a wake word", () => {
     r.push(1);
     await r.core.idle();
     expect(r.events.some((e) => e.type === "nothing")).toBe(false);
+  });
+
+  it("says nothing for words the host set aside (another language)", async () => {
+    const r = scripted(SET_ASIDE);
+    r.wake();
+    r.push(0.1);
+    r.speech(true);
+    r.push(1);
+    r.speech(false);
+    r.push(1);
+    await r.core.idle();
+    expect(r.heard.length).toBe(1);
+    expect(r.events.filter((e) => e.type === "nothing" || e.type === "transcript")).toEqual([]);
   });
 
   describe("a stop said over Baton's voice", () => {

@@ -11,11 +11,11 @@ const ALFRED = { word: "Alfred", enabled: true, threshold: 0.9 };
 // Off: as an ordinary word in speech it wakes too easily (D98).
 const ONYX = { word: "Onyx", enabled: false, threshold: 0.9 };
 
-// The fewer words are listened for, the fewer false wakes. A fresh install wakes to Freya and Alfred, the
-// roster's two trained faces; Tessaya's model ships off until he turns it on. Sebastian answers to his name
-// in text until his false wakes are measured. Alfred and Freya carry stricter thresholds than before.
+// A fresh install wakes to Tessaya, Alfred and Freya; any number can be on, his choice. Each word on adds its own
+// false wakes, which the text check after a wake removes. Sebastian answers to his name in text until his false
+// wakes are measured.
 export const FRESH_WAKE_WORDS: ReadonlyArray<WakeWordSetting> = [
-  { word: "Tessaya", enabled: false, threshold: 0.99 },
+  { word: "Tessaya", enabled: true, threshold: 0.99 },
   { ...SEBASTIAN, enabled: false },
   { word: "Alfred", enabled: true, threshold: 0.95 },
   { word: "Freya", enabled: true, threshold: 0.95 },
@@ -29,10 +29,24 @@ const LEGACY_WAKE_WORDS: ReadonlyArray<WakeWordSetting> = [
   ONYX,
 ];
 
-/** `saved` is the parsed settings file, or null when there is none. */
+/** Which default set an install has been given. Raised when the defaults grow; each install gets them once. */
+export const WAKE_DEFAULTS = 1;
+
+/**
+ * `saved` is the parsed settings file, or null when there is none. A file not yet given this default set
+ * gets its words turned on once (added where missing, his thresholds kept); a word he turns off afterwards
+ * stays off, because the file then records `wakeDefaults`.
+ */
 export const wakeWordsFor = (saved: unknown): ReadonlyArray<WakeWordSetting> => {
   if (typeof saved !== "object" || saved === null) return FRESH_WAKE_WORDS;
-  return Array.isArray((saved as { wakeWords?: unknown }).wakeWords)
+  const words = Array.isArray((saved as { wakeWords?: unknown }).wakeWords)
     ? (saved as { wakeWords: ReadonlyArray<WakeWordSetting> }).wakeWords
     : LEGACY_WAKE_WORDS;
+  if ((saved as { wakeDefaults?: unknown }).wakeDefaults === WAKE_DEFAULTS) return words;
+  const on = FRESH_WAKE_WORDS.filter((d) => d.enabled);
+  const isDefault = (w: WakeWordSetting) => on.some((d) => d.word === w.word);
+  return [
+    ...words.map((w) => (isDefault(w) ? { ...w, enabled: true } : w)),
+    ...on.filter((d) => !words.some((w) => w.word === d.word)),
+  ];
 };

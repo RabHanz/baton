@@ -12,7 +12,8 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeReadline from "node:readline";
 
-import { encodeWav, type SttProvider } from "@t3tools/baton-voice";
+import { outsideLanguages } from "@t3tools/baton-shared/dictationLanguages";
+import { encodeWav, SET_ASIDE, type SttProvider } from "@t3tools/baton-voice";
 
 import { makeFramer } from "./pcm.ts";
 import type { AudioInputDevice, AudioInputProvider } from "./voiceTypes.ts";
@@ -467,14 +468,23 @@ export const startDictationSidecar = (input: {
 };
 
 /** Parakeet behind the core's `SttProvider`, in the sidecar that already holds the model. */
-export const makeSidecarStt = (sidecar: DictationSidecar): SttProvider => ({
+export const makeSidecarStt = (
+  sidecar: DictationSidecar,
+  /** His languages; what reads as another one is not heard, and `onOutside` is told which. */
+  languages: () => ReadonlyArray<string> = () => [],
+  onOutside?: (code: string) => void,
+): SttProvider => ({
   name: "parakeet",
   transcribe: async (pcm) => {
     const dir = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "baton-voice-"));
     const file = NodePath.join(dir, "utterance.wav");
     try {
       await NodeFSP.writeFile(file, encodeWav(pcm));
-      return await sidecar.transcribe(file);
+      const text = await sidecar.transcribe(file);
+      const outside = outsideLanguages(text, languages());
+      if (outside === null) return text;
+      onOutside?.(outside);
+      return SET_ASIDE;
     } finally {
       await NodeFSP.rm(dir, { recursive: true, force: true });
     }

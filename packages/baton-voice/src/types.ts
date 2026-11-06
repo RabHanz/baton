@@ -73,6 +73,9 @@ export interface SttProvider {
   readonly transcribe: (pcm: Int16Array) => Promise<string>;
 }
 
+/** A transcript the recogniser's host set aside on purpose (another language): no "Didn't catch that". */
+export const SET_ASIDE = "\u0000set aside";
+
 export interface TtsProvider {
   readonly name: string;
   readonly speak: (text: string) => Promise<void>;

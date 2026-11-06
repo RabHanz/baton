@@ -23,6 +23,7 @@
  * @module baton-voice/modeMachine
  */
 import { classifyDictation, isBareStop } from "@t3tools/baton-shared/dictation";
+import { wakeWordLead } from "@t3tools/baton-shared/wakeVerify";
 import { answerOf, isCancelPhrase } from "@t3tools/baton-shared/voiceTurn";
 
 export type VoiceMode =
@@ -126,7 +127,8 @@ const wakePrefix = (words: ReadonlyArray<string>): RegExp => {
     .join("|");
   return names === ""
     ? /(?!)/
-    : new RegExp(`^(?:hey |ok |okay )?(?:${names})\\b[\\s,.:!?-]*`, "iu");
+    : // Not "Alfred's car": a name with 's on it is a word of the sentence.
+      new RegExp(`^(?:hey |ok |okay )?(?:${names})\\b(?!['’])[\\s,.:!?-]*`, "iu");
 };
 export const isAffirmative = (text: string): boolean => answerOf(text) === "yes";
 const SLEEP =
@@ -161,8 +163,23 @@ export const echoesSpeech = (text: string, spoken: ReadonlyArray<string>): boole
 };
 
 /** The words with any wake phrase removed. Exported for the router's checks. */
-export const stripWake = (text: string, words: ReadonlyArray<string> = ["jarvis"]): string =>
+const stripNamed = (text: string, words: ReadonlyArray<string>): string =>
   text.trim().replace(wakePrefix(words), "").trim();
+
+export const stripWake = (text: string, words: ReadonlyArray<string> = ["jarvis"]): string => {
+  const stripped = stripNamed(text, words);
+  if (stripped !== text.trim()) return stripped;
+  // Recognition writes a name it does not know as the words it sounds like: "To say yeah, dictate."
+  const heard = stripped.split(/\s+/);
+  const skip = /^(?:hey|ok|okay)[,.]?$/i.test(heard[0] ?? "") ? 1 : 0;
+  const lead = wakeWordLead(heard.slice(skip), words);
+  return lead === 0
+    ? stripped
+    : heard
+        .slice(skip + lead)
+        .join(" ")
+        .replace(/^[\s,.:!?-]+/, "");
+};
 
 const base = (state: VoiceMachineState): VoiceMachineState => ({
   ...state,
@@ -296,8 +313,10 @@ const utterance = (
         ...(d.kind === "stop" && d.text ? [{ kind: "dictate", text: d.text } as const] : []),
         { kind: "speak", text: "Stopped dictating." },
       ]);
-    if (d.kind === "text" && words.length > 0)
-      return step(s, [...carry, { kind: "dictate", text: words }]);
+    // What he dictates loses only the name itself: "Desire to win" is his words, not Tessaya.
+    const typed = stripNamed(raw, timings.wakeWords ?? ["jarvis"]);
+    if (d.kind === "text" && typed.length > 0)
+      return step(s, [...carry, { kind: "dictate", text: typed }]);
     return step(s, carry);
   }
 

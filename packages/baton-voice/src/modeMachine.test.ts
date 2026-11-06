@@ -4,6 +4,7 @@ import {
   DEFAULT_TIMINGS,
   initialVoiceState,
   reduceVoice,
+  stripWake,
   type VoiceEvent,
   type VoiceMachineState,
 } from "./modeMachine.ts";
@@ -288,6 +289,60 @@ describe("stop while dictating", () => {
       timings,
     );
     expect(named.effects).toContainEqual({ kind: "dictate", text: "see you Friday" });
+  });
+});
+
+describe("a name recognition wrote as other words", () => {
+  const timings = { ...DEFAULT_TIMINGS, wakeWords: ["Tessaya", "Alfred"] };
+
+  it("is still the name: 'To say yeah, dictate.' starts dictation from the conversation", () => {
+    const talking = play([
+      { type: "wake", at: 0 },
+      { type: "utterance", text: "Hey Jarvis, what's on my screen?", at: 10 },
+    ]);
+    const { state } = reduceVoice(
+      talking.state,
+      { type: "utterance", text: "To say yeah, dictate.", at: 20 },
+      timings,
+    );
+    expect(state.mode).toBe("dictation");
+  });
+
+  it("is not found in a sentence that only starts with a sound-alike ending on 'you'", () => {
+    for (const said of ["To see you later, call me", "Nice to see you", "Free, you know"])
+      expect(stripWake(said, ["Tessaya", "Freya"])).toBe(said);
+    expect(stripWake("To say yeah, dictate.", ["Tessaya"])).toBe("dictate.");
+    // One word must be the name or a listed spelling, not merely sound like it.
+    const names = ["Tessaya", "Freya", "Alfred"];
+    for (const said of ["Prayer time", "Frayed", "Fryer", "Alfred's car", "Half red"])
+      expect(stripWake(said, names)).toBe(said);
+    expect(stripWake("al fred, open it", names)).toBe("open it");
+  });
+
+  it("keeps a first word that only sounds like a name when dictation stops", () => {
+    const start = play([
+      { type: "wake", at: 0 },
+      { type: "utterance", text: "dictate", at: 10 },
+    ]);
+    const { effects } = reduceVoice(
+      start.state,
+      { type: "utterance", text: "Frayed edges, stop dictating", at: 20 },
+      { ...DEFAULT_TIMINGS, wakeWords: ["Freya"] },
+    );
+    expect(effects).toContainEqual({ kind: "dictate", text: "Frayed edges" });
+  });
+
+  it("is never cut from what he dictates", () => {
+    const start = play([
+      { type: "wake", at: 0 },
+      { type: "utterance", text: "dictate", at: 10 },
+    ]);
+    const { effects } = reduceVoice(
+      start.state,
+      { type: "utterance", text: "Desire to win matters.", at: 20 },
+      timings,
+    );
+    expect(effects).toContainEqual({ kind: "dictate", text: "Desire to win matters." });
   });
 });
 

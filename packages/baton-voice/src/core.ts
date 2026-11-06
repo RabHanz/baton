@@ -34,6 +34,7 @@ import {
 } from "./modeMachine.ts";
 import type { RouteOutcome, VoiceRouter } from "./router.ts";
 import {
+  SET_ASIDE,
   VOICE_SAMPLE_RATE,
   type SttProvider,
   type TtsProvider,
@@ -489,6 +490,7 @@ export const createVoiceCore = (input: {
       const text = await heard;
       const cleaned = text.trim();
       const dictating = machine.mode === "dictation";
+      if (text === SET_ASIDE) return;
       if (NOISE.test(cleaned)) return dictating ? undefined : emit({ type: "nothing" });
       if (turn.consumed) return;
       if (
@@ -549,7 +551,13 @@ export const createVoiceCore = (input: {
     cleaned: string,
     turn: { startAt: number; prefix: string | null; consumed: boolean; woken: boolean },
   ) => {
-    if (NOISE.test(cleaned) || machine.mode === "dictation" || machine.pending !== null) return;
+    if (
+      cleaned === SET_ASIDE ||
+      NOISE.test(cleaned) ||
+      machine.mode === "dictation" ||
+      machine.pending !== null
+    )
+      return;
     const words = stripWake(cleaned, timings.wakeWords);
     const awake = machine.mode === "command_window" || machine.mode === "conversation";
     if (isDismissPhrase(words) && (awake || words !== cleaned)) {
