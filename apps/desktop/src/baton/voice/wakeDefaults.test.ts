@@ -6,8 +6,8 @@ const enabled = (words: ReadonlyArray<{ word: string; enabled: boolean }>) =>
   words.filter((w) => w.enabled).map((w) => w.word);
 
 describe("wake words at start", () => {
-  it("gives a fresh install Freya and Alfred, with Tessaya off until he turns it on", () => {
-    expect(enabled(wakeWordsFor(null))).toEqual(["Alfred", "Freya"]);
+  it("gives a fresh install Tessaya, Alfred and Freya, all on", () => {
+    expect(enabled(wakeWordsFor(null))).toEqual(["Tessaya", "Alfred", "Freya"]);
     expect(wakeWordsFor(null)).toBe(FRESH_WAKE_WORDS);
   });
   it("keeps Freya for a settings file from before the list was saved", () => {

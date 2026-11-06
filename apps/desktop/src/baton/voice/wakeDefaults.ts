@@ -11,11 +11,11 @@ const ALFRED = { word: "Alfred", enabled: true, threshold: 0.9 };
 // Off: as an ordinary word in speech it wakes too easily (D98).
 const ONYX = { word: "Onyx", enabled: false, threshold: 0.9 };
 
-// The fewer words are listened for, the fewer false wakes. A fresh install wakes to Freya and Alfred, the
-// roster's two trained faces; Tessaya's model ships off until he turns it on. Sebastian answers to his name
-// in text until his false wakes are measured. Alfred and Freya carry stricter thresholds than before.
+// A fresh install wakes to Tessaya, Alfred and Freya; any number can be on, his choice. Each word on adds its own
+// false wakes, which the text check after a wake removes. Sebastian answers to his name in text until his false
+// wakes are measured.
 export const FRESH_WAKE_WORDS: ReadonlyArray<WakeWordSetting> = [
-  { word: "Tessaya", enabled: false, threshold: 0.99 },
+  { word: "Tessaya", enabled: true, threshold: 0.99 },
   { ...SEBASTIAN, enabled: false },
   { word: "Alfred", enabled: true, threshold: 0.95 },
   { word: "Freya", enabled: true, threshold: 0.95 },
