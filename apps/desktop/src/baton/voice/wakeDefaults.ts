@@ -29,10 +29,24 @@ const LEGACY_WAKE_WORDS: ReadonlyArray<WakeWordSetting> = [
   ONYX,
 ];
 
-/** `saved` is the parsed settings file, or null when there is none. */
+/** Which default set an install has been given. Raised when the defaults grow; each install gets them once. */
+export const WAKE_DEFAULTS = 1;
+
+/**
+ * `saved` is the parsed settings file, or null when there is none. A file not yet given this default set
+ * gets its words turned on once (added where missing, his thresholds kept); a word he turns off afterwards
+ * stays off, because the file then records `wakeDefaults`.
+ */
 export const wakeWordsFor = (saved: unknown): ReadonlyArray<WakeWordSetting> => {
   if (typeof saved !== "object" || saved === null) return FRESH_WAKE_WORDS;
-  return Array.isArray((saved as { wakeWords?: unknown }).wakeWords)
+  const words = Array.isArray((saved as { wakeWords?: unknown }).wakeWords)
     ? (saved as { wakeWords: ReadonlyArray<WakeWordSetting> }).wakeWords
     : LEGACY_WAKE_WORDS;
+  if ((saved as { wakeDefaults?: unknown }).wakeDefaults === WAKE_DEFAULTS) return words;
+  const on = FRESH_WAKE_WORDS.filter((d) => d.enabled);
+  const isDefault = (w: WakeWordSetting) => on.some((d) => d.word === w.word);
+  return [
+    ...words.map((w) => (isDefault(w) ? { ...w, enabled: true } : w)),
+    ...on.filter((d) => !words.some((w) => w.word === d.word)),
+  ];
 };

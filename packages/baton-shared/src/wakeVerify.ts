@@ -8,7 +8,7 @@
 /** Other ways recognition writes a wake word, from how each one is said. */
 const ALIASES: Readonly<Record<string, ReadonlyArray<string>>> = {
   // Not "Tessa", "Tessie" or "Theresa": they are other names, and near misses the model is trained against.
-  tessaya: ["tessaia", "tesaya", "tessa ya", "tesseya", "teh sayuh", "desire"],
+  tessaya: ["tessaia", "tesaya", "tessa ya", "tesseya", "teh sayuh"],
   sebastian: ["bastian", "sebastien", "sabastian", "sebastiane"],
   alfred: ["alfrid", "alfread", "al fred"],
   freya: ["fraya", "freia", "fria", "fray uh", "frayer", "freyer"],
@@ -58,9 +58,13 @@ const keyOf = (words: ReadonlyArray<string>): string =>
     .join("")
     .replace(/(.)\1+/g, "$1");
 
+/** A name split into words is trusted by sound only when it ends on its "-ya" ("to say yeah", "the saya"), never "you". */
+const YA_ENDING = /y(?:a|ah|eah)$/;
+
 /** The name said in one, two or three recognised words: "Tessaia", "al fred", "to say yeah". */
 const matches = (words: ReadonlyArray<string>, target: string): boolean => {
-  if (keyOf(words) === keyOf([target])) return true;
+  if (keyOf(words) === keyOf([target]) && (words.length === 1 || YA_ENDING.test(words.at(-1)!)))
+    return true;
   // Spelling closeness only within two words: across three, "to say a" is a letter away from "tesaya".
   if (words.length > 2) return false;
   const piece = words.join("");
@@ -72,15 +76,20 @@ const matches = (words: ReadonlyArray<string>, target: string): boolean => {
 
 const MAX_WORDS = 3;
 
-/** True when `transcript` contains `word` or a close spelling of it. */
+/**
+ * True when the clip ends on `word` or a close spelling of it: the clip stops where the model fired, just
+ * after the name, so a name earlier in it ("Tessa, you there?") is not this wake. Three words count only
+ * as the whole clip, so "I was going to say yeah" is not "to say yeah".
+ */
 export const wakeWordHeard = (transcript: string, word: string): boolean => {
   const target = letters(word).replace(/ /g, "");
   if (target === "") return true;
   const spoken = letters(transcript).split(/\s+/).filter(Boolean);
-  return spoken.some((_, i) =>
-    Array.from({ length: Math.min(MAX_WORDS, spoken.length - i) }, (_, n) =>
-      spoken.slice(i, i + n + 1),
-    ).some((words) => matches(words, target)),
+  return [1, 2, 3].some(
+    (n) =>
+      n <= spoken.length &&
+      (n < MAX_WORDS || n === spoken.length) &&
+      matches(spoken.slice(-n), target),
   );
 };
 

@@ -280,7 +280,7 @@ import {
 } from "../sessions/sessionRows.ts";
 import type { SessionsBridge } from "../sessions/sessionsBridge.ts";
 import type { BatonUpdates } from "../update/BatonUpdater.ts";
-import { FRESH_WAKE_WORDS, wakeWordsFor } from "./wakeDefaults.ts";
+import { FRESH_WAKE_WORDS, WAKE_DEFAULTS, wakeWordsFor } from "./wakeDefaults.ts";
 import { TRAY_PNG, TRAY_SIZES } from "./trayArt.ts";
 import { setHideFromCapture } from "../captureProtection.ts";
 import { brandMarkSvg, markSvg, withTrayState, type MarkOptions } from "./trayMark.ts";
@@ -534,6 +534,8 @@ interface VoiceSettings {
   readonly appModes: Readonly<Record<string, DictationMode>>;
   /** All enabled words listen at once. A new word needs `<word>.onnx` in `<state dir>/voice/models`. */
   readonly wakeWords: ReadonlyArray<WakeWordSetting>;
+  /** The default wake-word set this file has been given (wakeDefaults.ts). */
+  readonly wakeDefaults: number;
   /** How dictated words arrive: all at once, or as they are said. The engine reads this key. */
   readonly "dictation.delivery"?: "oneshot" | "stream";
   /** Keys and mouse buttons he set for actions; an action not listed has its default (D141). */
@@ -602,6 +604,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   claudeBinary: "claude",
   appModes: {},
   wakeWords: FRESH_WAKE_WORDS,
+  wakeDefaults: WAKE_DEFAULTS,
   bindings: [],
 };
 
@@ -627,13 +630,14 @@ export const readSettings = (path: string): VoiceSettings => {
     const saved = createJsonStore<Record<string, unknown> | null>(path, null, isRecord).read();
     if (saved === null) return DEFAULT_SETTINGS;
     const wakeWords = wakeWordsFor(saved);
-    // A saved word whose model is not shipped is switched off in the file too, not only in memory.
+    // The file records what was resolved (the one-time default set too), not only memory.
     if (
-      JSON.stringify(wakeWords) !== JSON.stringify(saved["wakeWords"]) &&
-      Array.isArray(saved["wakeWords"])
+      saved["wakeDefaults"] !== WAKE_DEFAULTS ||
+      (JSON.stringify(wakeWords) !== JSON.stringify(saved["wakeWords"]) &&
+        Array.isArray(saved["wakeWords"]))
     ) {
       try {
-        writeJsonFile(path, { ...saved, wakeWords });
+        writeJsonFile(path, { ...saved, wakeWords, wakeDefaults: WAKE_DEFAULTS });
       } catch {
         // The file is the user's; if it cannot be written the memory copy is still right.
       }
@@ -643,6 +647,7 @@ export const readSettings = (path: string): VoiceSettings => {
       ...cleanupFromSaved(saved),
       // After the spread: it carries every saved field raw, and these are the resolved ones.
       wakeWords,
+      wakeDefaults: WAKE_DEFAULTS,
       bindings: parseBindings(saved["bindings"]),
       learnWords: saved["learnWords"] !== false,
       quietSpeech: saved["quietSpeech"] === true,

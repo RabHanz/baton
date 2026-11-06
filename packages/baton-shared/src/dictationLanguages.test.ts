@@ -40,6 +40,15 @@ describe("dictation languages", () => {
       "Hello.",
       "Is it ok?",
       "Meet me at the café.",
+      // Two-word English that shares a word with another language.
+      "Call Meg.",
+      "Open vi.",
+      "Sim card.",
+      "Las Vegas",
+      "Non profit",
+      "Med school",
+      "Co founder",
+      "Yo, nu metal",
     ])
       expect([english, outsideLanguages(english, ["en"])]).toEqual([english, null]);
     expect(outsideLanguages("Ich weiß nicht.", ["en", "de"])).toBeNull();

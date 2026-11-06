@@ -4,6 +4,7 @@ import {
   DEFAULT_TIMINGS,
   initialVoiceState,
   reduceVoice,
+  stripWake,
   type VoiceEvent,
   type VoiceMachineState,
 } from "./modeMachine.ts";
@@ -305,6 +306,12 @@ describe("a name recognition wrote as other words", () => {
       timings,
     );
     expect(state.mode).toBe("dictation");
+  });
+
+  it("is not found in a sentence that only starts with a sound-alike ending on 'you'", () => {
+    for (const said of ["To see you later, call me", "Nice to see you", "Free, you know"])
+      expect(stripWake(said, ["Tessaya", "Freya"])).toBe(said);
+    expect(stripWake("To say yeah, dictate.", ["Tessaya"])).toBe("dictate.");
   });
 
   it("is never cut from what he dictates", () => {

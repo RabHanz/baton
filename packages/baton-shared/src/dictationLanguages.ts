@@ -66,14 +66,14 @@ export const languageCode = (model: SpeechModelChoice, typed: string): string | 
 const WORDS: Readonly<Record<string, string>> = {
   en: "the and is are you what to of it that this my can me be do not have will with your how was",
   nl: "ik weet niet het een maar ook zijn wij jij hij zij dit wel nog geen hoe waar wie zeg zegt heb mij mijn jou naar nee dank jullie",
-  sv: "det och jag inte vad nej hej har ska som med att bara säger är också nu vi",
-  da: "ikke jeg og hvad hvor meg deg også",
+  sv: "det och jag inte vad nej hej har ska som att bara säger är också",
+  da: "ikke jeg og hvad hvor deg også",
   de: "ich nicht und ist das ein eine nein wir aber auch doch sagt weiß bitte danke",
   fr: "je oui est et cest suis pas une les des mais avec merci bonjour",
-  es: "pero sí hola gracias el los las yo tengo está estoy",
-  pt: "eu deixa tentar não sim obrigado você isso para mas com",
+  es: "pero sí hola gracias tengo está estoy",
+  pt: "eu deixa tentar não obrigado você isso mas",
   it: "sono che non grazie ciao della questo anche perché",
-  pl: "nie tak jest się że jak co mam dziękuję",
+  pl: "nie tak jest się że jak mam dziękuję",
 };
 const LISTS = Object.entries(WORDS).map(
   ([code, words]) => [code, new Set(words.split(" "))] as const,
@@ -96,7 +96,9 @@ export const heardLanguage = (text: string): string | null => {
     if (n > top) [best, top, tied] = [code, n, false];
     else if (n === top && n > 0) tied = true;
   }
-  return best !== null && !tied && top * 2 >= words.length ? best : null;
+  // Two words of a short sentence can both be English loans ("Las Vegas"): one hit decides only from three words.
+  const enough = top >= 2 || words.length >= 3;
+  return best !== null && !tied && enough && top * 2 >= words.length ? best : null;
 };
 
 /** The language it was heard in when that is not one of his (Cyrillic counts as any of its three). */
