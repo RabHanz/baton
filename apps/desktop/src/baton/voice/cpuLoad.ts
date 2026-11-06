@@ -27,3 +27,9 @@ export const createCpuLoad = (cpus: Cpus = NodeOS.cpus) => {
     return all <= 0 ? null : Math.round((busy / all) * 100);
   };
 };
+
+/** The load read last before `at`: for a slow recognition, the machine before it started, against during it. */
+export const loadBefore = (
+  readings: ReadonlyArray<{ readonly at: number; readonly busy: number | null }>,
+  at: number,
+): number | null => readings.findLast((r) => r.at <= at)?.busy ?? null;

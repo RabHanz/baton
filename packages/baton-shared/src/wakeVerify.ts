@@ -127,8 +127,8 @@ const keyOf = (words: ReadonlyArray<string>): string =>
 
 /** A name split into words is trusted by sound only when it ends on its "-ya" ("to say yeah", "the saya"), never "you". */
 const YA_ENDING = /y(?:a|ah|eah)$/;
-/** "To say you." as the whole clip is how recognition writes his "Tessaya"; "Do say you", "To see you" are not. */
-const SAY_YOU = /^t\w* say you$/;
+/** "To say you." as the whole clip is how recognition writes his "Tessaya"; "They say you", "To see you" are not. */
+const SAY_YOU = /^(?:to|tu|ta|tah) say you$/;
 
 /**
  * The name said in one, two or three recognised words: "Tessaia", "al fred", "to say yeah". Not `close`:

@@ -55,6 +55,7 @@ describe("the second check before a wake", () => {
       "Tessa, you.",
       "To see you.",
       "Do say you.",
+      "They say you.",
       "I desire nothing",
       "the desired outcome",
       "Desiree called",
