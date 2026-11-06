@@ -128,6 +128,7 @@ import { isLiveCallerShell, threadNotFound } from "./threadAccess.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as PeerForwarding from "../peer/PeerForwarding.ts";
 import * as RemoteDelegation from "../peer/RemoteDelegation.ts";
+import { agentMessageFrom, withAgentMessageFrom } from "../baton/AgentMessageFrom.ts";
 
 const DEFAULT_WAIT_TIMEOUT_MS = 10 * 60 * 1_000;
 const MAX_WAIT_TIMEOUT_MS = 60 * 60 * 1_000;
@@ -3164,7 +3165,14 @@ const make = Effect.gen(function* () {
           threadId: input.threadId,
           ...(parent === undefined ? {} : { senderThreadId: parent.thread.id }),
           messageId,
-          text: input.message,
+          text: withAgentMessageFrom(
+            agentMessageFrom({
+              sender: parent?.thread,
+              target: target.thread,
+              client: scope.client,
+            }),
+            input.message,
+          ),
           attachments: [],
           mode,
           ...(input.freshContext ? { freshContext: true } : {}),

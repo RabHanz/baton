@@ -1,0 +1,27 @@
+/**
+ * The line an agent-to-agent message starts with, so the receiving agent can tell a peer from the
+ * person. Never on his own sends, and never inside one delegation tree (a parent and its sub-tasks).
+ */
+interface Lineage {
+  readonly title: string;
+  readonly lineage: { readonly rootThreadId: string };
+}
+
+export const agentMessageFrom = (input: {
+  /** The sending thread on this machine, if an agent here sent it. */
+  readonly sender: Lineage | undefined;
+  readonly target: Lineage;
+  /** The caller when it is not a thread here: another machine's link carries its name. */
+  readonly client: { readonly label: string; readonly linked?: boolean | undefined } | undefined;
+}): string | null => {
+  if (input.sender !== undefined)
+    return input.sender.lineage.rootThreadId === input.target.lineage.rootThreadId
+      ? null
+      : `From the agent in the thread "${input.sender.title}", via Tessaya (another agent, not the user):`;
+  return input.client?.linked === true
+    ? `From an agent on ${input.client.label}, via Tessaya (another agent, not the user):`
+    : null;
+};
+
+export const withAgentMessageFrom = (from: string | null, text: string): string =>
+  from === null ? text : `${from}\n\n${text}`;
