@@ -121,7 +121,8 @@ like any other. Exports are plain markdown the user owns; they leave the machine
 - Walls (decision 6): a project named in the lead's `walled:` pack field keeps its items for its team, the personas
   whose `projects:` or `leads:` name it, and the lead. The wall is a filter on `scope`/`scopeRef` at recall and at an
   agent's search, never a second store. A search that names no persona sees nothing walled unless it says `admin`
-  (his own view), so a new caller that forgets the persona fails closed. The standing block is shared by every persona in
+  (his own view, refused unless the caller is the desktop app's own session), so a new caller that forgets the persona
+  fails closed. The standing block is shared by every persona in
   a session, so it carries nothing walled; walled items reach a persona only through its own sentence's block. The
   extractor is shown only what the turn's persona may recall, and what a turn in a walled project learns is kept in that
   project whatever scope the model chose. His Memory page lists everything.

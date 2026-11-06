@@ -258,13 +258,17 @@ export const routes = HttpRouter.use((router) =>
       if (codec === undefined) {
         return HttpServerResponse.jsonUnsafe({ message: "Not here." }, { status: 404 });
       }
-      const missing = missingBatonScope(tag, session.value.scopes);
-      if (missing !== null) {
-        return HttpServerResponse.jsonUnsafe({ message: `Needs ${missing}.` }, { status: 403 });
-      }
       const payload = yield* codec
         .decode(yield* request.json.pipe(Effect.orElseSucceed(() => ({}))))
         .pipe(Effect.option);
+      const missing = missingBatonScope(
+        tag,
+        session.value.scopes,
+        payload._tag === "None" ? undefined : payload.value,
+      );
+      if (missing !== null) {
+        return HttpServerResponse.jsonUnsafe({ message: `Needs ${missing}.` }, { status: 403 });
+      }
       if (payload._tag === "None") {
         return HttpServerResponse.jsonUnsafe(
           { message: "That request is not valid." },

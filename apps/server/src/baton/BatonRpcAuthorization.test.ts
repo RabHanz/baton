@@ -1,5 +1,6 @@
 import {
   AuthBatonCloudApproveScope,
+  AuthBatonHandsHostScope,
   AuthFilesystemReadScope,
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
@@ -51,6 +52,20 @@ describe("who may import memory from a folder", () => {
     );
     expect(missingBatonScope(BATON_MEMORY_WS_METHODS.import, AuthStandardClientScopes)).toBeNull();
     expect(missingBatonScope(BATON_MEMORY_WS_METHODS.list, narrowed)).toBeNull();
+  });
+
+  it("lets only the desktop app's own session search through walls", () => {
+    const search = BATON_MEMORY_WS_METHODS.search;
+    const admin = { text: "deploy key", admin: true };
+    expect(missingBatonScope(search, AuthStandardClientScopes, admin)).toBe(
+      AuthBatonHandsHostScope,
+    );
+    expect(missingBatonScope(search, [AuthOrchestrationReadScope], { text: "deploy key" })).toBe(
+      null,
+    );
+    expect(
+      missingBatonScope(search, [...AuthStandardClientScopes, AuthBatonHandsHostScope], admin),
+    ).toBeNull();
   });
 });
 
