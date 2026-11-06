@@ -1831,6 +1831,17 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     ];
     return lines.filter((l): l is string => l !== null);
   };
+  /** The Record's notes that a persona passed the day's turn guide; none when the server cannot be read. */
+  const guideNotes = async (): Promise<ReadonlyArray<BatonRecordEntry>> => {
+    const value = (await input
+      .direct?.("baton.record.list", {
+        kind: "background_turns",
+        since: new Date(Date.now() - 24 * 3_600_000).toISOString(),
+        limit: 20,
+      })
+      .catch(() => null)) as { entries?: ReadonlyArray<BatonRecordEntry> } | null | undefined;
+    return value?.entries ?? [];
+  };
   const awareness = createAwareness({
     switches: () => ({
       window: settings.awarenessWindow,
@@ -2000,6 +2011,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           jobs: jobs?.jobs ?? [],
           findings: await watchFindings(),
           now: Date.now(),
+          guide: await guideNotes(),
           extra: [
             ...briefExtra(),
             ...(held === 0
@@ -3208,6 +3220,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           jobs: jobs?.jobs ?? [],
           findings: found,
           now: Date.now(),
+          guide: await guideNotes(),
           extra: briefExtra(),
         }),
         settings.briefMode === "spoken",
@@ -3375,7 +3388,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       },
       {
         look: (offer) => startLook(offer, true),
-        brief: async () => morningBrief({ jobs, findings, now, extra: briefExtra() }),
+        brief: async () =>
+          morningBrief({ jobs, findings, now, guide: await guideNotes(), extra: briefExtra() }),
         say: (text) => input.extras?.announce(text, true),
         note: async (id, text) => {
           await requestKept({
