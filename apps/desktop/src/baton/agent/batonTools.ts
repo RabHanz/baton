@@ -637,7 +637,7 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
     {
       name: "assistant_model",
       description:
-        "Set which model and effort answer his chat turns from now on, until he says back to normal (auto). Only when he asks for it. With no arguments, says what is set.",
+        "Set which model and effort answer his chat turns from now on, until he says back to normal (auto). Use it whenever he asks for a model or for more or less thought: 'use Opus' sets the model, 'think harder' sets effort high, 'go faster' sets haiku and low. Never for an ordinary question. With no arguments, says what is set.",
       inputSchema: object({
         model: { enum: ["auto", "haiku", "sonnet", "opus"] },
         effort: { enum: ["auto", "low", "medium", "high"] },
