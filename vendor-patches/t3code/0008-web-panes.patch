@@ -4,10 +4,10 @@ The route view renders panes/BatonPanes around its ChatView; unfocused panes sta
 focus and shortcuts through BackgroundThreadContext. The rest is in components/panes.
 
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index 4408bee38ad018d0099064161b6c7c3cfa5d0a19..e340e4f63a4fb094ed9f7dcb2278da4f62de45f8 100644
+index 76ad543630fb2d324b51869990a3bf3f5c82d341..1f1571cba9f8a81ae884b0d3b7c305f72cf23d7c 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
-@@ -1802,7 +1802,7 @@ export default function ChatView(props: ChatViewProps) {
+@@ -1812,7 +1812,7 @@ export default function ChatView(props: ChatViewProps) {
    });
  
    const focusComposer = () => {
@@ -16,7 +16,7 @@ index 4408bee38ad018d0099064161b6c7c3cfa5d0a19..e340e4f63a4fb094ed9f7dcb2278da4f
    };
    const focusComposerStable = useStableCallback(focusComposer);
    const canInterruptRunningThread =
-@@ -2668,8 +2668,9 @@ export default function ChatView(props: ChatViewProps) {
+@@ -2685,8 +2685,9 @@ export default function ChatView(props: ChatViewProps) {
    // composer effect above.
    // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- focuses the open drawer terminal when entering a thread
    useEffect(() => {
@@ -28,7 +28,7 @@ index 4408bee38ad018d0099064161b6c7c3cfa5d0a19..e340e4f63a4fb094ed9f7dcb2278da4f
  
    const getShortcutContext = (eventTarget: EventTarget | null = document.activeElement) => ({
      terminalFocus: getTerminalFocusOwner() !== null,
-@@ -2759,12 +2760,13 @@ export default function ChatView(props: ChatViewProps) {
+@@ -2776,12 +2777,13 @@ export default function ChatView(props: ChatViewProps) {
    useEffect(() => {
      if (embedded) return;
      return window.desktopBridge?.onMenuAction((action) => {
@@ -44,7 +44,7 @@ index 4408bee38ad018d0099064161b6c7c3cfa5d0a19..e340e4f63a4fb094ed9f7dcb2278da4f
    // A delegated task is a remote thread's subagent.
    const isSubagentThread =
      activeThread?.lineage.relationshipToParent === "subagent" || delegatedFrom !== null;
-@@ -3305,7 +3307,7 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3323,7 +3325,7 @@ export default function ChatView(props: ChatViewProps) {
            state={deviceState}
          />
        )}
@@ -53,7 +53,7 @@ index 4408bee38ad018d0099064161b6c7c3cfa5d0a19..e340e4f63a4fb094ed9f7dcb2278da4f
        <div
          className={cn(
            "flex min-h-0 min-w-0 flex-col overflow-x-hidden",
-@@ -3338,7 +3340,9 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3356,7 +3358,9 @@ export default function ChatView(props: ChatViewProps) {
                  className="pointer-events-none fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] h-[var(--workspace-topbar-height)] w-28 [-webkit-app-region:no-drag]"
                />
              ) : null}

@@ -4,7 +4,7 @@ One call in DesktopApp after the IPC handlers, one call at the end of preload.ts
 apps/desktop/src/baton/. Baton's bridge is window.batonDesktopBridge, beside upstream's.
 
 diff --git a/apps/desktop/src/app/DesktopApp.ts b/apps/desktop/src/app/DesktopApp.ts
-index 151c227e47ff430171212f52044c5f1842f7ae20..9a240112f9e044285881c3c886e879e46d5ec1dc 100644
+index 3c5f499a1cb3c2f90be617821076f69fa6633a73..fbb6cf943dd260a025343d72eaf84562832debee 100644
 --- a/apps/desktop/src/app/DesktopApp.ts
 +++ b/apps/desktop/src/app/DesktopApp.ts
 @@ -38,6 +38,7 @@ import * as DesktopSnapShot from "../snapShot/DesktopSnapShot.ts";
@@ -173,10 +173,10 @@ index 53e18aaf8c29bb3666e185c5163d2309f97af9fa..fe8cb7021567586b2040ff292bde0cca
    };
  }
 diff --git a/apps/desktop/src/preload.ts b/apps/desktop/src/preload.ts
-index 72245779b9c7e9fd77cad3e82233a991c4a6ac36..445a34c912ddc7641662f54c1e1a7fa072725f05 100644
+index 800f1e744c9d1247541fb308ba8fede7c9a27f19..f21d66c62ce9b5b242d6c53052d1a1cb59861a17 100644
 --- a/apps/desktop/src/preload.ts
 +++ b/apps/desktop/src/preload.ts
-@@ -11,6 +11,7 @@ import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
+@@ -12,6 +12,7 @@ import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
  
  import * as IpcChannels from "./ipc/channels.ts";
  import { mergeLegacyLocalStorage } from "./legacyLocalStorageMerge.ts";
@@ -184,7 +184,7 @@ index 72245779b9c7e9fd77cad3e82233a991c4a6ac36..445a34c912ddc7641662f54c1e1a7fa0
  
  const SNAP_SHOT_EVENT_TYPES = new Set([
    "requested",
-@@ -437,3 +438,5 @@ contextBridge.exposeInMainWorld("desktopBridge", {
+@@ -451,3 +452,5 @@ contextBridge.exposeInMainWorld("desktopBridge", {
      },
    },
  } satisfies DesktopBridge);
@@ -203,7 +203,7 @@ index 4f8949823e354618ba1eaf12694de9561cac99f7..36551babb71f446e6a7a07d03d999c7d
      fromPartition: vi.fn(() => ({
        getUserAgent: vi.fn(() => "Mozilla/5.0 Electron/41.5.0 t3code/1.2.3"),
 diff --git a/apps/desktop/src/window/DesktopWindow.ts b/apps/desktop/src/window/DesktopWindow.ts
-index b2f643e55fb979561c2e67c547744518a61a32e7..51737df05a24815313dd3c77e09cacd292523a30 100644
+index 292a3540d18bff63b6e37bf48d46d7478244d52f..031a286a3177edf32ad9aeb7e8e5fc5bd62570ba 100644
 --- a/apps/desktop/src/window/DesktopWindow.ts
 +++ b/apps/desktop/src/window/DesktopWindow.ts
 @@ -13,6 +13,7 @@ import * as Electron from "electron";
@@ -231,7 +231,7 @@ index b2f643e55fb979561c2e67c547744518a61a32e7..51737df05a24815313dd3c77e09cacd2
 +    };
      const window = yield* electronWindow.create({
        ...initialBounds,
-       minWidth: 840,
+       minWidth: DesktopAppSettings.MIN_MAIN_WINDOW_SIZE.width,
 @@ -408,17 +420,7 @@ export const make = Effect.gen(function* () {
        ...iconOption,
        title: environment.displayName,
