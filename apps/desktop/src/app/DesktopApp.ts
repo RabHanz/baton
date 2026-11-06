@@ -186,7 +186,10 @@ const bootstrap = Effect.gen(function* () {
     clerkFrontendApiHostname: DesktopClerk.desktopClerkFrontendApiHostname,
   });
   yield* installDesktopIpcHandlers();
-  yield* startBatonDesktop; // Baton (vendor-patches/t3code/0007-desktop.patch)
+  // Baton (vendor-patches/t3code/0007-desktop.patch): a Baton failure never stops T3 starting.
+  yield* startBatonDesktop.pipe(
+    Effect.catchCause((cause) => Effect.logError("Baton desktop did not start", cause)),
+  );
   yield* logBootstrapInfo("bootstrap ipc handlers registered");
   // Before any window: the preload merges these items before the app reads storage.
   yield* (yield* DesktopLegacyLocalStorage.DesktopLegacyLocalStorage).load(
