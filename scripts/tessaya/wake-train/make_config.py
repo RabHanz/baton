@@ -9,12 +9,15 @@ CLEAN = os.environ.get("CLEAN") == "1"
 
 WORDS = {
     "tessaya": {
-        # teh-SAY-uh (the Director's British voice). Written as phonemes: espeak guesses the stress badly.
+        # teh-SAY-uh in his British voice, and tess-EYE-uh. Written as phonemes: espeak guesses the stress badly.
+        # No schwa-first form: "tuh-SAY-uh" is "to say a", which is a negative below.
         "target": ["tessaya"],
-        "ipa": ["tɛsˈeɪə", "təsˈeɪə", "tɛsˈeɪjə", "tɛsˈɑɪə", "təsˈɛɪə"],
-        "negative": ["tessa", "tesla", "the say", "to say", "this say", "it's a", "decayed", "essay", "tasia",
-                     "the sire", "teasing", "tess", "testing", "thesis", "that's a", "taser", "sayer", "tis a",
-                     "messiah", "to sail", "thesaurus", "tea say", "chaya", "tessier"],
+        "ipa": ["tɛsˈeɪə", "tɛsˈeɪjə", "tˌɛsˈeɪə", "tɛsˈɛɪə", "tɛsˈaɪə", "tɛsˈɑɪə"],
+        "negative": ["tessa", "tesla", "the say", "to say", "to say a", "this say", "it's a", "decayed", "essay",
+                     "the essay", "tasia", "the sire", "teasing", "tess", "testing", "thesis", "that's a", "taser",
+                     "sayer", "tis a", "messiah", "to sail", "thesaurus", "tea say", "chaya", "tessier", "vanessa",
+                     "nessa", "teresa", "melissa", "tessie", "let me say a", "yes say", "dress a", "less say",
+                     "tessellate", "thessaly", "contessa", "odyssey"],
     },
     "onyx": {
         # ON-iks. He owns the name Onnyx, so it can come up when he is not addressing Baton.
