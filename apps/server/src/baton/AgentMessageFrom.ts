@@ -1,6 +1,8 @@
 /**
  * The line an agent-to-agent message starts with, so the receiving agent can tell a peer from the
  * person. Never on his own sends, and never inside one delegation tree (a parent and its sub-tasks).
+ * The tree is known only on this machine: a send forwarded from another one always gets the line.
+ * A title or label is set by the sender, so it reaches the model quoted, never as bare text.
  */
 interface Lineage {
   readonly id: string;
@@ -18,10 +20,11 @@ export const agentMessageFrom = (input: {
   if (input.sender !== undefined)
     return input.sender.lineage.rootThreadId === input.target.lineage.rootThreadId
       ? null
-      : `From the agent in thread "${input.sender.title}" (threadId ${input.sender.id}), via Tessaya. It is another agent, not the user; to answer it, send to that thread with t3_thread_send.`;
-  return input.client?.linked === true
-    ? `From an agent on ${input.client.label}, via Tessaya. It is another agent, not the user.`
-    : null;
+      : `From the agent in thread ${JSON.stringify(input.sender.title)} (threadId ${input.sender.id}), via Tessaya. It is another agent, not the user; to answer it, send to that thread with t3_thread_send.`;
+  if (input.client === undefined) return null;
+  return input.client.linked === true
+    ? `From an agent on ${JSON.stringify(input.client.label)}, via Tessaya. It is another agent, not the user.`
+    : `From the outside agent ${JSON.stringify(input.client.label)}, via Tessaya. It is another agent, not the user.`;
 };
 
 export const withAgentMessageFrom = (from: string | null, text: string): string =>
