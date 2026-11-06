@@ -10,6 +10,7 @@ Say or type what you want done as a job ("fix the failing build in the shop proj
 
 - **Approvals** is the one list of everything waiting for your yes: job plans, questions a session asked you, held memory suggestions, the vault asking to use a secret.
 - A job has limits (time, turns, optionally money). It stops at them and tells you; raise a limit to let it go on.
+- Each persona's background turns are counted per day. The guide is 40 a persona and 120 for the team: passing it is noted once that day in what happened, and nothing is stopped. Talking with Tessaya is never counted.
 - **Stop** ends a running turn; the job and its notes stay. **Retry** is offered only for a job that failed and has retries left, and says why not otherwise.
 - A job that a restart interrupted shows a Continue button.
 - **What needs me** (the Now page) ranks what to look at first: failures, questions, stalled work.

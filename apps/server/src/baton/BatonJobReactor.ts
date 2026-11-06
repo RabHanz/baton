@@ -13,6 +13,7 @@ import { BatonEngine } from "./BatonEngine.ts";
 import {
   autoRetry,
   enforceCaps,
+  noteDayTurns,
   jobRecordSeed,
   noticePart,
   noticePlan,
@@ -54,6 +55,7 @@ export const layer = Layer.effect(
                 FleetQuery.getFleet({}).pipe(
                   Effect.flatMap((fleet) =>
                     enforceCaps(fleet.entries).pipe(
+                      Effect.andThen(noteDayTurns(fleet.entries)),
                       Effect.andThen(autoRetry(fleet.entries)),
                       Effect.andThen(postReports(fleet.entries)),
                       Effect.andThen(recordJobChanges(fleet.entries, seen)),

@@ -12,6 +12,7 @@ import * as NodePath from "node:path";
 
 import { assert, it } from "@effect/vitest";
 import * as ServerConfig from "../config.ts";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
@@ -20,6 +21,8 @@ import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
 import {
   agreeJob,
   autoRetry,
+  noteDayTurns,
+  pastGuide,
   enforceCaps,
   postReports,
   noticePlan,
@@ -33,6 +36,7 @@ import {
 import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts";
 import { layerStatic, type BatonThreadLaunch } from "./BatonEngine.ts";
 import { BatonJobService, layer as jobLayer } from "./BatonJobService.ts";
+import { BatonRecordService, layer as recordLayer } from "./BatonRecordService.ts";
 import { layer as workSessionLayer } from "./WorkSessionService.ts";
 import { ProviderInstanceRegistry } from "../provider/ProviderInstanceRegistry.ts";
 
@@ -41,7 +45,12 @@ const sent: Array<{ threadId: ThreadId; text: string }> = [];
 const shells: OrchestrationV2ThreadShell[] = [];
 const messages: Array<{ role: "user" | "assistant"; text: string }> = [];
 const interrupted: ThreadId[] = [];
-const runs = new Map<string, ReadonlyArray<{ status: string }>>();
+const runs = new Map<string, ReadonlyArray<{ status: string; requestedAt: DateTime.Utc }>>();
+/** A run of the worker's, this many hours before the test clock's start. */
+const ran = (status: string, hoursAgo = 1) => ({
+  status,
+  requestedAt: DateTime.makeUnsafe(-hoursAgo * 3_600_000),
+});
 const BRIEF = [
   "Job brief",
   "The job: x",
@@ -463,9 +472,9 @@ layer("BatonJobFlow", (it) => {
           },
         ] as never;
       interrupted.length = 0;
-      runs.set(threadId, [{ status: "completed" }, { status: "queued" }]);
+      runs.set(threadId, [ran("completed"), ran("queued")]);
       assert.deepStrictEqual(yield* enforceCaps(entry("working")), []);
-      runs.set(threadId, [{ status: "completed" }, { status: "running" }, { status: "cancelled" }]);
+      runs.set(threadId, [ran("completed"), ran("running"), ran("cancelled")]);
       assert.deepStrictEqual(yield* enforceCaps(entry("working")), [id]);
       assert.deepStrictEqual(interrupted, [threadId]);
       // Once stopped it is not working, so a second sweep leaves it alone.
@@ -473,6 +482,75 @@ layer("BatonJobFlow", (it) => {
       const terms = yield* jobs.terms(id);
       assert.isTrue(terms?.revisions.some((r) => r.text.includes("reached its turns limit")));
     }),
+  );
+
+  it.effect(
+    "counts each persona's background turns today and notes passing the guide once, stopping nothing",
+    () =>
+      Effect.gen(function* () {
+        const jobs = yield* BatonJobService;
+        const id = WorkSessionId.make("job-persona-guide");
+        const { threadId } = yield* startJob(
+          {
+            id,
+            projectId: ProjectId.make("project-site"),
+            title: "Inbox",
+            goal: "Sort the inbox",
+            permissions: { folders: [], projects: [], tools: ["read"] },
+            limits: { workerTurns: 500, wallClockMinutes: 6000 },
+            modelSelection: { instanceId: ProviderInstanceId.make("claude"), model: "sonnet" },
+            runtimeMode: "approval-required",
+          },
+          { role: "operations" },
+        );
+        shells.push({ id: threadId, status: "completed" } as OrchestrationV2ThreadShell);
+        yield* jobs.planReady(id);
+        yield* agreeJob(id);
+        const entries = [
+          {
+            workSessionId: id,
+            title: "Inbox",
+            lifecycle: "active",
+            state: "working",
+            updatedAt: "2026-11-03T10:00:00.000Z",
+            threads: [{ threadId }],
+            synopsis: null,
+          },
+        ] as never;
+        yield* TestClock.adjust("12 hours");
+        const at = (hours: number) => ({
+          status: "completed",
+          requestedAt: DateTime.makeUnsafe(hours * 3_600_000),
+        });
+        const today = (n: number) => Array.from({ length: n }, () => at(11));
+        // Yesterday's turns do not count towards today's.
+        const yesterday = Array.from({ length: 30 }, () => at(-1));
+        interrupted.length = 0;
+        runs.set(threadId, [...today(40), ...yesterday]);
+        assert.deepStrictEqual(yield* noteDayTurns(entries), []);
+        runs.set(threadId, [...today(41), ...yesterday]);
+        assert.deepStrictEqual(yield* noteDayTurns(entries), ["Freya"]);
+        // Once a day, and nothing is stopped past the guide.
+        assert.deepStrictEqual(yield* noteDayTurns(entries), []);
+        assert.deepStrictEqual(yield* enforceCaps(entries), []);
+        assert.deepStrictEqual(interrupted, []);
+        const rows = yield* (yield* BatonRecordService).query({ kind: "background_turns" });
+        assert.lengthOf(rows, 1);
+        assert.strictEqual(
+          rows[0]?.subject,
+          "Freya has used 41 background turns today, past the guide of 40. Nothing was stopped.",
+        );
+        const three = new Map([
+          ["executive", 40],
+          ["engineering", 40],
+          ["operations", 40],
+        ]);
+        assert.deepStrictEqual(pastGuide(three), { personas: [], team: false });
+        assert.deepStrictEqual(pastGuide(new Map([...three, ["research", 1]])), {
+          personas: [],
+          team: true,
+        });
+      }).pipe(Effect.provide(recordLayer)),
   );
 
   it.effect(
