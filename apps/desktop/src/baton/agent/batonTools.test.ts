@@ -59,6 +59,20 @@ describe("the assistant's tool table", () => {
     expect(log).toEqual(["wait_for Save 10", "scroll 10", "click 3,4 double"]);
   });
 
+  it("lets the assistant type into a named window behind another, by value", async () => {
+    const typed: Array<[string, string | undefined]> = [];
+    const tools = buildBatonTools({
+      ...host([]),
+      type: async (t, w) => (typed.push([t, w]), "added"),
+    });
+    const typeText = tools.find((t) => t.name === "type_text")!;
+    expect(Object.keys((typeText.inputSchema as { properties: object }).properties)).toContain(
+      "window",
+    );
+    await typeText.run({ text: "hello world", window: "Notepad", why: "w" });
+    expect(typed).toEqual([["hello world", "Notepad"]]);
+  });
+
   it("clicks a tree line by its number and says when the tree was cut", async () => {
     const log: string[] = [];
     const tools = new Map(buildBatonTools(host(log)).map((t) => [t.name, t]));

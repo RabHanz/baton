@@ -87,7 +87,13 @@ import { createTurnLedger } from "../agent/turnLedger.ts";
 import { buildRemoteHandsTools, type RemoteHandsDeps } from "../agent/remoteHandsTools.ts";
 import type { HandsResult } from "@t3tools/baton-shared/remoteHands";
 import { startBatonMcp, type BatonMcp } from "../agent/batonMcp.ts";
-import { buildBatonTools, treeText, type FocusState, type ToolHost } from "../agent/batonTools.ts";
+import {
+  buildBatonTools,
+  treeText,
+  typeByValue,
+  type FocusState,
+  type ToolHost,
+} from "../agent/batonTools.ts";
 import { withFailureGuard } from "../agent/failureGuard.ts";
 import { createAssistantAgent, type AssistantAgent } from "../agent/agentSession.ts";
 import { createConversationLog, type ConversationLog } from "../conversation/conversationLog.ts";
@@ -1986,7 +1992,10 @@ export const startScreenCompanion = (input: {
       const side = actions?.hands?.() ?? null;
       if (side === null) throw new Error("The sensing helper is not running.");
       const done = await side.focusWindowTitled(title);
-      if (done.error !== undefined) throw new Error(done.error);
+      if (done.error !== undefined)
+        throw new Error(
+          `${done.error} Text can still go into it without focus: type_text with window "${title}".`,
+        );
       const which = titlesAllowed() ? `"${done.title ?? title}"` : "That window";
       return `${which} is in front and has the keyboard. Read ui_tree for its controls.`;
     },
@@ -2197,7 +2206,16 @@ export const startScreenCompanion = (input: {
       });
       return "Dragged.";
     },
-    type: async (text) => {
+    type: async (text, window) => {
+      if (window !== undefined) {
+        const side = actions?.hands?.() ?? null;
+        if (side === null) throw new Error("The sensing helper is not running.");
+        const added = await typeByValue(side.setValue, window, text);
+        if (added !== null) return added;
+        throw new Error(
+          `"${window}" has no text box that takes a value. window_focus it, then type_text without window.`,
+        );
+      }
       await checkKeys(null);
       await showAct({ kind: "type" });
       await driverFor().type(text);
