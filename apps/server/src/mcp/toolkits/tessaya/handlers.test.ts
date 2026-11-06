@@ -16,6 +16,7 @@ import { layerMemory as SqlitePersistenceMemory } from "../../../baton/BatonData
 import { BatonMemoryService, MemoryViewer } from "../../../baton/BatonMemoryService.ts";
 import { BatonPhoneInbox, layer as inboxLayer } from "../../../baton/BatonPhoneInbox.ts";
 import { BatonRuntime } from "../../../baton/BatonRpcHandlers.ts";
+import { BatonWeaveService } from "../../../baton/BatonWeaveService.ts";
 import * as ThreadManagement from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
@@ -172,4 +173,138 @@ it.effect(
       expect((yield* ask("agent-3")).id).not.toBeNull();
       expect((yield* ask("agent-4")).line).toContain("three requests waiting");
     }).pipe(Effect.provide(inboxLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)))),
+);
+
+const weaveFrom = (
+  client: {
+    label: string;
+    access: "full-access" | "auto";
+    linked?: boolean;
+    narrowedTo?: { runtimeMode: "auto"; interactionMode: "default" };
+    sessionId?: string;
+  },
+  times = 1,
+) =>
+  Effect.gen(function* () {
+    const sent: unknown[] = [];
+    const weave = BatonWeaveService.of({
+      send: (input: unknown) =>
+        Effect.sync(() => {
+          sent.push(input);
+          return {
+            id: "w1",
+            from: "x",
+            toLabel: "build",
+            toPane: "p1",
+            text: "rerun the tests",
+            status: "delivered",
+            reason: null,
+            job: null,
+            tries: 1,
+            createdAt: 0,
+            deliveredAt: 0,
+            repliedAt: null,
+            reply: null,
+          } as const;
+        }),
+      tick: Effect.succeed({ delivered: 0, replied: 0 }),
+    } as never);
+    const dependencies = Layer.mergeAll(
+      Layer.succeed(McpInvocationContext.McpInvocationContext, {
+        environmentId: EnvironmentId.make("environment:tessaya"),
+        requestNamespace: "client:tessaya",
+        thread: undefined,
+        client: { sessionId: "link-1", ...client },
+        capabilities: new Set(["orchestration" as const]),
+        issuedAt: 0,
+      }),
+      Layer.mock(ThreadManagement.ThreadManagementService)({}),
+      Layer.succeed(BatonRuntime, Context.make(BatonWeaveService, weave) as never),
+      Layer.succeed(
+        SecureRandom.SecureRandom,
+        SecureRandom.make((size) => new Uint8Array(size).fill(7)),
+      ),
+    );
+    const result = yield* Effect.gen(function* () {
+      const toolkit = yield* TessayaToolkit;
+      const results = [];
+      for (let i = 0; i < times; i += 1)
+        results.push(
+          yield* toolkit
+            .handle("weave_send", {
+              to: "build",
+              text: "rerun the tests",
+              from: "Tessaya",
+            } as never)
+            .pipe(Stream.unwrap, Stream.runCollect),
+        );
+      return results.at(-1)!;
+    }).pipe(
+      Effect.provide(
+        McpToolAccess.HandlersLayer.layer(TessayaHandlers.layer).pipe(
+          Layer.provideMerge(dependencies),
+        ),
+      ),
+    );
+    return { failed: result.at(-1)?.isFailure, sent };
+  });
+
+it.effect(
+  "weave_send from a full-access link goes through, named by its link, whatever `from` it passes",
+  () =>
+    Effect.gen(function* () {
+      const { failed, sent } = yield* weaveFrom({
+        label: "Codex on the laptop",
+        linked: true,
+        access: "full-access",
+      });
+      expect(failed).toBe(false);
+      // The session reads who sent it, quoted, before the text.
+      expect(sent).toEqual([
+        {
+          to: "build",
+          text: 'From an agent on "Codex on the laptop", via Tessaya. It is another agent, not the user.\n\nrerun the tests',
+          from: "Codex on the laptop",
+        },
+      ]);
+    }),
+);
+
+it.effect("weave_send from a link below full access is refused, and nothing is typed", () =>
+  Effect.gen(function* () {
+    const { failed, sent } = yield* weaveFrom({
+      label: "Ann's laptop",
+      access: "auto",
+      linked: true,
+    });
+    expect(failed).toBe(true);
+    expect(sent).toEqual([]);
+  }),
+);
+
+it.effect(
+  "weave_send needs full access from any outside agent, and within modes it narrowed itself",
+  () =>
+    Effect.gen(function* () {
+      const auto = yield* weaveFrom({ label: "Codex", access: "auto" });
+      expect(auto).toEqual({ failed: true, sent: [] });
+      const narrowed = yield* weaveFrom({
+        label: "Codex",
+        access: "full-access",
+        linked: true,
+        narrowedTo: { runtimeMode: "auto", interactionMode: "default" },
+      });
+      expect(narrowed).toEqual({ failed: true, sent: [] });
+    }),
+);
+
+it.effect("weave_send holds one client session to 30 messages a minute", () =>
+  Effect.gen(function* () {
+    const { failed, sent } = yield* weaveFrom(
+      { label: "Codex", access: "full-access", sessionId: "client-flood" },
+      31,
+    );
+    expect(failed).toBe(true);
+    expect(sent).toHaveLength(30);
+  }),
 );

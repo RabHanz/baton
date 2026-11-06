@@ -4,6 +4,20 @@
  * The tree is known only on this machine: a send forwarded from another one always gets the line.
  * A title or label is set by the sender, so it reaches the model quoted, never as bare text.
  */
+import { recordText } from "@t3tools/baton-shared/audit";
+
+/** What the sender named, as one capped line, quoted. */
+const named = (text: string): string => JSON.stringify(recordText(text, 200));
+
+/** The line for a client that is not a thread here: another machine's link, or an outside agent. */
+export const clientMessageFrom = (client: {
+  readonly label: string;
+  readonly linked?: boolean | undefined;
+}): string =>
+  client.linked === true
+    ? `From an agent on ${named(client.label)}, via Tessaya. It is another agent, not the user.`
+    : `From the outside agent ${named(client.label)}, via Tessaya. It is another agent, not the user.`;
+
 interface Lineage {
   readonly id: string;
   readonly title: string;
@@ -20,11 +34,8 @@ export const agentMessageFrom = (input: {
   if (input.sender !== undefined)
     return input.sender.lineage.rootThreadId === input.target.lineage.rootThreadId
       ? null
-      : `From the agent in thread ${JSON.stringify(input.sender.title)} (threadId ${input.sender.id}), via Tessaya. It is another agent, not the user; to answer it, send to that thread with t3_thread_send.`;
-  if (input.client === undefined) return null;
-  return input.client.linked === true
-    ? `From an agent on ${JSON.stringify(input.client.label)}, via Tessaya. It is another agent, not the user.`
-    : `From the outside agent ${JSON.stringify(input.client.label)}, via Tessaya. It is another agent, not the user.`;
+      : `From the agent in thread ${named(input.sender.title)} (threadId ${input.sender.id}), via Tessaya. It is another agent, not the user; to answer it, send to that thread with t3_thread_send.`;
+  return input.client === undefined ? null : clientMessageFrom(input.client);
 };
 
 export const withAgentMessageFrom = (from: string | null, text: string): string =>
