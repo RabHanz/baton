@@ -406,7 +406,7 @@ import {
 } from "@t3tools/baton-shared/attention";
 import { contextFromLastInsert, fitInsertion } from "@t3tools/baton-shared/dictationFit";
 import { loginItemOn, setLoginItem } from "./loginItem.ts";
-import { holdFramesUntil, startWarmUp } from "./warmUp.ts";
+import { DICTATION_SETTLE_MS, dictationAtLaunch, holdFramesUntil, startWarmUp } from "./warmUp.ts";
 import { makeTestAudioInput, type TestAudioEvent } from "./testAudio.ts";
 import { startVoiceLoop, type VoiceLoop } from "./voiceLoop.ts";
 import type { AudioInputDevice, AudioInputProvider, VoiceState } from "./voiceTypes.ts";
@@ -4007,6 +4007,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     };
   };
 
+  /** Marks a step of building Home's state for the stall log; adds nothing. */
+  const at = (name: string): [] => {
+    markPhase(`home-state:${name}`);
+    return [];
+  };
   const homeState = (): HomeState => ({
     status: {
       label: hudView(state).label,
@@ -4017,14 +4022,17 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     },
     extra: homeExtra(),
     controls: [
+      ...at("approvals"),
       ...approvalControls(
         buildApprovals({ jobs: jobsCache ?? [], sessions: input.sessions?.rows() ?? [] }),
         jobsCache !== null ? "ready" : jobsError !== null ? { error: jobsError } : "loading",
       ),
       ...nowControls(nowData, Date.now()),
+      ...at("trust"),
       ...trustControls(trustData(), Date.now()),
       ...cloudPageControls(cloud.view(), cloudSettings()),
       ...approvalCardControls(cloud.view()),
+      ...at("help"),
       ...helpControls({
         tools: (toolNames ??= buildBatonTools({} as ToolHost).map((t) => t.name)),
         bindings: currentBindings().map((r) => ({
@@ -4040,6 +4048,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         backupNote,
       ),
       setupHoldControl(settings.holdKey),
+      ...at("writing"),
       ...snippetControls(snippets.list(), snippetNote),
       ...transformControls(transforms.read(), transforms.all(), transformNote),
       ...styleControls(styles.read(), settings.dictationCleanup),
@@ -4055,10 +4064,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         secondary: "Export",
       },
       ...scratchControls(scratch.notes(), scratchQuery, scratch.hotkeyOn()),
+      ...at("presence"),
       ...presenceControls(settings),
+      ...at("memory"),
       ...memoryTab.controls(),
       ...vaultTab.controls(),
+      ...at("pack"),
       ...cachedPack(),
+      ...at("harness"),
       ...harnessControls(harnessItems()),
       ...(jobsCache === null
         ? jobsError !== null
@@ -4095,6 +4108,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
               },
             ]
           : jobControls(jobsCache)),
+      ...at("catalog"),
       ...(input.catalog?.controls() ?? []),
       ...(input.sessions === undefined
         ? []
@@ -4145,6 +4159,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         on: loop?.isMuted() ?? false,
         disabled: loop === null,
       },
+      ...at("screen"),
       ...(input.extras?.controls() ?? []),
       ...(input.updates?.controls() ?? []),
       {
@@ -5660,9 +5675,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     setTimeout(() => home.open(), 2_000).unref();
   }
   // Keys and the sidecar only once the model is here: nothing global before he asks for it.
-  if (binary !== null && settings.dictation === "baton" && modelPresent(modelsDir, speechModel())) {
-    requestDictation();
-  }
+  const atLaunch = dictationAtLaunch({
+    available: binary !== null,
+    dictation: settings.dictation,
+    modelPresent: modelPresent(modelsDir, speechModel()),
+    wakeOn: settings.enabled,
+  });
+  if (atLaunch === "now") requestDictation();
+  else if (atLaunch === "settled") setTimeout(requestDictation, DICTATION_SETTLE_MS).unref();
   void start().catch(failed);
   return {
     refresh: render,

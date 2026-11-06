@@ -14,6 +14,7 @@ import { type DesktopSnapShotEvent, DEFAULT_CLIENT_SETTINGS } from "@t3tools/con
 
 import * as DesktopAssets from "../app/DesktopAssets.ts";
 import { installDetachedWindows } from "../baton/detachedWindows.ts";
+import { setOverlaySafely, syncsWithT3Appearance } from "../baton/lastAppWindow.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import { makeComponentLogger } from "../app/DesktopObservability.ts";
 import * as DesktopState from "../app/DesktopState.ts";
@@ -277,14 +278,14 @@ function syncWindowAppearance(
   platform: NodeJS.Platform,
 ): Effect.Effect<void> {
   return Effect.sync(() => {
-    if (window.isDestroyed()) {
+    if (window.isDestroyed() || !syncsWithT3Appearance(window)) {
       return;
     }
 
     window.setBackgroundColor(getInitialWindowBackgroundColor(shouldUseDarkColors));
     const { titleBarOverlay } = getWindowTitleBarOptions(shouldUseDarkColors, platform);
     if (typeof titleBarOverlay === "object") {
-      window.setTitleBarOverlay(titleBarOverlay);
+      setOverlaySafely(window, titleBarOverlay);
     }
   });
 }

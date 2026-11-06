@@ -475,6 +475,7 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
   const applied = new WeakMap<object, string>();
   const bars = new WeakMap<object, string>();
   const looked = new WeakMap<object, string>();
+  const grounds = new WeakMap<object, string>();
   /** The page and the window's own colour, set live: no reload, no flicker. */
   const applyTheme = () => {
     const open = live();
@@ -482,9 +483,13 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
     // Set only on a change: each set fires nativeTheme "updated", which calls this again.
     const source = themeSourceFor(input.appearance());
     if (Electron.nativeTheme.themeSource !== source) Electron.nativeTheme.themeSource = source;
-    open.setBackgroundColor(
-      process.platform === "win32" && seeThrough(material()) ? "#00000000" : THEME_GROUND[theme()],
-    );
+    // A synchronous window-manager call: only when the colour changes, not on every push.
+    const ground =
+      process.platform === "win32" && seeThrough(material()) ? "#00000000" : THEME_GROUND[theme()];
+    if (grounds.get(open) !== ground) {
+      grounds.set(open, ground);
+      open.setBackgroundColor(ground);
+    }
     // The window controls follow the page, both ways, live.
     if (process.platform !== "darwin" && bars.get(open) !== theme()) {
       bars.set(open, theme());
@@ -546,7 +551,12 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
     stale = false;
     pushedAt = Date.now();
     markPhase("home-push:begin");
-    open.webContents.send(PUSH, withTabs(input.state()));
+    // Named steps, so a slow push in the stall log says whether building the state or sending it took the time.
+    markPhase("home-state:begin");
+    const state = withTabs(input.state());
+    markPhase("home-state:end");
+    open.webContents.send(PUSH, state);
+    markPhase("home-sent");
     applyTheme();
     applyLook(false);
     markPhase("home-push:end");

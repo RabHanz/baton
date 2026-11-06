@@ -116,6 +116,16 @@ it("rejects a second capture while one is in flight", async () => {
   await first;
 });
 
+it("starts no standby helper before the first capture, so start-up spawns nothing", () => {
+  vi.useFakeTimers();
+  const { pool, processes } = fakePool();
+  pool.warm();
+  vi.runAllTimers();
+  vi.useRealTimers();
+  assert.lengthOf(processes, 0);
+  pool.close();
+});
+
 it("closes the standby and the in-flight child", async () => {
   vi.useFakeTimers();
   const { pool, processes } = fakePool();

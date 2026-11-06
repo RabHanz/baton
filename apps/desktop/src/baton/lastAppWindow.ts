@@ -8,6 +8,25 @@ export const markCompanionWindow = (window: object): void => void companions.add
 /** The ask box, a prompt, the pointer or the pill: never a window to bring up for him. */
 export const isCompanionWindow = (window: object): boolean => companions.has(window);
 
+/**
+ * Upstream's theme sync repaints every window. Tessaya's own windows (Home, splash, pill, cards) keep their own
+ * colours, and a window made without a title-bar overlay throws on `setTitleBarOverlay`: neither is touched, and the
+ * call never throws. True when it was applied.
+ */
+export const syncsWithT3Appearance = (window: object): boolean => !companions.has(window);
+export const setOverlaySafely = (
+  window: { readonly setTitleBarOverlay: (options: never) => void },
+  options: unknown,
+): boolean => {
+  if (companions.has(window)) return false;
+  try {
+    window.setTitleBarOverlay(options as never);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 let trayHolds = false;
 export const keepRunningForTray = (): void => {
   trayHolds = true;

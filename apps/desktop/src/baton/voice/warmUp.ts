@@ -177,3 +177,23 @@ export const holdFramesUntil = <T extends { pushAudio: (frame: Int16Array) => vo
     },
   });
 };
+
+/** After start-up has settled: the window, T3 and the server are up, so the sidecar spawn does not stall them. */
+export const DICTATION_SETTLE_MS = 15_000;
+
+/**
+ * When the dictation sidecar and its speech model load at launch. With the wake word on, `start` loads them at once
+ * (it cannot listen without them). With it off, only the hold-to-dictate key needs them, and that key is the
+ * sidecar's: they load once start-up has settled rather than never, so the first press still types.
+ */
+export const dictationAtLaunch = (s: {
+  readonly available: boolean;
+  readonly dictation: string;
+  readonly modelPresent: boolean;
+  readonly wakeOn: boolean;
+}): "now" | "settled" | "never" =>
+  !s.available || s.dictation !== "baton" || !s.modelPresent
+    ? "never"
+    : s.wakeOn
+      ? "now"
+      : "settled";

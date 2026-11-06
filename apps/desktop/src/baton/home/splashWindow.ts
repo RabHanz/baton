@@ -3,6 +3,7 @@
 import * as Electron from "electron";
 
 import { protectFromCapture } from "../captureProtection.ts";
+import { markCompanionWindow } from "../lastAppWindow.ts";
 import {
   SPLASH_FADE_MS,
   splashHtml,
@@ -66,6 +67,7 @@ export const startSplash = (centre: { readonly x: number; readonly y: number }, 
 
   try {
     win = new Electron.BrowserWindow(splashWindowOptions(centre));
+    markCompanionWindow(win);
     protectFromCapture(win);
     win.setIgnoreMouseEvents(true);
     win.once("ready-to-show", () => win?.showInactive());

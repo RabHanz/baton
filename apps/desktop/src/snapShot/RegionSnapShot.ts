@@ -140,9 +140,10 @@ export function makeRegionSnapShotPool(
   let inFlight: RegionSnapShotProcess | undefined;
   let closed = false;
   let warmTimer: ReturnType<typeof setTimeout> | undefined;
-  // Spawning blocks the main thread, so the standby starts once things settle, not mid-capture or at startup.
+  // Spawning blocks the main thread: no standby until the first capture asked for one, then once things settle.
+  let used = false;
   const warm = () => {
-    if (closed || standby?.alive || warmTimer !== undefined) return;
+    if (!used || closed || standby?.alive || warmTimer !== undefined) return;
     warmTimer = setTimeout(() => {
       warmTimer = undefined;
       if (!closed && !standby?.alive) standby = start(workerPath);
@@ -163,6 +164,7 @@ export function makeRegionSnapShotPool(
       if (inFlight?.alive) {
         throw new Error("Windows window capture is still in progress. Try again.");
       }
+      used = true;
       const current = standby?.alive ? standby : start(workerPath);
       standby = undefined;
       inFlight = current;
