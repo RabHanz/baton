@@ -12,6 +12,7 @@ Write or run an eval when a change affects what a model sees or does: agent inst
 | [voice-cleanup](voice-cleanup/)         | Whether optional dictation cleanup edits only the spoken text and preserves its meaning.             |
 | [test-signal](test-signal/)             | Whether a cheap model running the test-signal check flags low-signal tests.                          |
 | [tessaya-assistant](tessaya-assistant/) | Which tool Tessaya's one assistant reaches for first after a spoken sentence.                        |
+| [tessaya-outside](tessaya-outside/)     | How an agent signed in to `/mcp` from outside uses Tessaya's tools: reads, and asks before acting.   |
 
 ## Run an eval
 

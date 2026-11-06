@@ -2,11 +2,13 @@ import {
   BATON_JOB_WS_METHODS,
   BATON_MEMORY_WS_METHODS,
   BATON_ORCHESTRATION_WS_METHODS,
+  BATON_PHONE_WS_METHODS,
   BATON_RECORD_WS_METHODS,
   BATON_SESSIONS_WS_METHODS,
   BATON_WATCH_WS_METHODS,
 } from "@t3tools/baton-contracts";
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 
 import * as BatonRpcHandlers from "../../../baton/BatonRpcHandlers.ts";
@@ -27,6 +29,14 @@ export const layer = McpToolAccess.toLayer(
   TessayaToolkit,
   Effect.gen(function* () {
     const handlers = yield* BatonRpcHandlers.makeHandlers;
+    const random = yield* SecureRandom.SecureRandom;
+    type Asked = { ok?: boolean; status?: string; line?: string } | null;
+    // No RPC session here, so the inbox's AskSource stays "device": the desktop's gate asks him before any act.
+    const phone = (op: "ask" | "askGet", args: Record<string, unknown>) =>
+      Effect.map(
+        handlers[BATON_PHONE_WS_METHODS.call]({ op, args }),
+        ({ value }) => value as Asked,
+      );
     // The same handlers as the clients' RPC, behind T3's read check for this credential.
     const call = <A, E>(effect: Effect.Effect<A, E>) =>
       readCaller().pipe(
@@ -63,6 +73,32 @@ export const layer = McpToolAccess.toLayer(
             limit: input.limit ?? 30,
             history: false,
           }),
+        ),
+      ),
+      tessaya_ask: McpToolAccess.writesWithCapability((input) =>
+        call(
+          Effect.gen(function* () {
+            const id = `mcp-${yield* random.uuidV4()}`;
+            const asked = yield* phone("ask", { id, text: input.text });
+            return {
+              id: asked?.ok === false ? null : id,
+              status: asked?.status ?? "not asked",
+              line: asked?.line ?? "Nothing was asked.",
+            };
+          }),
+        ),
+      ),
+      // Only ids this tool made: the phone's and the web bar's asks are not an agent's to read.
+      tessaya_ask_status: McpToolAccess.reads((input) =>
+        call(
+          Effect.map(
+            input.id.startsWith("mcp-") ? phone("askGet", { id: input.id }) : Effect.succeed(null),
+            (asked) => ({
+              id: asked === null ? null : input.id,
+              status: asked?.status ?? "unknown",
+              line: asked?.line ?? "No such request.",
+            }),
+          ),
         ),
       ),
     };
