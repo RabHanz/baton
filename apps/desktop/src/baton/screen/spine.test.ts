@@ -66,6 +66,21 @@ describe("tools: what sees, points, teaches or acts goes through the one gate", 
   it("the guided modes are tools of the one assistant, not a second table", () => {
     for (const name of ["point_at", "teach_start", "plan_show"]) expect(tools).toContain(name);
   });
+  it("One Trust is the only judge: nothing in the desktop's Tessaya code calls the base rules around it", () => {
+    const walk = (dir: string): string[] =>
+      NodeFS.readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory() ? walk(NodePath.join(dir, e.name)) : [NodePath.join(dir, e.name)],
+      );
+    const around = walk(baton).filter(
+      (f) =>
+        f.endsWith(".ts") &&
+        !f.endsWith(".test.ts") &&
+        /\bjudgeToolCall\(/.test(NodeFS.readFileSync(f, "utf8")),
+    );
+    expect(around).toEqual([]);
+    for (const f of ["agent/agentGate.ts", "screen/ScreenCompanion.ts"])
+      expect(source(...f.split("/"))).toContain("decideTrust(");
+  });
 });
 
 describe("one overlay family, one dialog family", () => {
