@@ -8,6 +8,7 @@
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import type {
@@ -351,6 +352,7 @@ import { mouseHookConfig } from "../bindings/inputConfig.ts";
 import { VOICE_HOTKEYS } from "./voiceActivation.ts";
 import { ensureModel, modelPresent, PARAKEET_FAST_MODEL, PARAKEET_MODEL } from "./voiceModels.ts";
 import { hudView, utteranceCaption } from "./voiceHud.ts";
+import { createCpuLoad } from "./cpuLoad.ts";
 import type { AssistantActions, AssistantFocus, PhoneMirror } from "../screen/ScreenCompanion.ts";
 import { focusedFolder } from "../screen/focusedFolder.ts";
 import { createVoicePill, type VoicePill } from "./voicePill.ts";
@@ -925,6 +927,10 @@ export interface DesktopBatonVoice {
 
 const wordName = (word: string | null): string | null =>
   word === null ? null : `${word[0]!.toUpperCase()}${word.slice(1)}`;
+
+/** Recognition slower than this, and slower than the clip itself, logs the machine's load. */
+const SLOW_RECOGNITION_MS = 2_000;
+const CPU_SAMPLE_MS = 3_000;
 
 export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBatonVoice => {
   // Legacy name (D71): existing settings live in this file, so it keeps "fabric".
@@ -2643,6 +2649,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     }));
   };
 
+  // Read every few seconds, so a slow clip's line shows the load during it, not an average since the last one.
+  const cpuLoad = createCpuLoad();
+  let cpuBusy: number | null = null;
+  setInterval(() => {
+    cpuBusy = cpuLoad();
+  }, CPU_SAMPLE_MS).unref();
   /** The sidecar holds no key and no microphone until `configureDictation` gives it a model. */
   const startSidecar = async () => {
     if (binary === null || sidecar !== null) return;
@@ -2650,7 +2662,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     sidecar = startDictationSidecar({
       binary,
       onEvent: onDictation,
-      onRecognised: (timing) => input.onNote?.("recognised", timing),
+      // A slow clip (0.1.61: 10 s for 1.3 s of audio) says how busy the machine was around then.
+      onRecognised: (timing) =>
+        input.onNote?.(
+          "recognised",
+          timing.inferMs > Math.max(SLOW_RECOGNITION_MS, timing.audioMs)
+            ? { ...timing, cpuBusy, cores: NodeOS.cpus().length }
+            : timing,
+        ),
     });
     markPhase("dictation-sidecar-spawn:end");
     dictionary = NodeFS.existsSync(dictionaryPath(input.stateDir))

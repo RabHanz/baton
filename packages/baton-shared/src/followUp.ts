@@ -16,7 +16,7 @@ const OPENERS = new Set(
 );
 
 const REQUEST =
-  /^(?:i (?:want|need|would like|wanna|'d like|'d love)|i'd (?:like|love)|let's|let me|how about|what about)\b/;
+  /^(?:i (?:want|wanted|need|needed|would like|wanna|was hoping|meant|'d like|'d love)|i'd (?:like|love)|let's|let me|how about|what about)\b/;
 const NAMED = /\b(?:tessaya|baton|assistant)\b/;
 
 /** True when words said inside the follow-up window read as meant for the assistant. */
