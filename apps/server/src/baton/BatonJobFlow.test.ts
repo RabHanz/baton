@@ -21,7 +21,8 @@ import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
 import {
   agreeJob,
   autoRetry,
-  capsReached,
+  noteDayTurns,
+  pastGuide,
   enforceCaps,
   postReports,
   noticePlan,
@@ -35,6 +36,7 @@ import {
 import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts";
 import { layerStatic, type BatonThreadLaunch } from "./BatonEngine.ts";
 import { BatonJobService, layer as jobLayer } from "./BatonJobService.ts";
+import { BatonRecordService, layer as recordLayer } from "./BatonRecordService.ts";
 import { layer as workSessionLayer } from "./WorkSessionService.ts";
 import { ProviderInstanceRegistry } from "../provider/ProviderInstanceRegistry.ts";
 
@@ -483,11 +485,11 @@ layer("BatonJobFlow", (it) => {
   );
 
   it.effect(
-    "stops a persona's jobs at its background turns for the day, and says who and why",
+    "counts each persona's background turns today and notes passing the guide once, stopping nothing",
     () =>
       Effect.gen(function* () {
         const jobs = yield* BatonJobService;
-        const id = WorkSessionId.make("job-persona-cap");
+        const id = WorkSessionId.make("job-persona-guide");
         const { threadId } = yield* startJob(
           {
             id,
@@ -515,35 +517,40 @@ layer("BatonJobFlow", (it) => {
             synopsis: null,
           },
         ] as never;
+        yield* TestClock.adjust("12 hours");
+        const at = (hours: number) => ({
+          status: "completed",
+          requestedAt: DateTime.makeUnsafe(hours * 3_600_000),
+        });
+        const today = (n: number) => Array.from({ length: n }, () => at(11));
+        // Yesterday's turns do not count towards today's.
+        const yesterday = Array.from({ length: 30 }, () => at(-1));
         interrupted.length = 0;
-        // Yesterday's turns do not count against today's.
-        const today = (n: number) => Array.from({ length: n }, () => ran("completed"));
-        const yesterday = Array.from({ length: 30 }, () => ran("completed", 25));
-        runs.set(threadId, [...today(39), ...yesterday]);
-        assert.deepStrictEqual(yield* enforceCaps(entries), []);
         runs.set(threadId, [...today(40), ...yesterday]);
-        assert.deepStrictEqual(yield* enforceCaps(entries), [id]);
-        assert.deepStrictEqual(interrupted, [threadId]);
-        const terms = yield* jobs.terms(id);
-        assert.isTrue(
-          terms?.revisions.some((r) => r.text.includes("Freya has used the 40 background turns")),
+        assert.deepStrictEqual(yield* noteDayTurns(entries), []);
+        runs.set(threadId, [...today(41), ...yesterday]);
+        assert.deepStrictEqual(yield* noteDayTurns(entries), ["Freya"]);
+        // Once a day, and nothing is stopped past the guide.
+        assert.deepStrictEqual(yield* noteDayTurns(entries), []);
+        assert.deepStrictEqual(yield* enforceCaps(entries), []);
+        assert.deepStrictEqual(interrupted, []);
+        const rows = yield* (yield* BatonRecordService).query({ kind: "background_turns" });
+        assert.lengthOf(rows, 1);
+        assert.strictEqual(
+          rows[0]?.subject,
+          "Freya has used 41 background turns today, past the guide of 40. Nothing was stopped.",
         );
-        // The team's cap holds across personas, each under its own.
         const three = new Map([
-          ["executive", 39],
-          ["engineering", 39],
-          ["operations", 39],
+          ["executive", 40],
+          ["engineering", 40],
+          ["operations", 40],
         ]);
-        assert.deepStrictEqual(capsReached(three), { personas: [], team: false });
-        assert.deepStrictEqual(capsReached(new Map([...three, ["research", 3]])), {
+        assert.deepStrictEqual(pastGuide(three), { personas: [], team: false });
+        assert.deepStrictEqual(pastGuide(new Map([...three, ["research", 1]])), {
           personas: [],
           team: true,
         });
-        assert.deepStrictEqual(capsReached(new Map([["research", 40]])), {
-          personas: ["research"],
-          team: false,
-        });
-      }),
+      }).pipe(Effect.provide(recordLayer)),
   );
 
   it.effect(
