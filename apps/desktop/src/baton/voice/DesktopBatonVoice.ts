@@ -1673,6 +1673,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       const call = deskCall(body);
       if (call !== null) return direct(call.method, call.input);
     }
+    // Listing servers for the Memory tab never reopens T3's window; the tab shows the last list.
+    if (
+      body.kind === "memory" &&
+      body.op === "syncPeers" &&
+      (await input.mainWindowUp?.()) === false
+    )
+      throw new Error("T3's window is closed.");
     const window = await input.ensureMainWindow();
     mainContents = window.webContents;
     const id = ++nextRequest;

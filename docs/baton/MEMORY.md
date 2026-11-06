@@ -153,7 +153,12 @@ default, switched in the Memory tab).
   walled items and can overwrite or delete any item, so `syncHello`/`syncPull`/`syncPush` answer only the desktop app's
   own session or a sync-only credential (`baton:memory-sync`, which a grant can carry only alone, minted on the server
   it reads). A server the window reaches with an ordinary paired token does not sync. A credential's first pull starts
-  from the beginning, so items its server skipped before come over. For each ordered pair (to, from) of distinct servers it asks `to` for its
+  from the beginning, so items its server skipped before come over.
+- **Pairing a peer.** "Pair for memory sync" on that server's desktop makes a one-time pairing code that grants only
+  `baton:memory-sync` (or `t3 auth pairing create --scope baton:memory-sync` on its host). The window here trades it at
+  that server's `/oauth/token` for the credential, which the desktop keeps wrapped by the operating system
+  (`memory-sync-peers.json`) and hands to the window for each round; the window then calls that server's
+  `/tessaya/desk/baton.memory.sync*` with it. This app's own server always syncs through the app's own session. For each ordered pair (to, from) of distinct servers it asks `to` for its
   `cursors` (`baton.memory.syncHello`), pulls what `from` wrote since that cursor (`syncPull`) and hands it to `to`
   (`syncPush`). The window runs a round every ten minutes and on "Sync now". A laptop whose window sees only its own
   server simply has nothing to sync with.

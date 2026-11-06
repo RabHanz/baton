@@ -20,7 +20,13 @@ import {
   type ScopedThreadRef,
 } from "@t3tools/baton-contracts";
 import { homeOf, resolveRunOn } from "@t3tools/baton-shared/runOn";
-import type { ThreadId } from "@t3tools/contracts";
+import {
+  AuthAccessTokenType,
+  AuthBatonMemorySyncScope,
+  AuthEnvironmentBootstrapTokenType,
+  AuthTokenExchangeGrantType,
+  type ThreadId,
+} from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
@@ -39,6 +45,9 @@ import { environmentServerConfigsAtom } from "../../state/server";
 import { useBatonFleets } from "../../state/batonWorkSessions";
 import { batonWorkSessions } from "../../state/batonWorkSessions";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { authEnvironment } from "../../state/auth";
+import { readPreparedConnection } from "../../state/session";
+import { sameSyncOrigin, syncFailureLine, syncPeerUrl } from "../../batonMemorySync";
 import { BatonIntentBar } from "./BatonIntentBar";
 import { BatonProjectsBlock } from "./BatonProjectsBlock";
 
@@ -114,6 +123,7 @@ export function BatonSidebarSection(props: {
   const memorySyncHello = useAtomCommand(batonWorkSessions.memorySyncHello, quiet);
   const memorySyncPull = useAtomCommand(batonWorkSessions.memorySyncPull, quiet);
   const memorySyncPush = useAtomCommand(batonWorkSessions.memorySyncPush, quiet);
+  const createPairingCredential = useAtomCommand(authEnvironment.createPairingCredential, quiet);
   const jobList = useAtomCommand(batonWorkSessions.jobList, quiet);
   const jobStart = useAtomCommand(batonWorkSessions.jobStart, quiet);
   const jobAgree = useAtomCommand(batonWorkSessions.jobAgree, quiet);
@@ -341,13 +351,46 @@ export function BatonSidebarSection(props: {
    * Memory between the servers this window is connected to (MEMORY.md section 6): for each pair, ask
    * the one what the other has not seen and hand it over. Last writer wins; the servers keep the cursors.
    */
-  const syncMemory = async (): Promise<unknown> => {
+  type SyncPeerCredential = { readonly origin: string; readonly token: string };
+  const syncMemory = async (
+    peers: Readonly<Record<string, SyncPeerCredential>>,
+  ): Promise<unknown> => {
+    // Servers whose credential was turned away: the desktop forgets it and says so.
+    const refused = new Set<EnvironmentId>();
     type Reply<V> = { readonly _tag: "Success"; readonly value: V } | { readonly _tag: "Failure" };
-    const call = async <V,>(run: unknown, environmentId: EnvironmentId, input: unknown) =>
-      await (run as (c: { environmentId: EnvironmentId; input: never }) => Promise<Reply<V>>)({
-        environmentId,
-        input: input as never,
-      });
+    const methods = new Map<unknown, string>([
+      [memorySyncHello, "baton.memory.syncHello"],
+      [memorySyncPull, "baton.memory.syncPull"],
+      [memorySyncPush, "baton.memory.syncPush"],
+    ]);
+    // This app's own server answers its own session; any other syncs only with the sync credential it issued.
+    const call = async <V,>(
+      run: unknown,
+      environmentId: EnvironmentId,
+      input: unknown,
+    ): Promise<Reply<V>> => {
+      if (environmentId === primaryEnvironmentId)
+        return await (
+          run as (c: { environmentId: EnvironmentId; input: never }) => Promise<Reply<V>>
+        )({ environmentId, input: input as never });
+      const peer = peers[environmentId];
+      const base = readPreparedConnection(environmentId)?.httpBaseUrl;
+      const url = base === undefined ? null : syncPeerUrl(base, `tessaya/desk/${methods.get(run)}`);
+      // The credential goes only back to the origin that issued it, never along a redirect.
+      if (peer === undefined || url === null || !sameSyncOrigin(peer.origin, url))
+        return { _tag: "Failure" };
+      const response = await fetch(url, {
+        method: "POST",
+        redirect: "error",
+        headers: { authorization: `Bearer ${peer.token}`, "content-type": "application/json" },
+        body: JSON.stringify(input),
+      }).catch(() => null);
+      if (response?.status === 401 || response?.status === 403) refused.add(environmentId);
+      const json = (await response?.json().catch(() => null)) as { value?: V } | null;
+      return response?.ok === true && json?.value !== undefined
+        ? { _tag: "Success", value: json.value }
+        : { _tag: "Failure" };
+    };
     const hellos = (
       await Promise.all(
         fleet.environmentIds.map(async (environmentId) => {
@@ -380,7 +423,14 @@ export function BatonSidebarSection(props: {
         if (pushed._tag === "Success") applied += pushed.value.applied;
       }
     }
-    return { servers: servers.length, applied };
+    return {
+      servers: servers.length,
+      applied,
+      refused: [...refused].map((environmentId) => ({
+        environmentId,
+        label: fleet.resolveEnvironmentLabel(environmentId) ?? environmentId,
+      })),
+    };
   };
   const onWeave = async (request: BatonWeaveBridgeRequest): Promise<unknown> => {
     const commands = { send: weaveSend, list: weaveList, tick: weaveTick };
@@ -444,7 +494,62 @@ export function BatonSidebarSection(props: {
     );
   };
   const onMemory = async (request: BatonMemoryBridgeRequest): Promise<unknown> => {
-    if (request.op === "sync") return syncMemory();
+    if (request.op === "sync")
+      return syncMemory(
+        (request.args["peers"] ?? {}) as Readonly<Record<string, SyncPeerCredential>>,
+      );
+    if (request.op === "syncPeers")
+      return fleet.environmentIds.map((environmentId) => ({
+        environmentId,
+        label: fleet.resolveEnvironmentLabel(environmentId) ?? environmentId,
+        local: environmentId === primaryEnvironmentId,
+      }));
+    if (request.op === "syncPair") {
+      if (memoryHome === undefined) throw new Error("This app's own server is not connected.");
+      // A one-time code that another machine trades for a credential which can only sync this server's memory.
+      const made = await createPairingCredential({
+        environmentId: memoryHome,
+        input: { label: "Tessaya memory sync", scopes: [AuthBatonMemorySyncScope] },
+      });
+      if (made._tag !== "Success") throw new Error("Could not make a pairing code here.");
+      return { code: made.value.credential };
+    }
+    if (request.op === "syncLink") {
+      const environmentId = String(request.args["environmentId"]) as EnvironmentId;
+      const base = readPreparedConnection(environmentId)?.httpBaseUrl;
+      if (base === undefined) throw new Error("That server is not connected.");
+      const url = syncPeerUrl(base, "oauth/token");
+      if (url === null)
+        throw new Error(
+          "That server is reached over plain http off this machine and the tailnet, so no credential is sent to it.",
+        );
+      const response = await fetch(url, {
+        method: "POST",
+        redirect: "error",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant_type: AuthTokenExchangeGrantType,
+          subject_token: String(request.args["code"]).trim(),
+          subject_token_type: AuthEnvironmentBootstrapTokenType,
+          requested_token_type: AuthAccessTokenType,
+          scope: AuthBatonMemorySyncScope,
+          client_label: "Tessaya memory sync",
+        }),
+      }).catch(() => null);
+      if (response === null)
+        throw new Error("That server did not answer. Try again when it is online.");
+      const json = (await response.json().catch(() => null)) as {
+        access_token?: string;
+        expires_in?: number;
+      } | null;
+      if (!response.ok || typeof json?.access_token !== "string")
+        throw new Error(syncFailureLine(response.status));
+      return {
+        origin: url.origin,
+        token: json.access_token,
+        expiresAt: Date.now() + (json.expires_in ?? 0) * 1000,
+      };
+    }
     const commands = {
       list: memoryList,
       search: memorySearch,

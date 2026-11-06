@@ -372,7 +372,10 @@ export interface BatonMemoryBridgeRequest {
     | "import"
     | "pull"
     | "syncPush"
-    | "sync";
+    | "sync"
+    | "syncPeers"
+    | "syncPair"
+    | "syncLink";
   readonly args: Readonly<Record<string, unknown>>;
 }
 

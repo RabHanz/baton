@@ -41,6 +41,10 @@ const make = (call: (op: string, args: Record<string, unknown>) => Promise<unkno
     enabled: () => false,
     setEnabled: vi.fn(),
     run: vi.fn(async () => "Synced 1 changes across 2 servers."),
+    peers: vi.fn(async () => []),
+    issue: vi.fn(async () => "CODE"),
+    link: vi.fn(async () => undefined),
+    forget: vi.fn(),
     start: vi.fn(),
   };
   const tab = createMemoryTab({ call, sync, notes, stateDir: dir, refresh, reveal });
