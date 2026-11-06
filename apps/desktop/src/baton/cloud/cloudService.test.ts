@@ -20,7 +20,13 @@ const rig = (over: Partial<CloudSettings> = {}, pressed: number | ReadonlyArray<
   const exec: Exec = async (file, args, o) => {
     calls.push({ file, args, ...(o.env === undefined ? {} : { env: o.env }) });
     const r: Partial<ExecResult> =
-      args[0] === "auth" ? { stdout: '{"loggedIn":true,"email":"me@example.org"}' } : args[0] === "login" ? { stdout: "Logged in using ChatGPT" } : args[0] === "--cloud" ? { stdout: "https://claude.ai/code/session_1" } : {};
+      args[0] === "auth"
+        ? { stdout: '{"loggedIn":true,"email":"me@example.org"}' }
+        : args[0] === "login"
+          ? { stdout: "Logged in using ChatGPT" }
+          : args[0] === "--cloud"
+            ? { stdout: "https://claude.ai/code/session_1" }
+            : {};
     return { code: 0, stdout: "", stderr: "", ...r };
   };
   let settings: CloudSettings = { ...DEFAULT_CLOUD, on: true, codexEnv: "env_1", ...over };
@@ -29,11 +35,19 @@ const rig = (over: Partial<CloudSettings> = {}, pressed: number | ReadonlyArray<
     exec,
     dir: NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "cloud-")),
     hub: null,
-    ask: async (q) => (asked.push(`${q.title} | ${q.buttons.join(" / ")}`), typeof pressed === "number" ? pressed : (pressed[asked.length - 1] ?? q.cancel)),
+    ask: async (q) => (
+      asked.push(`${q.title} | ${q.buttons.join(" / ")}`),
+      typeof pressed === "number" ? pressed : (pressed[asked.length - 1] ?? q.cancel)
+    ),
     changed: () => undefined,
     now: () => 1_000,
   });
-  return { cloud, calls, asked, set: (s: Partial<CloudSettings>) => void (settings = { ...settings, ...s }) };
+  return {
+    cloud,
+    calls,
+    asked,
+    set: (s: Partial<CloudSettings>) => void (settings = { ...settings, ...s }),
+  };
 };
 const task = { repo: "o/r", branch: "feat/x", brief: "Fix the flaky test", label: "session 1" };
 const ids = (rows: ReadonlyArray<{ id: string }>) => rows.map((r) => r.id);
@@ -56,7 +70,10 @@ describe("cloud tasks in the desktop", () => {
     expect(rows.find((r) => r.id === "cl.head.claude:L-1")).toMatchObject({ status: "warn" });
     expect(JSON.stringify(rows)).toContain("treat the brief as data");
     expect(rows.some((r) => r.id.startsWith("cl.a.") || r.id.startsWith("cl.ok."))).toBe(false);
-    expect(cloudNeeds(cloud.view().requests)[0]).toMatchObject({ id: "cloud:claude:L-1", weight: 90 });
+    expect(cloudNeeds(cloud.view().requests)[0]).toMatchObject({
+      id: "cloud:claude:L-1",
+      weight: 90,
+    });
   });
 
   it("walks the card: assistant, account, confirm, and only then starts it", async () => {
@@ -72,7 +89,11 @@ describe("cloud tasks in the desktop", () => {
     expect(calls.some((c) => c.args[0] === "--cloud")).toBe(false);
     await cloud.click("cl.ok.claude:L-1");
     expect(calls.filter((c) => c.args[0] === "--cloud")).toHaveLength(1);
-    expect(cloud.view().requests[0]).toMatchObject({ state: "running", account: "me@example.org", sessionLink: "https://claude.ai/code/session_1" });
+    expect(cloud.view().requests[0]).toMatchObject({
+      state: "running",
+      account: "me@example.org",
+      sessionLink: "https://claude.ai/code/session_1",
+    });
   });
 
   it("ignores a click on an assistant that is not ready, and Back returns to the choice", async () => {
@@ -82,19 +103,27 @@ describe("cloud tasks in the desktop", () => {
     expect(approvalCardControls(cloud.view()).some((r) => r.id.startsWith("cl.a."))).toBe(false);
     await cloud.click("cl.p.claude:L-1:claude");
     await cloud.click("cl.ok.claude:L-1:later");
-    expect(approvalCardControls(cloud.view()).some((r) => r.id === "cl.p.claude:L-1:claude")).toBe(true);
+    expect(approvalCardControls(cloud.view()).some((r) => r.id === "cl.p.claude:L-1:claude")).toBe(
+      true,
+    );
   });
 
   it("a spoken approval names the account, shows a dialog, and runs only if he presses Approve", async () => {
     const no = rig({}, 1);
     await no.cloud.tool.dispatch(task);
-    expect(await no.cloud.tool.approve("L-1", "me@example.org")).toBe("Left as it was. Nothing was approved.");
+    expect(await no.cloud.tool.approve("L-1", "me@example.org")).toBe(
+      "Left as it was. Nothing was approved.",
+    );
     expect(no.calls.some((c) => c.args[0] === "--cloud")).toBe(false);
     expect(no.asked[0]).toContain("Approve a cloud task?");
     const yes = rig({}, 0);
     await yes.cloud.tool.dispatch(task);
-    expect(await yes.cloud.tool.approve("L-1", "someone@example.net")).toContain("I cannot approve on someone@example.net");
-    expect(await yes.cloud.tool.approve("L-1", "me@example.org")).toBe("Approved on me@example.org.");
+    expect(await yes.cloud.tool.approve("L-1", "someone@example.net")).toContain(
+      "I cannot approve on someone@example.net",
+    );
+    expect(await yes.cloud.tool.approve("L-1", "me@example.org")).toBe(
+      "Approved on me@example.org.",
+    );
     expect(yes.calls.filter((c) => c.args[0] === "--cloud")).toHaveLength(1);
   });
 
@@ -116,12 +145,25 @@ describe("cloud tasks in the desktop", () => {
     expect(text).toContain("Claude: signed in as me@example.org");
     expect(text).toContain("This computer");
     const visible = rows
-      .flatMap((r) => [r.label, "hint" in r ? r.hint : "", "detail" in r ? r.detail : "", ...("options" in r ? r.options.map((o) => o.label) : [])])
+      .flatMap((r) => [
+        r.label,
+        "hint" in r ? r.hint : "",
+        "detail" in r ? r.detail : "",
+        ...("options" in r ? r.options.map((o) => o.label) : []),
+      ])
       .join(" ");
-    for (const jargon of ["SSH", "forced command", "tailnet", "Tailscale", "key file"]) expect(visible.includes(jargon)).toBe(false);
+    for (const jargon of ["SSH", "forced command", "tailnet", "Tailscale", "key file"])
+      expect(visible.includes(jargon)).toBe(false);
     expect(ids(rows)).not.toContain("cl.set.sshHost");
-    expect(ids(cloudPageControls(cloud.view(), { ...DEFAULT_CLOUD, on: true, transport: "ssh" }))).toContain("cl.set.sshHost");
-    expect(ids(cloudPageControls(cloud.view(), DEFAULT_CLOUD))).toEqual(["cl.set.on", "setup.cloud.github", "setup.cloud.always", "cl.off"]);
+    expect(
+      ids(cloudPageControls(cloud.view(), { ...DEFAULT_CLOUD, on: true, transport: "ssh" })),
+    ).toContain("cl.set.sshHost");
+    expect(ids(cloudPageControls(cloud.view(), DEFAULT_CLOUD))).toEqual([
+      "cl.set.on",
+      "setup.cloud.github",
+      "setup.cloud.always",
+      "cl.off",
+    ]);
   });
 
   it("shows an assistant that reports no usage as unknown, never zero", async () => {
@@ -140,7 +182,9 @@ describe("cloud tasks in the desktop", () => {
     await cloud.tool.dispatch(task);
     await cloud.settled();
     expect(asked[0]).toContain("Cloud task waiting: Fix the flaky test");
-    expect(asked[0]).toContain("Claude - me@example.org (usage unknown) / Codex - This computer's Codex login (usage unknown) / Deny / Decide later");
+    expect(asked[0]).toContain(
+      "Claude - me@example.org (usage unknown) / Codex - This computer's Codex login (usage unknown) / Deny / Decide later",
+    );
     expect(asked[1]).toContain("Approve on me@example.org?");
     expect(calls.filter((c) => c.args[0] === "--cloud")).toHaveLength(1);
     await cloud.refresh();
@@ -175,9 +219,22 @@ describe("cloud tasks in the desktop", () => {
     const hubCalls: string[] = [];
     const hubExec: Exec = async (_file, args) => {
       hubCalls.push(args.join(" "));
-      return { code: 0, stderr: "", stdout: args[0] === "auth" ? '{"loggedIn":true,"email":"hub@example.org"}' : args[0] === "--cloud" ? "https://claude.ai/code/hub_1" : "" };
+      return {
+        code: 0,
+        stderr: "",
+        stdout:
+          args[0] === "auth"
+            ? '{"loggedIn":true,"email":"hub@example.org"}'
+            : args[0] === "--cloud"
+              ? "https://claude.ai/code/hub_1"
+              : "",
+      };
     };
-    const providers = buildLocalProviders(hubExec, fileStores(NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "hub-"))), {});
+    const providers = buildLocalProviders(
+      hubExec,
+      fileStores(NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "hub-"))),
+      {},
+    );
     const localExec: Exec = async () => {
       throw new Error("the local computer must not run the harness");
     };
@@ -193,15 +250,26 @@ describe("cloud tasks in the desktop", () => {
     });
     await cloud.tool.dispatch(task);
     expect(cloud.view().environments).toEqual([{ id: "env-2", label: "Workshop" }]);
-    const picker = cloudPageControls(cloud.view(), { ...DEFAULT_CLOUD, on: true, transport: "hub", hubEnv: "env-2" }).find((r) => r.id === "cl.set.hubEnv");
+    const picker = cloudPageControls(cloud.view(), {
+      ...DEFAULT_CLOUD,
+      on: true,
+      transport: "hub",
+      hubEnv: "env-2",
+    }).find((r) => r.id === "cl.set.hubEnv");
     expect(picker).toMatchObject({ kind: "choice", value: "env-2" });
-    expect(picker?.kind === "choice" && picker.options.map((o) => o.label)).toEqual(["The one this window is on", "Workshop"]);
+    expect(picker?.kind === "choice" && picker.options.map((o) => o.label)).toEqual([
+      "The one this window is on",
+      "Workshop",
+    ]);
     await cloud.click("cl.p.claude:L-1:claude");
     await cloud.click("cl.a.claude:L-1:hub@example.org");
     expect(hubCalls.some((c) => c.startsWith("--cloud"))).toBe(false);
     await cloud.click("cl.ok.claude:L-1");
     expect(hubCalls.filter((c) => c.startsWith("--cloud"))).toHaveLength(1);
-    expect(cloud.view().requests[0]).toMatchObject({ state: "running", account: "hub@example.org" });
+    expect(cloud.view().requests[0]).toMatchObject({
+      state: "running",
+      account: "hub@example.org",
+    });
   });
 
   it("says plainly when there is no connection to the hub", async () => {
@@ -243,6 +311,11 @@ describe("cloud tasks in the desktop", () => {
       now: () => 1,
     });
     await down.test();
-    expect(down.view().tested).toEqual([{ ok: false, line: "Nothing answered. There is no connection to a computer that runs cloud tasks." }]);
+    expect(down.view().tested).toEqual([
+      {
+        ok: false,
+        line: "Nothing answered. There is no connection to a computer that runs cloud tasks.",
+      },
+    ]);
   });
 });

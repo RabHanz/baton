@@ -34,7 +34,10 @@ const SHIPPED = [
 ];
 
 const PRIVATE = [
-  ["a host or account of the maintainer", /signzart|onnyx|ventureos|venture-os|xiaomi|rabee|hanzla/i],
+  [
+    "a host or account of the maintainer",
+    /signzart|onnyx|ventureos|venture-os|xiaomi|rabee|hanzla/i,
+  ],
   ["a cloud provider's name used as a machine", /\bhetzner\b/i],
   [
     "a key or token",
