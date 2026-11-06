@@ -53,6 +53,30 @@ Then choose what the agent may do:
   threads in every project. A thread it starts or steers cannot run with more
   permissions than the mode you chose.
 
+## Tessaya
+
+On a Tessaya computer, the same MCP URL also carries Tessaya's own tools, so an
+agent can see what Tessaya sees without anything new to set up. They are read
+only, at every access level:
+
+- `tessaya_jobs` and `tessaya_watch`: jobs, their parts, and work that looks
+  stuck or is waiting for you.
+- `tessaya_record`: what happened, who did it and for which project.
+- `tessaya_rules`: standing rules and when they last fired.
+- `tessaya_sessions`: the coding agent sessions on that computer.
+- `tessaya_memory_search`: what Tessaya remembers. A walled project's memories
+  never reach an outside agent.
+
+An outside agent cannot approve anything, grant or widen a permission, or act as
+you. To check what an agent connected with:
+
+```sh
+claude mcp list
+```
+
+Then ask it to "list the tessaya tools"; it names the six above. Revoking the
+agent in **Settings → Sharing & access** ends its Tessaya access too.
+
 ## Claude Code
 
 ```sh
