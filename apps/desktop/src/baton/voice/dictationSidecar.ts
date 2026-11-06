@@ -137,6 +137,7 @@ export type DictationEvent =
 export interface SidecarDevice {
   readonly name: string;
   readonly channels: number | null;
+  readonly isDefault?: boolean;
 }
 
 export interface DictationSidecar {

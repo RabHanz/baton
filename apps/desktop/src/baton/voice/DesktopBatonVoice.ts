@@ -135,11 +135,7 @@ import {
 import { fetchSkillText, installSkill, nameFromUrl, skillExists } from "../harness/skillInstall.ts";
 import { createVolumeDuck } from "./volumeDuck.ts";
 import { PLACES, type PlaceId } from "./pillPlacement.ts";
-import {
-  createSilenceWatch,
-  DEFAULT_SILENCE_SECONDS,
-  SILENCE_MESSAGE,
-} from "@t3tools/baton-shared/silenceWatch";
+import { createSilenceWatch, DEFAULT_SILENCE_SECONDS } from "@t3tools/baton-shared/silenceWatch";
 import {
   HIDE_FOR_MS,
   isFullscreenWindow,
@@ -306,6 +302,7 @@ import {
 } from "../channels.ts";
 import {
   choiceDeviceId,
+  choiceSummary,
   micChannel,
   realDevices,
   reconcileDeviceChange,
@@ -1580,13 +1577,18 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
 
   let state: VoiceState = "sleeping";
   let devices: ReadonlyArray<AudioInputDevice> = [];
-  let choice: DeviceChoice = { kind: "default", deviceId: null, reason: "Not started." };
+  let choice: DeviceChoice = {
+    kind: "default",
+    deviceId: null,
+    reason: "Not started.",
+    label: null,
+  };
   let loop: VoiceLoop | null = null;
   let note: string | null = input.makeCore === null ? "Voice core not installed." : null;
   let focusedWorkSessionId: string | null = null;
   let contextTimer: ReturnType<typeof setInterval> | null = null;
 
-  const deviceName = () => (choice.kind === "pinned" ? choice.device.label : "System microphone");
+  const deviceName = () => choiceSummary(choice).mic ?? "System microphone";
   const markOptions = (): MarkOptions => {
     const on = (id: string) =>
       input.extras?.controls().some((c) => c.id === id && c.kind === "toggle" && c.on) ?? false;
@@ -2298,6 +2300,30 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     pinnedLabel: settings.pinnedLabel,
     micOrder: settings.micOrder.map((mic) => mic.name),
   });
+  const silence = createSilenceWatch({ seconds: () => settings.micSilenceSeconds });
+  let chosen: string | null = null;
+  // Every mic pick is logged; keeping his mic over a hands-free headset is announced once.
+  const choose = (next: DeviceChoice) => {
+    const was = choiceSummary(choice);
+    const now = choiceSummary(next);
+    choice = next;
+    if (JSON.stringify(now) === chosen) return;
+    chosen = JSON.stringify(now);
+    silence.reset();
+    input.onNote?.("mic", now);
+    if (now.why === "kept" && was.why !== "kept") {
+      const headset = devices.find((d) => d.isDefault === true)?.label ?? "a Bluetooth headset";
+      input.extras?.notice(
+        `Your system switched the microphone to ${headset}. I stayed on ${now.mic}. Right-click the tray icon to pick another.`,
+      );
+    }
+  };
+  const reselect = () =>
+    choose(selectInputDevice(devices, preference(), choiceSummary(choice).mic));
+  const pickMic = (label: string | null) => {
+    save({ pinnedLabel: label });
+    void restart();
+  };
   const channelFor = (device: string): number | null =>
     micChannel(
       device,
@@ -2504,20 +2530,30 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (source === null) return;
       const listed = await source.listDevices();
       if (listed.length === 0) return;
+      const listChanged = JSON.stringify(listed) !== JSON.stringify(devices);
       devices = listed;
-      const next = reconcileDeviceChange({ current: choice, devices, preference: preference() });
+      const next = reconcileDeviceChange({
+        current: choice,
+        devices,
+        preference: preference(),
+        previous: choiceSummary(choice).mic,
+      });
       if (next !== null) {
-        choice = next;
+        choose(next);
         note = next.kind === "default" ? next.reason : null;
         configureDictation();
         await loop?.switchDevice(choiceDeviceId(next));
         render();
-      }
+      } else if (listChanged) render();
     })();
   };
   const listSidecarDevices = async (): Promise<ReadonlyArray<AudioInputDevice>> => {
     sidecarDevices = (await sidecar?.devices()) ?? [];
-    return sidecarDevices.map((d) => ({ deviceId: d.name, label: d.name }));
+    return sidecarDevices.map((d) => ({
+      deviceId: d.name,
+      label: d.name,
+      isDefault: d.isDefault === true,
+    }));
   };
 
   /** The sidecar holds no key and no microphone until `configureDictation` gives it a model. */
@@ -2536,7 +2572,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     markPhase("dictation-devices:begin");
     devices = await listSidecarDevices();
     markPhase("dictation-devices:end");
-    choice = selectInputDevice(devices, preference());
+    reselect();
     note =
       choice.kind === "default" && choice.reason.includes("not connected") ? choice.reason : null;
     configureDictation();
@@ -2909,7 +2945,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     pill.warm();
     devices = await audio.listDevices();
     step("devices-listed", { devices: devices.length });
-    choice = selectInputDevice(devices, preference());
+    reselect();
     note = choice.kind === "default" && settings.pinnedLabel !== null ? choice.reason : null;
     loop = await startVoiceLoop({
       audio,
@@ -2923,10 +2959,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         const level = frameLevel(frame);
         micNow = level;
         pill.micLevel(level);
-        if (silence.feed(level, Date.now()) === "warn") {
-          pill.on({ type: "trouble", message: "Your microphone hears nothing" });
-          input.extras?.notice(SILENCE_MESSAGE);
-        }
+        silence.feed(level, Date.now());
         if (levelTest !== null) levelTest.peak = Math.max(levelTest.peak, level);
       },
       // The core's router has already sent the words on; this is the HUD's line.
@@ -2953,7 +2986,6 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let micPeak: number | null = null;
   let levelTest: { peak: number } | null = null;
   let micNow = 0;
-  const silence = createSilenceWatch({ seconds: () => settings.micSilenceSeconds });
 
   const gather = async (): Promise<CheckInput> => {
     const assets = input.voiceAssets?.(settings.modelsDir);
@@ -4511,7 +4543,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         id: "v.silence",
         section: "Voice",
         label: "Warn me when the microphone hears nothing",
-        hint: "A card and a pill message if the open microphone is dead quiet for this long; at most once an hour.",
+        hint: "A card and a pill message if the open microphone is dead quiet for this long; once until it hears something again.",
         kind: "choice",
         value: String(settings.micSilenceSeconds),
         options: [
@@ -5129,8 +5161,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     } else if (id === "v.direct") {
       if ((state === "direct_session") !== on) loop?.activate("toggle_direct_session");
     } else if (id === "v.mic") {
-      save({ pinnedLabel: typeof value === "string" && value !== "" ? value : null });
-      void restart();
+      pickMic(typeof value === "string" && value !== "" ? value : null);
     } else if (id.startsWith("v.wake:")) {
       const word = id.slice("v.wake:".length);
       save({
@@ -5351,6 +5382,24 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         },
         { label: "Wake now", enabled: loop !== null, click: () => loop?.activate("wake") },
         {
+          label: "Microphone",
+          submenu: [
+            {
+              label: "Automatic (system default)",
+              type: "checkbox",
+              checked: settings.pinnedLabel === null,
+              click: () => pickMic(null),
+            },
+            { type: "separator" },
+            ...realDevices(devices).map((d) => ({
+              label: d.label || "Unnamed microphone",
+              type: "checkbox" as const,
+              checked: d.label === choiceSummary(choice).mic,
+              click: () => pickMic(d.label),
+            })),
+          ],
+        },
+        {
           label: "Copy last transcript or reply",
           enabled: (lastReply ?? lastDictation) !== null,
           click: () => {
@@ -5393,7 +5442,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const source = audio ?? (sidecar === null ? null : { listDevices: listSidecarDevices });
     if (source === null) return render();
     devices = await source.listDevices();
-    choice = selectInputDevice(devices, preference());
+    reselect();
     note = choice.kind === "default" && settings.pinnedLabel !== null ? choice.reason : null;
     configureDictation();
     await loop?.switchDevice(choiceDeviceId(choice));
@@ -5495,7 +5544,18 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     applyBindings();
     void relisten();
   });
-  setInterval(onDeviceChange, MIC_POLL_MS).unref();
+  // The silence check runs on the clock too: a stalled stream delivers no frames to judge.
+  const watchSilence = () => {
+    if (loop === null || loop.isMuted()) return silence.reset();
+    if (silence.check(Date.now()) !== "warn") return;
+    const message = `I can't hear your microphone (${deviceName()}). Right-click the tray to pick another.`;
+    pill.on({ type: "trouble", message });
+    input.extras?.notice(message);
+  };
+  setInterval(() => {
+    onDeviceChange();
+    watchSilence();
+  }, MIC_POLL_MS).unref();
 
   render();
   // First run after install, and until he has chosen what Baton works through: the window opens on its own.

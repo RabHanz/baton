@@ -77,7 +77,10 @@ describe("the microphone order", () => {
   const order = { pinnedLabel: null, micOrder: ["Scarlett Solo", "Wireless Mic Rx"] };
 
   it("takes the AT2020's interface first, the DJI next, by part of the name", () => {
-    expect(selectInputDevice([remote, dji, scarlett], order)).toMatchObject({ device: scarlett });
+    expect(selectInputDevice([remote, dji, scarlett], order)).toMatchObject({
+      device: scarlett,
+      by: "order",
+    });
     expect(selectInputDevice([remote, dji], order)).toMatchObject({ device: dji });
   });
 
@@ -99,7 +102,7 @@ describe("the microphone order", () => {
 
   it("lets an explicit pin outrank the order", () => {
     const pin = { ...order, pinnedLabel: dji.label };
-    expect(selectInputDevice([scarlett, dji], pin)).toMatchObject({ device: dji });
+    expect(selectInputDevice([scarlett, dji], pin)).toMatchObject({ device: dji, by: "pin" });
   });
 });
 
@@ -125,5 +128,50 @@ describe("reconcileDeviceChange (hot-plug)", () => {
   it("stays put when an unrelated device comes or goes", () => {
     const more = [...withDji, { deviceId: "w1", label: "Headset (WH-1000XM4)" }];
     expect(reconcileDeviceChange({ current: onDji, devices: more, preference: pinned })).toBeNull();
+  });
+});
+
+describe("a Bluetooth headset taking over the system default", () => {
+  // What the sidecar lists on his laptop once the TaoTronics headset connects.
+  const mic = (label: string, isDefault = false) => ({ deviceId: label, label, isDefault });
+  const scarlett = mic("Microphone (Scarlett Solo USB)");
+  const c920 = mic("Microphone (HD Pro Webcam C920)");
+  const headset = mic("Headset (TAOTRONICS SoundSurge 46 Hands-Free)", true);
+  const auto = { pinnedLabel: null, micOrder: [] };
+
+  it("stays on the mic he was using while it is still connected", () => {
+    expect(selectInputDevice([scarlett, c920, headset], auto, scarlett.label)).toMatchObject({
+      kind: "pinned",
+      by: "kept",
+      device: scarlett,
+    });
+  });
+
+  it("follows the headset when the previous mic is gone, or there was none", () => {
+    expect(selectInputDevice([c920, headset], auto, scarlett.label)).toMatchObject({
+      kind: "default",
+      label: headset.label,
+    });
+    expect(selectInputDevice([scarlett, headset], auto, null)).toMatchObject({ kind: "default" });
+  });
+
+  it("follows a default that moves to another wired mic", () => {
+    const current = selectInputDevice([{ ...scarlett, isDefault: true }, c920], auto, null);
+    expect(current).toMatchObject({ kind: "default", label: scarlett.label });
+    const moved = reconcileDeviceChange({
+      current,
+      devices: [scarlett, { ...c920, isDefault: true }],
+      preference: auto,
+      previous: scarlett.label,
+    });
+    expect(moved).toMatchObject({ kind: "default", label: c920.label });
+  });
+
+  it("lets a pin win, even a pin on the headset", () => {
+    const pin = { pinnedLabel: headset.label };
+    expect(selectInputDevice([scarlett, headset], pin, scarlett.label)).toMatchObject({
+      device: headset,
+      by: "pin",
+    });
   });
 });

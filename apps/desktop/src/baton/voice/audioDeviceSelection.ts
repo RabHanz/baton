@@ -35,28 +35,52 @@ export interface DevicePreference {
 }
 
 export type DeviceChoice =
-  | { readonly kind: "pinned"; readonly device: AudioInputDevice }
-  | { readonly kind: "default"; readonly deviceId: string | null; readonly reason: string };
+  | {
+      readonly kind: "pinned";
+      readonly device: AudioInputDevice;
+      /** The pin, the order, or the mic he was on when a Bluetooth headset took the default. */
+      readonly by: "pin" | "order" | "kept";
+    }
+  | {
+      readonly kind: "default";
+      readonly deviceId: string | null;
+      readonly reason: string;
+      /** The system default's name, when the list says which it is. */
+      readonly label: string | null;
+    };
 
 export const realDevices = (
   devices: ReadonlyArray<AudioInputDevice>,
 ): ReadonlyArray<AudioInputDevice> => devices.filter((d) => !PSEUDO_DEVICE_IDS.has(d.deviceId));
 
+/** A Bluetooth headset's call-quality mic: Windows names it "Headset (… Hands-Free)". */
+export const isHandsFree = (label: string): boolean => /hands-?free|bluetooth/i.test(label);
+
 export const selectInputDevice = (
   devices: ReadonlyArray<AudioInputDevice>,
   preference: DevicePreference,
+  /** The mic in use before this choice; kept when a hands-free headset takes the default. */
+  previous: string | null = null,
 ): DeviceChoice => {
   // Chromium's own "default" entry follows the OS setting live; null asks
   // getUserMedia for the same thing when the list is empty (no permission yet).
   const osDefault = devices.some((d) => d.deviceId === "default") ? "default" : null;
+  const candidates = realDevices(devices);
+  const systemDefault = (reason: string): DeviceChoice => {
+    const label = candidates.find((d) => d.isDefault === true)?.label ?? null;
+    const kept =
+      label !== null && isHandsFree(label) && previous !== null && !isHandsFree(previous)
+        ? candidates.find((d) => d.label === previous)
+        : undefined;
+    return kept === undefined
+      ? { kind: "default", deviceId: osDefault, reason, label }
+      : { kind: "pinned", device: kept, by: "kept" };
+  };
   const wants = [
     ...(preference.pinnedLabel === null ? [] : [preference.pinnedLabel]),
     ...(preference.micOrder ?? []),
   ];
-  if (wants.length === 0) {
-    return { kind: "default", deviceId: osDefault, reason: "No microphone is pinned." };
-  }
-  const candidates = realDevices(devices);
+  if (wants.length === 0) return systemDefault("No microphone is pinned.");
   for (const label of wants) {
     const wanted = normalizeDeviceName(label);
     const exact = candidates.find((d) => normalizeDeviceName(d.label) === wanted);
@@ -68,14 +92,24 @@ export const selectInputDevice = (
         const name = normalizeDeviceName(d.label);
         return name.length > 0 && (name.includes(wanted) || wanted.includes(name));
       });
-    if (loose !== undefined) return { kind: "pinned", device: loose };
+    if (loose !== undefined) {
+      return {
+        kind: "pinned",
+        device: loose,
+        by: label === preference.pinnedLabel ? "pin" : "order",
+      };
+    }
   }
-  return {
-    kind: "default",
-    deviceId: osDefault,
-    reason: `${wants[0]} is not connected. Using the system microphone.`,
-  };
+  return systemDefault(`${wants[0]} is not connected. Using the system microphone.`);
 };
+
+/** The mic a choice captures from, by name, and why: for the record and the tray. */
+export const choiceSummary = (
+  choice: DeviceChoice,
+): { readonly mic: string | null; readonly why: "pin" | "order" | "kept" | "default" } =>
+  choice.kind === "pinned"
+    ? { mic: choice.device.label, why: choice.by }
+    : { mic: choice.label, why: "default" };
 
 /** The id a choice captures from; null lets getUserMedia pick the OS default. */
 export const choiceDeviceId = (choice: DeviceChoice): string | null =>
@@ -83,15 +117,21 @@ export const choiceDeviceId = (choice: DeviceChoice): string | null =>
 
 /**
  * A device list changed (hot-plug). Returns the new choice when capture must
- * move — the pinned mic left, or came back — and null when it should stay put.
+ * move — the pinned mic left or came back, the system default moved — and null
+ * when it should stay put.
  */
 export const reconcileDeviceChange = (input: {
   readonly current: DeviceChoice;
   readonly devices: ReadonlyArray<AudioInputDevice>;
   readonly preference: DevicePreference;
+  readonly previous?: string | null;
 }): DeviceChoice | null => {
-  const next = selectInputDevice(input.devices, input.preference);
-  return choiceDeviceId(next) === choiceDeviceId(input.current) && next.kind === input.current.kind
+  const next = selectInputDevice(input.devices, input.preference, input.previous ?? null);
+  const was = choiceSummary(input.current);
+  const now = choiceSummary(next);
+  return choiceDeviceId(next) === choiceDeviceId(input.current) &&
+    now.mic === was.mic &&
+    now.why === was.why
     ? null
     : next;
 };

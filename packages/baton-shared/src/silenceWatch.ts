@@ -1,35 +1,35 @@
 /**
  * The microphone is open but hears nothing (a muted or unplugged device, the wrong input chosen).
- * Fed the level of every frame; says "warn" once after the room has been dead quiet for a while, and
- * not again for an hour. A level is 0 to 1; a live mic's noise floor is well above the threshold.
+ * Fed the level of every frame and checked on a timer, so a stream that stops delivering frames
+ * counts too. Says "warn" once per quiet episode; hearing something ends the episode.
  */
-export const DEAD_LEVEL = 0.0005;
+// frameLevel of a 15-sample peak: a dead endpoint's dither stays under it, a live room does not.
+export const DEAD_LEVEL = 0.03;
 export const DEFAULT_SILENCE_SECONDS = 90;
-export const WARN_AGAIN_MS = 60 * 60_000;
 
 export const createSilenceWatch = (input: { readonly seconds: () => number }) => {
-  let quietSince: number | null = null;
-  let warnedAt = -Infinity;
+  let heardAt: number | null = null;
+  let warned = false;
   return {
-    /** "warn" at most once an hour; 0 seconds turns the watch off. */
-    feed: (level: number, now: number): "warn" | null => {
-      const seconds = input.seconds();
-      if (seconds <= 0 || level > DEAD_LEVEL) {
-        quietSince = null;
-        return null;
+    feed: (level: number, now: number): void => {
+      if (level <= DEAD_LEVEL) {
+        heardAt ??= now;
+        return;
       }
-      quietSince ??= now;
-      if (now - quietSince >= seconds * 1000 && now - warnedAt >= WARN_AGAIN_MS) {
-        warnedAt = now;
-        return "warn";
-      }
-      return null;
+      heardAt = now;
+      warned = false;
+    },
+    /** 0 seconds turns the watch off; the first check starts the clock. */
+    check: (now: number): "warn" | null => {
+      if (input.seconds() <= 0) return null;
+      heardAt ??= now;
+      if (warned || now - heardAt < input.seconds() * 1000) return null;
+      warned = true;
+      return "warn";
     },
     reset: () => {
-      quietSince = null;
+      heardAt = null;
+      warned = false;
     },
   };
 };
-
-export const SILENCE_MESSAGE =
-  "Your microphone is open but hears nothing. Check that it is not muted or unplugged, and that the right one is chosen under Voice.";
