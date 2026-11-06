@@ -149,8 +149,11 @@ like any other. Exports are plain markdown the user owns; they leave the machine
 Last-writer-wins with tombstones, behind a setting (`baton-memory.json` in the state folder, `{"sync": true}`; off by
 default, switched in the Memory tab).
 
-- **The window carries it.** Tessaya's window is already connected to every server he uses, so it relays: servers
-  never need credentials for each other. For each ordered pair (to, from) of distinct servers it asks `to` for its
+- **The window carries it.** Tessaya's window is already connected to every server he uses, so it relays. Sync carries
+  walled items and can overwrite or delete any item, so `syncHello`/`syncPull`/`syncPush` answer only the desktop app's
+  own session or a sync-only credential (`baton:memory-sync`, which a grant can carry only alone, minted on the server
+  it reads). A server the window reaches with an ordinary paired token does not sync. A credential's first pull starts
+  from the beginning, so items its server skipped before come over. For each ordered pair (to, from) of distinct servers it asks `to` for its
   `cursors` (`baton.memory.syncHello`), pulls what `from` wrote since that cursor (`syncPull`) and hands it to `to`
   (`syncPush`). The window runs a round every ten minutes and on "Sync now". A laptop whose window sees only its own
   server simply has nothing to sync with.

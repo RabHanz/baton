@@ -106,6 +106,12 @@ export const MemoryViewer = Context.Reference<"server" | "desktop" | "client">(
   { defaultValue: () => "client" },
 );
 
+/** The sync-only credential pulling, by session id; null for anyone else. Set by the transport like `MemoryViewer`. */
+export const SyncCredential = Context.Reference<string | null>(
+  "t3/baton/BatonMemoryService/SyncCredential",
+  { defaultValue: () => null },
+);
+
 export class BatonMemoryService extends Context.Service<
   BatonMemoryService,
   {
@@ -566,7 +572,10 @@ export const make = Effect.gen(function* () {
   const changesSince = Effect.fn("BatonMemoryService.changesSince")(function* (
     since: string | null,
   ) {
-    const from = since ?? "";
+    // A sync credential's first pull starts over: before it, pulls came through walls and skipped walled items.
+    const credential = yield* SyncCredential;
+    const fresh = credential !== null && (yield* noteOnce(`sync-credential:${credential}`, "1"));
+    const from = fresh ? "" : (since ?? "");
     // Paged by when this server got the change, not when its writer made it: a change relayed
     // from a third server can carry an older stamp than a cursor that has already passed.
     const rows = yield* sql<ItemRow & { readonly arrived: string }>`

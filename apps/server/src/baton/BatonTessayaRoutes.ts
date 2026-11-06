@@ -26,8 +26,9 @@ import {
   askSourceOf,
   memoryViewerOf,
   missingBatonScope,
+  syncCredentialOf,
 } from "./BatonRpcAuthorization.ts";
-import { MemoryViewer } from "./BatonMemoryService.ts";
+import { MemoryViewer, SyncCredential } from "./BatonMemoryService.ts";
 import * as FleetQuery from "./FleetQuery.ts";
 import { AskSource, BatonPhoneInbox } from "./BatonPhoneInbox.ts";
 import { createHandsBroker } from "@t3tools/baton-shared/remoteHands";
@@ -303,6 +304,7 @@ export const routes = HttpRouter.use((router) =>
         >
       ).pipe(
         Effect.provideService(MemoryViewer, memoryViewerOf(session.value)),
+        Effect.provideService(SyncCredential, syncCredentialOf(session.value)),
         Effect.flatMap(codec.encode),
         Effect.result,
       );

@@ -11,7 +11,12 @@ import * as TestClock from "effect/testing/TestClock";
 
 import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
 import * as ServerConfig from "../config.ts";
-import { BatonMemoryService, MemoryViewer, layer as memoryLayer } from "./BatonMemoryService.ts";
+import {
+  BatonMemoryService,
+  MemoryViewer,
+  SyncCredential,
+  layer as memoryLayer,
+} from "./BatonMemoryService.ts";
 
 const layer = it.layer(memoryLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)));
 const DAY = 86_400_000;
@@ -245,6 +250,15 @@ it.effect(
       const pulled = yield* asClient(memory.changesSince(null));
       assert.isFalse(shop(pulled.changes.map((c) => c.item)));
       assert.isTrue(shop((yield* memory.changesSince(null)).changes.map((c) => c.item)));
+      // A sync credential's first pull starts over, whatever cursor it sends; later pulls keep to the cursor.
+      const later = "2999-01-01T00:00:00.000Z";
+      const asSync = <A, E>(effect: Effect.Effect<A, E>) =>
+        effect.pipe(
+          Effect.provideService(MemoryViewer, "server"),
+          Effect.provideService(SyncCredential, "sync-1"),
+        );
+      assert.isTrue(shop((yield* asSync(memory.changesSince(later))).changes.map((c) => c.item)));
+      assert.lengthOf((yield* asSync(memory.changesSince(later))).changes, 0);
 
       // To a client a walled item does not exist: it neither merges into it, replaces it, nor changes it.
       const walled = (yield* memory.list({ admin: true })).find((i) => i.scopeRef === "shop")!;

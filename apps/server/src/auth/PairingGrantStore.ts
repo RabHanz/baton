@@ -1,6 +1,7 @@
 import {
   AuthBatonCloudApproveScope,
   AuthBatonHandsHostScope,
+  AuthBatonMemorySyncScope,
   AuthStandardClientScopes,
   type AuthEnvironmentScope,
   type AuthPairingLink,
@@ -257,6 +258,8 @@ const DESKTOP_SCOPES = [
   ...AuthStandardClientScopes,
   AuthBatonCloudApproveScope,
   AuthBatonHandsHostScope,
+  // So the desktop can hand out a sync-only credential for this server ("Pair for memory sync").
+  AuthBatonMemorySyncScope,
 ] as const;
 const DESKTOP_BOOTSTRAP_TTL_HOURS = Duration.hours(24);
 const DEV_STARTUP_TTL_HOURS = Duration.hours(24);

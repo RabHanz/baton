@@ -1579,6 +1579,7 @@ export const startScreenCompanion = (input: {
 
   /** One assistant (D143): one warm session, Baton's tools, the same gate on every call. */
   let agentMcp: BatonMcp | null = null;
+  let outsideMcp: BatonMcp | null = null;
   let lastShots: ReadonlyArray<ScreenShot> = [];
   const agentTaint = createTaint();
   /** The plan he approved this turn (plan_show): its steps run without a box each, and pastes keep its clipboard. */
@@ -2313,9 +2314,13 @@ export const startScreenCompanion = (input: {
       return "Noted.";
     },
   };
-  const agentStart = async (systemPrompt: string, chosen = leadBrain()): Promise<VisionSession> => {
-    await agentMcp?.close();
-    agentMcp = await startBatonMcp({
+  const agentStart = async (
+    systemPrompt: string,
+    chosen = leadBrain(),
+    slot: "his" | "outside" = "his",
+  ): Promise<VisionSession> => {
+    await (slot === "his" ? agentMcp : outsideMcp)?.close();
+    const mcp = await startBatonMcp({
       tools: withFailureGuard(buildBatonTools(toolHost), toolFailures),
       gate: agentGate,
       scrub: (text) => vaultHost?.scrub(text) ?? text,
@@ -2326,6 +2331,8 @@ export const startScreenCompanion = (input: {
         if (r.ok && text !== undefined) record.answers[r.tool] ??= text.slice(0, 2_000);
       },
     });
+    if (slot === "his") agentMcp = mcp;
+    else outsideMcp = mcp;
     return startVisionSession({
       claudeBinary: settings.claudeBinary,
       model: chosen.model,
@@ -2337,10 +2344,21 @@ export const startScreenCompanion = (input: {
       platform: input.platform,
       timeoutMs: OPERATOR_TURN_MS,
       gate: harnessGate,
-      mcp: { url: agentMcp.url, token: agentMcp.token },
+      mcp: { url: mcp.url, token: mcp.token },
       chrome: settings.browserChrome,
       onTool: (call) => turns.current().tools.push(call.tool),
     });
+  };
+  const beginTurn = (said: string, outside: boolean) => {
+    memory.beginTurn();
+    outsideTurn = outside;
+    agentTaint.reset(said);
+    planGrant = null;
+    keysAllowed = null;
+    turns.begin();
+    toolFailures.clear();
+    leftPointer = null;
+    mouse.reset();
   };
   const agentOf = (): AssistantAgent => {
     agent ??= createAssistantAgent({
@@ -2376,20 +2394,40 @@ export const startScreenCompanion = (input: {
           before === undefined ? "" : `he said: ${before.said}\nyou replied: ${before.reply}`,
         );
       },
-      beginTurn: (said, outside) => {
-        memory.beginTurn();
-        outsideTurn = outside;
-        agentTaint.reset(said);
-        planGrant = null;
-        keysAllowed = null;
-        turns.begin();
-        toolFailures.clear();
-        leftPointer = null;
-        mouse.reset();
-      },
+      beginTurn,
     });
     return agent;
   };
+  /**
+   * A device's or agent's ask gets a session of its own, started fresh each time: none of his conversation, presence,
+   * missed turns or standing memory, so "repeat what you told him" has nothing to repeat. It costs a cold start.
+   */
+  const outsideAgentOf = (): AssistantAgent => {
+    const file = NodePath.join(input.stateDir, "screen", "outside-turn.ndjson");
+    NodeFS.rmSync(file, { force: true });
+    return createAssistantAgent({
+      start: (systemPrompt, brain) => agentStart(systemPrompt, brain, "outside"),
+      conversation: createConversationLog({ file }),
+      clockLine: () => clockLine(new Date()),
+      notes: () => assistantFrame(readPack(NodePath.join(input.stateDir, PACK_FOLDER))),
+      recall: (text, project) => memory.forSentence(text, project),
+      beginTurn,
+    });
+  };
+  /** His sentence goes to his session; a device's to a fresh one, ended with the turn. */
+  const sayFor = (outside: boolean): AssistantAgent["say"] =>
+    outside
+      ? async (text, where, onDelta) => {
+          const once = outsideAgentOf();
+          try {
+            return await once.say(text, where, onDelta);
+          } finally {
+            once.dispose();
+            void outsideMcp?.close();
+            outsideMcp = null;
+          }
+        }
+      : agentOf().say;
   /** A sentence of his, to the one assistant. Streams its first sentence as soon as it is written. */
   const agentTurn = async (
     text: string,
@@ -2448,7 +2486,7 @@ export const startScreenCompanion = (input: {
       lastFace = face.name;
       // The pill says it is working; nothing is drawn over the window it may be acting in (CU-1).
       input.onActivity?.("Thinking");
-      const reply = await agentOf().say(
+      const reply = await sayFor(outside)(
         direct ? `(to the focused session) ${text}` : text,
         {
           outside,
@@ -3068,6 +3106,7 @@ export const startScreenCompanion = (input: {
       stopMemorySync?.();
       agent?.dispose();
       void agentMcp?.close();
+      void outsideMcp?.close();
       end();
       dropSpare();
       if (askKey !== null) Electron.globalShortcut.unregister(askKey);

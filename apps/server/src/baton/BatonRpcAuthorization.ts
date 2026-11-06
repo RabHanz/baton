@@ -10,6 +10,7 @@
 import {
   AuthBatonCloudApproveScope,
   AuthBatonHandsHostScope,
+  AuthBatonMemorySyncScope,
   AuthFilesystemReadScope,
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
@@ -39,7 +40,7 @@ import type * as RpcGroup from "effect/rpc/RpcGroup";
 
 import { OWN_PAIRING_SUBJECTS, type AuthenticatedSession } from "../auth/EnvironmentAuth.ts";
 import { rpcAuthorizationError } from "../auth/RpcAuthorization.ts";
-import { MemoryViewer } from "./BatonMemoryService.ts";
+import { MemoryViewer, SyncCredential } from "./BatonMemoryService.ts";
 import { AskSource } from "./BatonPhoneInbox.ts";
 
 type BatonRpcMethod = RpcGroup.Rpcs<typeof BatonRpcGroup>["_tag"];
@@ -116,12 +117,18 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_MEMORY_WS_METHODS.export]: AuthOrchestrationReadScope,
   // Reads files from any folder on this machine and writes memory: both permissions, or a narrowed
   // pairing reads what upstream's filesystem:read keeps from it.
-  [BATON_MEMORY_WS_METHODS.import]: [AuthOrchestrationOperateScope, AuthFilesystemReadScope],
+  // Reads any folder on this machine into memory: the desktop app only.
+  [BATON_MEMORY_WS_METHODS.import]: [
+    AuthOrchestrationOperateScope,
+    AuthFilesystemReadScope,
+    AuthBatonHandsHostScope,
+  ],
   // Runs the history script on this machine and writes held proposals.
   [BATON_MEMORY_WS_METHODS.pull]: AuthOrchestrationOperateScope,
-  [BATON_MEMORY_WS_METHODS.syncHello]: AuthOrchestrationReadScope,
-  [BATON_MEMORY_WS_METHODS.syncPull]: AuthOrchestrationReadScope,
-  [BATON_MEMORY_WS_METHODS.syncPush]: AuthOrchestrationOperateScope,
+  // Sync carries every item, walled or not, and overwrites or deletes them: a sync-only credential or the desktop app.
+  [BATON_MEMORY_WS_METHODS.syncHello]: AuthBatonMemorySyncScope,
+  [BATON_MEMORY_WS_METHODS.syncPull]: AuthBatonMemorySyncScope,
+  [BATON_MEMORY_WS_METHODS.syncPush]: AuthBatonMemorySyncScope,
   [BATON_MEMORY_WS_METHODS.add]: AuthOrchestrationOperateScope,
   [BATON_MEMORY_WS_METHODS.edit]: AuthOrchestrationOperateScope,
   [BATON_MEMORY_WS_METHODS.pin]: AuthOrchestrationOperateScope,
@@ -164,6 +171,12 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   Record<BatonRpcMethod, AuthEnvironmentScope | ReadonlyArray<AuthEnvironmentScope>>
 >;
 
+const SYNC_METHODS: ReadonlySet<string> = new Set([
+  BATON_MEMORY_WS_METHODS.syncHello,
+  BATON_MEMORY_WS_METHODS.syncPull,
+  BATON_MEMORY_WS_METHODS.syncPush,
+]);
+
 /** What the desktop may call while T3's window is closed: jobs it does not have to place, the watch, the Record, rules (standing jobs) and memory. */
 export const DESK_METHODS: ReadonlySet<string> = new Set([
   BATON_ORCHESTRATION_WS_METHODS.ruleList,
@@ -180,6 +193,8 @@ export const DESK_METHODS: ReadonlySet<string> = new Set([
   BATON_WATCH_WS_METHODS.watchGet,
   BATON_RECORD_WS_METHODS.list,
   BATON_RECORD_WS_METHODS.append,
+  // Another server's sync over plain HTTPS, with its sync-only credential.
+  ...SYNC_METHODS,
   ...(
     [
       "list",
@@ -213,6 +228,7 @@ export const missingBatonScope = (
     >
   )[tag];
   if (required === undefined) return AuthOrchestrationOperateScope;
+  if (SYNC_METHODS.has(tag) && scopes.includes(AuthBatonHandsHostScope)) return null;
   const all: ReadonlyArray<AuthEnvironmentScope> =
     typeof required === "string" ? [required] : required;
   const fields = typeof payload === "object" && payload !== null ? payload : {};
@@ -229,7 +245,15 @@ export const missingBatonScope = (
 
 /** Only the desktop app's own session sees walled memory or names a persona; no grant can give hands-host. */
 export const memoryViewerOf = (session: Pick<AuthenticatedSession, "scopes">) =>
-  session.scopes.includes(AuthBatonHandsHostScope) ? ("desktop" as const) : ("client" as const);
+  session.scopes.includes(AuthBatonHandsHostScope)
+    ? ("desktop" as const)
+    : session.scopes.includes(AuthBatonMemorySyncScope)
+      ? ("server" as const)
+      : ("client" as const);
+
+/** A sync-only credential's session, so its first pull starts from the beginning (`SyncCredential`). */
+export const syncCredentialOf = (session: Pick<AuthenticatedSession, "scopes" | "sessionId">) =>
+  session.scopes.includes(AuthBatonMemorySyncScope) ? String(session.sessionId) : null;
 
 /**
  * Whose words an ask carries: his own from a browser he paired (the phone page, the web app) or the desktop app's own
@@ -244,13 +268,16 @@ export const askSourceOf = (
     ? ("phone" as const)
     : ("device" as const);
 
-export const layer = (session: Pick<AuthenticatedSession, "method" | "scopes" | "subject">) =>
+export const layer = (
+  session: Pick<AuthenticatedSession, "method" | "scopes" | "subject" | "sessionId">,
+) =>
   Layer.succeed(BatonRpcScopeAuthorization)((effect, { rpc, payload }) => {
     const missing = missingBatonScope(rpc._tag, session.scopes, payload);
     return missing === null
       ? effect.pipe(
           Effect.provideService(AskSource, askSourceOf(session)),
           Effect.provideService(MemoryViewer, memoryViewerOf(session)),
+          Effect.provideService(SyncCredential, syncCredentialOf(session)),
         )
       : Effect.fail(rpcAuthorizationError(missing));
   });

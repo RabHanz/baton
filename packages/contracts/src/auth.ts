@@ -60,6 +60,11 @@ export const AuthBatonCloudApproveScope = "baton:cloud-approve" as const;
 export const AuthBatonHandsScope = "baton:hands" as const;
 /** The desktop app's own session takes the remote calls and answers them; no client holds it. */
 export const AuthBatonHandsHostScope = "baton:hands-host" as const;
+/**
+ * Tessaya memory sync with another of the Director's servers, walls included. A credential holding it holds nothing
+ * else (`AuthGrantScopes`), so it can sync and do nothing more; it is minted on the server it reads.
+ */
+export const AuthBatonMemorySyncScope = "baton:memory-sync" as const;
 export const AuthEnvironmentScope = Schema.Literals([
   AuthOrchestrationReadScope,
   AuthOrchestrationOperateScope,
@@ -81,6 +86,7 @@ export const AuthEnvironmentScope = Schema.Literals([
   AuthBatonCloudApproveScope,
   AuthBatonHandsScope,
   AuthBatonHandsHostScope,
+  AuthBatonMemorySyncScope,
 ]);
 export type AuthEnvironmentScope = typeof AuthEnvironmentScope.Type;
 export const AuthEnvironmentScopes = Schema.Array(AuthEnvironmentScope);
@@ -93,7 +99,14 @@ export const AuthGrantScope = Schema.Literals(
   ),
 );
 export type AuthGrantScope = typeof AuthGrantScope.Type;
-export const AuthGrantScopes = Schema.Array(AuthGrantScope);
+/** A memory-sync credential carries that scope alone: it must never double as a client token. */
+export const mixesMemorySync = (scopes: ReadonlyArray<string>): boolean =>
+  scopes.includes(AuthBatonMemorySyncScope) && scopes.length > 1;
+export const AuthGrantScopes = Schema.Array(AuthGrantScope).check(
+  Schema.makeFilter(
+    (scopes) => !mixesMemorySync(scopes) || `${AuthBatonMemorySyncScope} goes alone`,
+  ),
+);
 export type AuthGrantScopes = typeof AuthGrantScopes.Type;
 
 const legacyScopes = new Set<AuthEnvironmentScope>([
@@ -136,6 +149,7 @@ const denialFallbacks: Partial<Record<AuthEnvironmentScope, AuthEnvironmentScope
   [AuthBatonCloudApproveScope]: AuthOrchestrationOperateScope,
   [AuthBatonHandsScope]: AuthOrchestrationOperateScope,
   [AuthBatonHandsHostScope]: AuthOrchestrationOperateScope,
+  [AuthBatonMemorySyncScope]: AuthOrchestrationOperateScope,
 };
 
 /** Keep permission denials decodable by clients with the original scope enum. */

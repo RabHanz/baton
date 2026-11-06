@@ -28,17 +28,18 @@ index baa7f388f2bd4958aa179cc0984920b2e266df22..b5cbbecca0e2126d1c552115b3850856
      }).pipe(
        Effect.provide(
 diff --git a/apps/server/src/auth/PairingGrantStore.ts b/apps/server/src/auth/PairingGrantStore.ts
-index add1c7990f13c7d123ed0975004a8f24dfaac596..4ade8ccb7aca59fea03bc06d3efefb683d24f4e2 100644
+index add1c7990f13c7d123ed0975004a8f24dfaac596..362cbd2deaece592488ab0e4728da2545233bf4f 100644
 --- a/apps/server/src/auth/PairingGrantStore.ts
 +++ b/apps/server/src/auth/PairingGrantStore.ts
-@@ -1,4 +1,6 @@
+@@ -1,4 +1,7 @@
  import {
 +  AuthBatonCloudApproveScope,
 +  AuthBatonHandsHostScope,
++  AuthBatonMemorySyncScope,
    AuthStandardClientScopes,
    type AuthEnvironmentScope,
    type AuthPairingLink,
-@@ -250,6 +252,12 @@ type ConsumeResult =
+@@ -250,6 +253,14 @@ type ConsumeResult =
      };
  
  const DEFAULT_ONE_TIME_TOKEN_TTL_MINUTES = Duration.minutes(5);
@@ -47,11 +48,13 @@ index add1c7990f13c7d123ed0975004a8f24dfaac596..4ade8ccb7aca59fea03bc06d3efefb68
 +  ...AuthStandardClientScopes,
 +  AuthBatonCloudApproveScope,
 +  AuthBatonHandsHostScope,
++  // So the desktop can hand out a sync-only credential for this server ("Pair for memory sync").
++  AuthBatonMemorySyncScope,
 +] as const;
  const DESKTOP_BOOTSTRAP_TTL_HOURS = Duration.hours(24);
  const DEV_STARTUP_TTL_HOURS = Duration.hours(24);
  const PAIRING_TOKEN_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
-@@ -325,7 +333,7 @@ const make = Effect.gen(function* () {
+@@ -325,7 +336,7 @@ const make = Effect.gen(function* () {
      const now = yield* DateTime.now;
      yield* seedGrant(config.desktopBootstrapToken, {
        method: "desktop-bootstrap",
@@ -60,7 +63,7 @@ index add1c7990f13c7d123ed0975004a8f24dfaac596..4ade8ccb7aca59fea03bc06d3efefb68
        subject: "desktop-bootstrap",
        expiresAt: DateTime.add(now, {
          milliseconds: Duration.toMillis(DESKTOP_BOOTSTRAP_TTL_HOURS),
-@@ -446,7 +454,7 @@ const make = Effect.gen(function* () {
+@@ -446,7 +457,7 @@ const make = Effect.gen(function* () {
        if (yield* consumeRotatingDesktopToken(credential, now.epochMilliseconds)) {
          return {
            method: "desktop-bootstrap",
@@ -69,6 +72,25 @@ index add1c7990f13c7d123ed0975004a8f24dfaac596..4ade8ccb7aca59fea03bc06d3efefb68
            subject: "desktop-bootstrap",
            expiresAt: DateTime.add(now, {
              milliseconds: DESKTOP_BOOTSTRAP_TOKEN_WINDOW_MS,
+diff --git a/apps/server/src/cli/authScopes.ts b/apps/server/src/cli/authScopes.ts
+index 9294cc1a12ba7b4f84940632177d42110fc3231c..276734a1922edf023385541da4f4d30dfdf1147a 100644
+--- a/apps/server/src/cli/authScopes.ts
++++ b/apps/server/src/cli/authScopes.ts
+@@ -1,4 +1,4 @@
+-import { AuthGrantScope } from "@t3tools/contracts";
++import { AuthBatonMemorySyncScope, AuthGrantScope, mixesMemorySync } from "@t3tools/contracts";
+ import { Flag } from "effect/cli";
+ 
+ export const authScopesFlag = (defaults: ReadonlyArray<AuthGrantScope>) =>
+@@ -8,4 +8,8 @@ export const authScopesFlag = (defaults: ReadonlyArray<AuthGrantScope>) =>
+     ),
+     Flag.atLeast(0),
+     Flag.map((scopes) => [...new Set(scopes.length > 0 ? scopes : defaults)]),
++    Flag.filter(
++      (scopes) => !mixesMemorySync(scopes),
++      () => `${AuthBatonMemorySyncScope} is a sync-only credential: give it alone.`,
++    ),
+   );
 diff --git a/packages/contracts/src/auth.test.ts b/packages/contracts/src/auth.test.ts
 index d18a827c14228c32d19c9fbef9511422fc1e706f..f349a56a9a1572dc64ecf56fa0136c029c4649b1 100644
 --- a/packages/contracts/src/auth.test.ts
@@ -130,10 +152,10 @@ index d18a827c14228c32d19c9fbef9511422fc1e706f..f349a56a9a1572dc64ecf56fa0136c02
      const response = authScopeResponse(AuthStandardClientScopes);
      expect(decodeOldScopes(response.scopes)).toEqual(response.scopes);
 diff --git a/packages/contracts/src/auth.ts b/packages/contracts/src/auth.ts
-index 555fa7e90b268550d27fbf2a447be89f4be8fc4b..31548ffaea76bf1390492e38d79f901fb53f8433 100644
+index 555fa7e90b268550d27fbf2a447be89f4be8fc4b..bef4a952ea97fe1badb8fe3e5088b18c9b32c284 100644
 --- a/packages/contracts/src/auth.ts
 +++ b/packages/contracts/src/auth.ts
-@@ -46,6 +46,20 @@ export const AuthAccessReadScope = "access:read" as const;
+@@ -46,6 +46,25 @@ export const AuthAccessReadScope = "access:read" as const;
  export const AuthAccessWriteScope = "access:write" as const;
  export const AuthRelayReadScope = "relay:read" as const;
  export const AuthRelayWriteScope = "relay:write" as const;
@@ -151,16 +173,22 @@ index 555fa7e90b268550d27fbf2a447be89f4be8fc4b..31548ffaea76bf1390492e38d79f901f
 +export const AuthBatonHandsScope = "baton:hands" as const;
 +/** The desktop app's own session takes the remote calls and answers them; no client holds it. */
 +export const AuthBatonHandsHostScope = "baton:hands-host" as const;
++/**
++ * Tessaya memory sync with another of the Director's servers, walls included. A credential holding it holds nothing
++ * else (`AuthGrantScopes`), so it can sync and do nothing more; it is minted on the server it reads.
++ */
++export const AuthBatonMemorySyncScope = "baton:memory-sync" as const;
  export const AuthEnvironmentScope = Schema.Literals([
    AuthOrchestrationReadScope,
    AuthOrchestrationOperateScope,
-@@ -64,13 +78,19 @@ export const AuthEnvironmentScope = Schema.Literals([
+@@ -64,16 +83,30 @@ export const AuthEnvironmentScope = Schema.Literals([
    AuthAccessWriteScope,
    AuthRelayReadScope,
    AuthRelayWriteScope,
 +  AuthBatonCloudApproveScope,
 +  AuthBatonHandsScope,
 +  AuthBatonHandsHostScope,
++  AuthBatonMemorySyncScope,
  ]);
  export type AuthEnvironmentScope = typeof AuthEnvironmentScope.Type;
  export const AuthEnvironmentScopes = Schema.Array(AuthEnvironmentScope);
@@ -174,8 +202,19 @@ index 555fa7e90b268550d27fbf2a447be89f4be8fc4b..31548ffaea76bf1390492e38d79f901f
 +  ),
  );
  export type AuthGrantScope = typeof AuthGrantScope.Type;
- export const AuthGrantScopes = Schema.Array(AuthGrantScope);
-@@ -109,10 +129,19 @@ const legacyParents: Partial<Record<AuthEnvironmentScope, AuthEnvironmentScope>>
+-export const AuthGrantScopes = Schema.Array(AuthGrantScope);
++/** A memory-sync credential carries that scope alone: it must never double as a client token. */
++export const mixesMemorySync = (scopes: ReadonlyArray<string>): boolean =>
++  scopes.includes(AuthBatonMemorySyncScope) && scopes.length > 1;
++export const AuthGrantScopes = Schema.Array(AuthGrantScope).check(
++  Schema.makeFilter(
++    (scopes) => !mixesMemorySync(scopes) || `${AuthBatonMemorySyncScope} goes alone`,
++  ),
++);
+ export type AuthGrantScopes = typeof AuthGrantScopes.Type;
+ 
+ const legacyScopes = new Set<AuthEnvironmentScope>([
+@@ -109,10 +142,20 @@ const legacyParents: Partial<Record<AuthEnvironmentScope, AuthEnvironmentScope>>
    [AuthTerminalReadScope]: AuthTerminalOperateScope,
  };
  
@@ -186,6 +225,7 @@ index 555fa7e90b268550d27fbf2a447be89f4be8fc4b..31548ffaea76bf1390492e38d79f901f
 +  [AuthBatonCloudApproveScope]: AuthOrchestrationOperateScope,
 +  [AuthBatonHandsScope]: AuthOrchestrationOperateScope,
 +  [AuthBatonHandsHostScope]: AuthOrchestrationOperateScope,
++  [AuthBatonMemorySyncScope]: AuthOrchestrationOperateScope,
 +};
 +
  /** Keep permission denials decodable by clients with the original scope enum. */

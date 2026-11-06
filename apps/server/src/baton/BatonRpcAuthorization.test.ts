@@ -1,6 +1,7 @@
 import {
   AuthBatonCloudApproveScope,
   AuthBatonHandsHostScope,
+  AuthBatonMemorySyncScope,
   AuthFilesystemReadScope,
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
@@ -11,6 +12,7 @@ import {
   BATON_PHONE_WS_METHODS,
   BATON_RECORD_WS_METHODS,
   BatonRecordAppendInput,
+  AuthGrantScopes,
   BatonRpcScopeAuthorization,
 } from "@t3tools/baton-contracts";
 import * as Effect from "effect/Effect";
@@ -55,7 +57,7 @@ describe("who may use cloud tasks on a hub", () => {
 });
 
 describe("who may import memory from a folder", () => {
-  it("needs the filesystem read permission as well as operate, since it reads any folder on the machine", () => {
+  it("needs the desktop app's own session, operate and filesystem read, since it reads any folder on the machine", () => {
     const narrowed = [AuthOrchestrationReadScope, AuthOrchestrationOperateScope] as const;
     expect(missingBatonScope(BATON_MEMORY_WS_METHODS.import, narrowed)).toBe(
       AuthFilesystemReadScope,
@@ -63,7 +65,15 @@ describe("who may import memory from a folder", () => {
     expect(missingBatonScope(BATON_MEMORY_WS_METHODS.import, [AuthFilesystemReadScope])).toBe(
       AuthOrchestrationOperateScope,
     );
-    expect(missingBatonScope(BATON_MEMORY_WS_METHODS.import, AuthStandardClientScopes)).toBeNull();
+    expect(missingBatonScope(BATON_MEMORY_WS_METHODS.import, AuthStandardClientScopes)).toBe(
+      AuthBatonHandsHostScope,
+    );
+    expect(
+      missingBatonScope(BATON_MEMORY_WS_METHODS.import, [
+        ...AuthStandardClientScopes,
+        AuthBatonHandsHostScope,
+      ]),
+    ).toBeNull();
     expect(missingBatonScope(BATON_MEMORY_WS_METHODS.list, narrowed)).toBeNull();
   });
 
@@ -196,6 +206,7 @@ describe("what Baton's middleware tells the handlers", () => {
         yield* told({
           method: "bearer-access-token",
           subject: "x",
+          sessionId: "s1" as never,
           scopes: AuthStandardClientScopes,
         }),
       ).toEqual(["client", "device"]);
@@ -203,9 +214,41 @@ describe("what Baton's middleware tells the handlers", () => {
         yield* told({
           method: "bearer-access-token",
           subject: "desktop-bootstrap",
+          sessionId: "s2" as never,
           scopes: [...AuthStandardClientScopes, AuthBatonHandsHostScope],
         }),
       ).toEqual(["desktop", "phone"]);
     }),
   );
+});
+
+const decodeGrantScopes = Schema.decodeUnknownOption(AuthGrantScopes);
+
+describe("a memory-sync credential", () => {
+  const sync = [
+    BATON_MEMORY_WS_METHODS.syncHello,
+    BATON_MEMORY_WS_METHODS.syncPull,
+    BATON_MEMORY_WS_METHODS.syncPush,
+  ];
+
+  it("syncs, and only it or the desktop app may; it can call nothing else", () => {
+    for (const tag of sync) {
+      expect(missingBatonScope(tag, AuthStandardClientScopes)).toBe(AuthBatonMemorySyncScope);
+      expect(missingBatonScope(tag, [AuthBatonMemorySyncScope])).toBeNull();
+      expect(missingBatonScope(tag, [AuthBatonHandsHostScope])).toBeNull();
+    }
+    for (const tag of Object.keys(BATON_RPC_REQUIRED_SCOPES)) {
+      if (sync.includes(tag as never)) continue;
+      expect(missingBatonScope(tag, [AuthBatonMemorySyncScope]), tag).not.toBeNull();
+    }
+    expect(memoryViewerOf({ scopes: [AuthBatonMemorySyncScope] })).toBe("server");
+  });
+
+  it("is issued alone: a grant that mixes it with anything else is refused", () => {
+    expect(decodeGrantScopes([AuthBatonMemorySyncScope])._tag).toBe("Some");
+    expect(decodeGrantScopes([AuthBatonMemorySyncScope, AuthOrchestrationReadScope])._tag).toBe(
+      "None",
+    );
+    expect(decodeGrantScopes(AuthStandardClientScopes)._tag).toBe("Some");
+  });
 });

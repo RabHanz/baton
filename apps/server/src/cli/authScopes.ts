@@ -1,4 +1,4 @@
-import { AuthGrantScope } from "@t3tools/contracts";
+import { AuthBatonMemorySyncScope, AuthGrantScope, mixesMemorySync } from "@t3tools/contracts";
 import { Flag } from "effect/cli";
 
 export const authScopesFlag = (defaults: ReadonlyArray<AuthGrantScope>) =>
@@ -8,4 +8,8 @@ export const authScopesFlag = (defaults: ReadonlyArray<AuthGrantScope>) =>
     ),
     Flag.atLeast(0),
     Flag.map((scopes) => [...new Set(scopes.length > 0 ? scopes : defaults)]),
+    Flag.filter(
+      (scopes) => !mixesMemorySync(scopes),
+      () => `${AuthBatonMemorySyncScope} is a sync-only credential: give it alone.`,
+    ),
   );
