@@ -18,9 +18,35 @@ import { isBackgroundRun, parseHistoryHits, readTranscriptHead } from "./Session
 
 const HEAD_BYTES = 48 * 1024;
 
-const scanTranscripts = (limit: number): ReadonlyArray<TranscriptInfo> => {
-  const found: Array<{ file: string; id: string; mtime: number; account: string | null }> = [];
-  for (const dir of claudeConfigDirs()) {
+interface ScanFolder {
+  readonly mtime: number;
+  readonly account: string | null;
+  /** Transcript file name -> its mtime when last looked at. */
+  readonly files: ReadonlyMap<string, number>;
+}
+export interface TranscriptScan {
+  readonly at: number;
+  readonly folders: ReadonlyMap<string, ScanFolder>;
+}
+
+const FULL_SCAN_MS = 10 * 60_000;
+const ACTIVE_MS = 24 * 60 * 60_000;
+
+/**
+ * Every transcript's mtime without stat'ing them all each time (a box holds 130,000; a full pass blocks the event
+ * loop for seconds). A project folder is listed again only when its own mtime moved (a file came or went), and a file
+ * is looked at again only when it was written in the last day or its session runs now. Everything every 10 minutes.
+ * shortcut: a day-old transcript written to by a session that has since ended is seen at the next full pass, not sooner.
+ */
+export const scanTranscriptTimes = (
+  configDirs: ReadonlyArray<string>,
+  liveIds: ReadonlySet<string>,
+  before: TranscriptScan | null,
+  now: number,
+): TranscriptScan => {
+  const full = before === null || now - before.at >= FULL_SCAN_MS;
+  const folders = new Map<string, ScanFolder>();
+  for (const dir of configDirs) {
     const root = NodePath.join(dir, "projects");
     let slugs: string[] = [];
     try {
@@ -30,24 +56,53 @@ const scanTranscripts = (limit: number): ReadonlyArray<TranscriptInfo> => {
     }
     const account = accountOfConfigDir(dir);
     for (const slug of slugs) {
-      let names: string[] = [];
+      const folder = NodePath.join(root, slug);
+      let mtime: number;
       try {
-        names = NodeFS.readdirSync(NodePath.join(root, slug)).filter((n) =>
-          /^[0-9a-f-]{36}\.jsonl$/i.test(n),
-        );
+        mtime = NodeFS.statSync(folder).mtimeMs;
       } catch {
         continue;
       }
-      for (const n of names) {
-        const file = NodePath.join(root, slug, n);
+      const prior = full ? undefined : before.folders.get(folder);
+      let names: ReadonlyArray<string>;
+      if (prior !== undefined && prior.mtime === mtime) names = [...prior.files.keys()];
+      else {
         try {
-          found.push({ file, id: n.slice(0, -6), mtime: NodeFS.statSync(file).mtimeMs, account });
+          names = NodeFS.readdirSync(folder).filter((n) => /^[0-9a-f-]{36}\.jsonl$/i.test(n));
+        } catch {
+          continue;
+        }
+      }
+      const files = new Map<string, number>();
+      for (const name of names) {
+        const seen = prior?.files.get(name);
+        if (seen !== undefined && now - seen > ACTIVE_MS && !liveIds.has(name.slice(0, -6))) {
+          files.set(name, seen);
+          continue;
+        }
+        try {
+          files.set(name, NodeFS.statSync(NodePath.join(folder, name)).mtimeMs);
         } catch {
           // gone between listing and reading
         }
       }
+      folders.set(folder, { mtime, account, files });
     }
   }
+  return { at: full ? now : before.at, folders };
+};
+
+let scanned: TranscriptScan | null = null;
+
+const scanTranscripts = (
+  limit: number,
+  liveIds: ReadonlySet<string>,
+): ReadonlyArray<TranscriptInfo> => {
+  scanned = scanTranscriptTimes(claudeConfigDirs(), liveIds, scanned, Date.now());
+  const found: Array<{ file: string; id: string; mtime: number; account: string | null }> = [];
+  for (const [folder, { account, files }] of scanned.folders)
+    for (const [name, mtime] of files)
+      found.push({ file: NodePath.join(folder, name), id: name.slice(0, -6), mtime, account });
   const out: TranscriptInfo[] = [];
   const seen = new Set<string>();
   for (const f of found.toSorted((a, b) => b.mtime - a.mtime)) {
@@ -89,7 +144,8 @@ export const realCatalogPorts = (type: CatalogPorts["type"]): CatalogPorts => ({
     const now = Date.now();
     if (cached !== null && now - cached.at < 15_000 && cached.limit >= limit)
       return cached.rows.slice(0, limit);
-    const rows = scanTranscripts(Math.max(limit, 600));
+    const live = await Effect.runPromise(readAllProfileLiveSessions());
+    const rows = scanTranscripts(Math.max(limit, 600), new Set(live.map((s) => s.sessionId)));
     cached = { at: now, limit: Math.max(limit, 600), rows };
     return rows.slice(0, limit);
   },
