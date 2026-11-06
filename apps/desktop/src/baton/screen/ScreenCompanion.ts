@@ -457,7 +457,7 @@ export interface ScreenCompanion {
   /** He has woken Baton: starts the sessions a turn will need, which costs no quota. */
   readonly warm: () => void;
   /** A turn or dictation began from this wake word: its persona answers from here, in its own voice. */
-  readonly addressed: (wake: string) => void;
+  readonly addressed: (wake: string | null) => void;
   readonly openAskBox: () => void;
   /** The phone's words, run as a typed ask; the short reply and the card text come back instead of only being shown. */
   readonly askFromPhone: (
