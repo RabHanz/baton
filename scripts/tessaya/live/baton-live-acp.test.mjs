@@ -9,7 +9,6 @@ import * as NodeTest from "node:test";
 import * as NodeURL from "node:url";
 
 import {
-  soleCandidate,
   isAdoptRequest,
   isAnswerInTerminal,
   screenTail,
@@ -302,6 +301,17 @@ NodeTest.test(
         .map((line) => JSON.parse(line))
         .find((entry) => entry.sessionId === lone);
       NodeAssert.match(kept.text, /^He attached image image-.*\n@.*\/other\/\.baton\/inbox\//);
+      // A lost binding with exactly one running session in the folder is held and offers Reattach, never sent there.
+      const near = (await call(9, "session/new", { cwd, mcpServers: [] })).result.sessionId;
+      await call(10, "session/prompt", {
+        sessionId: near,
+        prompt: [{ type: "text", text: "say BETA" }],
+      });
+      NodeAssert.doesNotMatch(NodeFS.readFileSync(log, "utf8"), /BETA/);
+      NodeAssert.match(
+        NodeFS.readFileSync(NodePath.join(dir, "queue", "unbound-messages.ndjson"), "utf8"),
+        new RegExp(`"sessionId":"${near}".*"text":"say BETA"`),
+      );
     } finally {
       child.kill();
       NodeFS.rmSync(dir, { recursive: true, force: true });
@@ -677,15 +687,6 @@ NodeTest.test("'resume' on its own is a request to bring it back, not a message 
     NodeAssert.equal(isResumeRequest(no), false, no);
   NodeAssert.match(resumeFailedNote("The folder is gone.", "hi"), /Your message is kept: "hi"\./);
 });
-
-NodeTest.test(
-  "a lost binding delivers only to exactly one running session in the folder, never a guess",
-  () => {
-    NodeAssert.equal(soleCandidate(["a"]), "a");
-    NodeAssert.equal(soleCandidate([]), null);
-    NodeAssert.equal(soleCandidate(["a", "b"]), null);
-  },
-);
 
 NodeTest.test(
   "a tabbed multi-question form (CI account / Merge 4416 / Submit) is read as a card with its tabs",

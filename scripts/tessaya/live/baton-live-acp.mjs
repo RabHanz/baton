@@ -467,39 +467,6 @@ export function findLiveSession(sessionId) {
   return null;
 }
 
-/** The one session to deliver to when a thread's session was lost: exactly one candidate, else null (never a guess). */
-export function soleCandidate(candidates) {
-  return candidates.length === 1 ? candidates[0] : null;
-}
-
-/** Running Herdr sessions in a folder. */
-function liveSessionsAt(cwd) {
-  const found = [];
-  for (const dir of sessionsDirs()) {
-    let names = [];
-    try {
-      names = NodeFS.readdirSync(dir).filter((name) => /^\d+\.json$/.test(name));
-    } catch {
-      continue;
-    }
-    for (const name of names) {
-      try {
-        const d = JSON.parse(NodeFS.readFileSync(NodePath.join(dir, name), "utf8"));
-        if (
-          d?.cwd === cwd &&
-          d.kind === "interactive" &&
-          typeof d.pid === "number" &&
-          alive(d.pid)
-        ) {
-          const live = findLiveSession(d.sessionId);
-          if (live?.pane) found.push(d.sessionId);
-        }
-      } catch {}
-    }
-  }
-  return found;
-}
-
 function findIn(sessionId, dir) {
   let names = [];
   try {
@@ -1017,13 +984,12 @@ function composeForSession(blocks, cwd) {
 
 const write = (message) =>
   process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);
-const aliases = new Map(); // a real Claude session id -> the ACP session id T3 knows it by
 const newSessionCwd = new Map(); // an unbound ACP session id -> the folder T3 asked for
 const say = (sessionId, text) =>
   write({
     method: "session/update",
     params: {
-      sessionId: aliases.get(sessionId) ?? sessionId,
+      sessionId,
       update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text } },
     },
   });
@@ -1041,34 +1007,27 @@ export const keptEntry = (params, folder, words) => ({
 const turns = new Map(); // sessionId -> { cancelled: boolean, pane: string | null }
 
 async function prompt(params) {
-  let sessionId = params.sessionId;
+  const sessionId = params.sessionId;
   if (typeof sessionId === "string" && sessionId.startsWith(UNBOUND)) {
-    // Unbound, but a running Herdr session in the thread's own folder, and only one: deliver to it.
+    // Unbound: never guessed, even with one session running in the folder. Kept beside the queues and shown here,
+    // so Reattach (which asks first) binds the thread and Retry sends it. Attachments go to the folder's inbox.
     const folder = newSessionCwd.get(sessionId);
-    const only = folder === undefined ? null : soleCandidate(liveSessionsAt(folder));
-    if (only !== null) {
-      aliases.set(only, sessionId);
-      sessionId = only;
-    } else {
-      // Kept, never dropped: written beside the queues and shown here with the words, so it can be sent again.
-      // With the thread's folder known, attachments are saved to its inbox and kept as @refs, not lost.
-      const words =
-        folder === undefined
-          ? promptText(params.prompt).trim()
-          : composeForSession(params.prompt, folder);
-      try {
-        NodeFS.mkdirSync(QUEUE_DIR, { recursive: true });
-        NodeFS.appendFileSync(
-          NodePath.join(QUEUE_DIR, "unbound-messages.ndjson"),
-          `${JSON.stringify(keptEntry(params, folder, words))}\n`,
-        );
-      } catch {}
-      say(
-        params.sessionId,
-        `This thread is not bound to a running Claude Code session, so nothing was delivered. Your message was kept: "${words}". Send it again after reopening the session.`,
+    const words =
+      folder === undefined
+        ? promptText(params.prompt).trim()
+        : composeForSession(params.prompt, folder);
+    try {
+      NodeFS.mkdirSync(QUEUE_DIR, { recursive: true });
+      NodeFS.appendFileSync(
+        NodePath.join(QUEUE_DIR, "unbound-messages.ndjson"),
+        `${JSON.stringify(keptEntry(params, folder, words))}\n`,
       );
-      return { stopReason: "end_turn" };
-    }
+    } catch {}
+    say(
+      sessionId,
+      `This thread is not bound to a running Claude Code session, so nothing was delivered. Your message was kept: "${words}". Reattach the thread to its session, then Retry the kept message.`,
+    );
+    return { stopReason: "end_turn" };
   }
   if (typeof sessionId !== "string") {
     say(params.sessionId, "This thread is not bound to a running Claude Code session.");
