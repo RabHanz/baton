@@ -11,7 +11,12 @@ import * as NodePath from "node:path";
 import * as NodeUtil from "node:util";
 
 import { replayTurn } from "../../apps/desktop/src/baton/agent/replay.ts";
-import { DEFAULT_OS_PACK, modelOf, personaFor } from "../../packages/baton-shared/src/osPack.ts";
+import {
+  assistantFrame,
+  DEFAULT_OS_PACK,
+  modelOf,
+  personaFor,
+} from "../../packages/baton-shared/src/osPack.ts";
 import { assistantCases, type AssistantCase } from "./cases.ts";
 import { casePasses, firstTool, type Sample } from "./grade.ts";
 
@@ -53,8 +58,17 @@ const sample = async (c: AssistantCase): Promise<Sample> => {
       session: null,
       ...(face === undefined
         ? {}
-        : { persona: { name: face.name, role: face.role, introduce: !face.lead } }),
+        : {
+            persona: {
+              name: face.name,
+              role: face.role,
+              introduce: !face.lead,
+              ...(face.lead ? {} : { lead: "Tessaya" }),
+            },
+          }),
     },
+    // As a live session gets it: the pack's frame names the specialists.
+    notes: assistantFrame(DEFAULT_OS_PACK),
     ...(c.answers === undefined ? {} : { answers: c.answers }),
     ...(extra === undefined ? {} : { extra }),
     env: process.env,
@@ -77,7 +91,7 @@ for (const c of cases) {
   const ms: number[] = [];
   for (let i = 0; i < samples; i += 1) {
     const started = Date.now();
-    runs.push(await sample(c).catch(() => ({ calls: ["error"], reply: "" })));
+    runs.push(await sample(c).catch(() => ({ calls: ["error"], inputs: [], reply: "" })));
     ms.push(Date.now() - started);
   }
   const row = {

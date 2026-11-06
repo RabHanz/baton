@@ -912,6 +912,7 @@ export const startScreenCompanion = (input: {
     modelOf(readPack(NodePath.join(input.stateDir, PACK_FOLDER)), "executive");
   /** Whose name the last answer carried, so a change of persona says its name. */
   let lastFace = face.name;
+  let leadName = face.name;
   let woke: string | null = null;
   /** Quick and System are his choice for the whole machine; otherwise each persona speaks in its own voice. */
   const voiceNow = (): PocketVoice | "system" =>
@@ -1139,7 +1140,7 @@ export const startScreenCompanion = (input: {
     const judged = decideTrust({
       call,
       context: { actWithoutAsking: settings.actWithoutAsking, tainted },
-      agent: { name: face.name, tools: face.tools },
+      agent: face,
     });
     const action = describeToolCall(call);
     const record = (outcome: string) =>
@@ -1666,7 +1667,7 @@ export const startScreenCompanion = (input: {
         p.noOnExpiry,
       )) === 0,
     inPlan: () => planGrant?.steps ?? null,
-    agent: () => ({ name: face.name, tools: face.tools }),
+    agent: () => face,
     keysAllowed: (at) => {
       const plan = planGrant;
       // Inside a plan, a paste may only paste what the clipboard held when he said go ahead.
@@ -2441,7 +2442,12 @@ export const startScreenCompanion = (input: {
           window: windowLabel,
           session: focusedSession,
           project,
-          persona: { name: face.name, role: face.role, introduce },
+          persona: {
+            name: face.name,
+            role: face.role,
+            introduce,
+            ...(face.lead ? {} : { lead: leadName }),
+          },
           brain: faceModel,
         },
         (delta) => {
@@ -2536,6 +2542,7 @@ export const startScreenCompanion = (input: {
     woke = wake;
     const pack = readPack(NodePath.join(input.stateDir, PACK_FOLDER));
     face = personaFor(pack.personas, { wake, text });
+    leadName = pack.personas.find((p) => p.lead)?.name ?? leadName;
     faceModel = modelOf(pack, face.id);
     // VAULT.md section 1: a secret never reaches a prompt, the conversation file, memory or the turn log.
     const secret = redactForHistory(text, null).secret;

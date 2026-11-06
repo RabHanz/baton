@@ -51,7 +51,11 @@ describe("One Trust", () => {
   });
 
   it("a persona's tool list only narrows: never a looser verdict, and a tool off its list is refused", () => {
-    const freya = { name: "Freya", tools: ["type_text", "Read", "act_batch", "click_element"] };
+    const freya = {
+      name: "Freya",
+      tools: ["type_text", "Read", "act_batch", "click_element"],
+      lead: false,
+    };
     for (const context of CONTEXTS)
       for (const call of CALLS) {
         const base = judgeToolCall(call, context);
@@ -71,6 +75,31 @@ describe("One Trust", () => {
       input: { steps: [{ tool: "press_keys", args: { keys: ["tab"] } }] },
     };
     expect(decideTrust({ call: batch, context: ctx, agent: freya }).verdict).toBe("deny");
+  });
+
+  it("only the lead hands out work: a specialist cannot start, split or hand over a job", () => {
+    const ctx = CONTEXTS[1]!;
+    const lead = DEFAULT_OS_PACK.personas.find((p) => p.lead)!;
+    const freya = DEFAULT_OS_PACK.personas.find((p) => p.name === "Freya")!;
+    for (const tool of [
+      "job_start",
+      "job_split",
+      "job_handoff",
+      "job_schedule",
+      "cloud_dispatch",
+    ]) {
+      const call = { tool: `mcp__baton__${tool}`, input: { goal: "tidy the README" } };
+      expect(decideTrust({ call, context: ctx, agent: lead })).toEqual(judgeToolCall(call, ctx));
+      expect(decideTrust({ call, context: ctx, agent: freya })).toEqual({
+        verdict: "deny",
+        why: "Only the lead hands out work, and Freya is not the lead.",
+      });
+    }
+    // Everything else is hers as before.
+    const look = { tool: "mcp__baton__jobs_list", input: {} };
+    expect(decideTrust({ call: look, context: ctx, agent: freya })).toEqual(
+      judgeToolCall(look, ctx),
+    );
   });
 
   it("a plan he approved lifts only typing he approved and a drag, never a risky ask or a command line", () => {

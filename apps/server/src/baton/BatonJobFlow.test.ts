@@ -26,6 +26,7 @@ import {
   enforceCaps,
   postReports,
   noticePlan,
+  recordJobChanges,
   refineJob,
   releaseWaiting,
   scheduleJob,
@@ -416,6 +417,72 @@ layer("BatonJobFlow", (it) => {
         NodeFS.rmSync(dir, { recursive: true, force: true });
       }
     }),
+  );
+
+  it.effect(
+    "gives a part named for a persona to that specialist: its brief, model and tools, and its outcome is its own line in the Record",
+    () =>
+      Effect.gen(function* () {
+        const dir = NodePath.join(NodeOS.tmpdir(), "baton-flow-test", "operating-system");
+        NodeFS.mkdirSync(NodePath.join(dir, "roles"), { recursive: true });
+        NodeFS.writeFileSync(NodePath.join(dir, "executive.md"), "---\nmodel: lead-model\n---\n");
+        NodeFS.writeFileSync(
+          NodePath.join(dir, "roles", "research.md"),
+          "---\nmodel: research-model\ntools: read, web_search\n---\nCite every source.",
+        );
+        try {
+          const jobs = yield* BatonJobService;
+          const parent = WorkSessionId.make("job-flow-roster");
+          const { threadId } = yield* startJob({
+            id: parent,
+            projectId: ProjectId.make("project-site"),
+            title: "Roster",
+            goal: "do it",
+            permissions: { folders: [], projects: [], tools: ["read" as const, "edit" as const] },
+            modelSelection: { instanceId: ProviderInstanceId.make("claude"), model: "lead-model" },
+            runtimeMode: "approval-required",
+          });
+          shells.push({
+            id: threadId,
+            status: "completed",
+            modelSelection: { instanceId: "claude", model: "lead-model" },
+          } as unknown as OrchestrationV2ThreadShell);
+          yield* agreeJob(parent);
+          yield* splitJob({
+            id: parent,
+            parts: [{ title: "Sources", goal: "check the sources", role: "Sebastian" }],
+          });
+          const part = WorkSessionId.make("job-flow-roster-part-1");
+          assert.strictEqual(launched.at(-1)?.modelSelection.model, "research-model");
+          assert.include(launched.at(-1)?.text ?? "", "Your role (research): Cite every source.");
+          // His file lists read and a web search: of the job's read and edit, only read is left.
+          assert.deepEqual((yield* jobs.terms(part))?.permissions.tools, ["read"]);
+          assert.strictEqual((yield* jobs.personas()).get(part), "research");
+
+          const entry = (state: string) =>
+            [
+              {
+                workSessionId: part,
+                title: "Sources",
+                lifecycle: "active",
+                state,
+                updatedAt: "2026-11-03T10:00:00.000Z",
+                threads: [],
+                synopsis: null,
+              },
+            ] as never;
+          const seen = new Map<string, string>();
+          yield* recordJobChanges(entry("working"), seen);
+          yield* recordJobChanges(entry("done_unseen"), seen);
+          const rows = yield* (yield* BatonRecordService).query({ kind: "job" });
+          assert.deepEqual(
+            rows.filter((r) => r.ref === part).map((r) => r.actor),
+            ["Sebastian"],
+          );
+        } finally {
+          NodeFS.rmSync(dir, { recursive: true, force: true });
+        }
+      }).pipe(Effect.provide(recordLayer)),
   );
 
   it.effect("keeps a Codex job and its routine parts on Codex's own model", () =>

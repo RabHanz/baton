@@ -17,7 +17,18 @@ import {
 export interface TrustAgent {
   readonly name: string;
   readonly tools: ReadonlyArray<string> | null;
+  /** Only the lead hands out work (decision 2026-11-05). */
+  readonly lead: boolean;
 }
+
+/** Tools that hand work to another agent: the lead's alone. */
+export const DELEGATING_TOOLS: ReadonlySet<string> = new Set([
+  "job_start",
+  "job_split",
+  "job_handoff",
+  "job_schedule",
+  "cloud_dispatch",
+]);
 
 export interface TrustAsk {
   readonly call: ToolCall;
@@ -103,7 +114,16 @@ export const decideTrust = (ask: TrustAsk): TrustVerdict => {
       ? { verdict: "allow", inPlan: true }
       : base;
   const agent = ask.agent;
-  if (verdict.verdict === "deny" || agent === undefined || agent.tools === null) return verdict;
+  if (verdict.verdict === "deny" || agent === undefined) return verdict;
+  if (!agent.lead) {
+    const delegates = toolsUsed(ask.call).find((t) => DELEGATING_TOOLS.has(t));
+    if (delegates !== undefined)
+      return {
+        verdict: "deny",
+        why: `Only the lead hands out work, and ${agent.name} is not the lead.`,
+      };
+  }
+  if (agent.tools === null) return verdict;
   const mine = new Set(agent.tools.map((t) => t.toLowerCase()));
   const outside = toolsUsed(ask.call).find((t) => !mine.has(t.toLowerCase()));
   return outside === undefined

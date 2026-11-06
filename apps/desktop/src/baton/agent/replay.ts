@@ -38,12 +38,20 @@ export const replayTurn = async (input: {
   readonly answers?: Readonly<Record<string, string>>;
   /** Added to the turn the way the per-sentence recall adds it, such as a skill under test. */
   readonly extra?: string;
+  /** The session's notes block, such as the pack's frame, as a live session gets it. */
+  readonly notes?: string;
   readonly env: NodeJS.ProcessEnv;
   readonly platform: string;
   readonly timeoutMs?: number;
-}): Promise<{ readonly calls: ReadonlyArray<string>; readonly reply: string }> => {
+}): Promise<{
+  readonly calls: ReadonlyArray<string>;
+  /** Each call's arguments, in the order of `calls`. */
+  readonly inputs: ReadonlyArray<unknown>;
+  readonly reply: string;
+}> => {
   const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "tessaya-replay-"));
   const calls: string[] = [];
+  const inputs: unknown[] = [];
   const answers = input.answers ?? {};
   const answered = (tool: string) => answers[tool.replace(/^mcp__baton__/, "")] !== undefined;
   const refuse = async (call: { readonly tool: string }) =>
@@ -69,16 +77,20 @@ export const replayTurn = async (input: {
         // No harness gate: with one the session gets Bash, Read and the web, and a read-only Bash skips
         // the gate. Without it only Baton's tools exist, behind the tool server's own refusal.
         mcp: { url: mcp.url, token: mcp.token },
-        onTool: (call) => void calls.push(call.tool),
+        onTool: (call) => {
+          calls.push(call.tool);
+          inputs.push(call.input);
+        },
       }),
     conversation: createConversationLog({ file: NodePath.join(dir, "conversation.ndjson") }),
     clockLine: () => "Wednesday 10:00",
     beginTurn: () => undefined,
     ...(input.extra === undefined ? {} : { recall: async () => input.extra! }),
+    ...(input.notes === undefined ? {} : { notes: () => input.notes! }),
   });
   try {
     const reply = await agent.say(input.said, { ...input.where, brain: input.brain });
-    return { calls, reply };
+    return { calls, inputs, reply };
   } finally {
     agent.dispose();
     await mcp.close();
