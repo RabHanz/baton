@@ -675,6 +675,8 @@ const INITIATIVE_MS = 2 * 60_000;
 const COMMIT_SYNC_MS = 60_000;
 const COMMIT_SYNC_SOON_MS = 3_000;
 const NOW_REFRESH_MS = 5 * 60_000;
+/** The first minute after launch belongs to the speech models: work that can wait starts after it. */
+const QUIET_START_MS = 60_000;
 const CI_REFRESH_MS = 10 * 60_000;
 /** Changes this close together make one tray and window update. */
 const RENDER_COALESCE_MS = 40;
@@ -1297,7 +1299,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const retention = () => {
     if (history !== null) runRetention({ history, now: Date.now(), keep: keepSettings() });
   };
-  setTimeout(retention, 30_000).unref();
+  setTimeout(retention, 2 * QUIET_START_MS).unref();
   setInterval(retention, 24 * 3_600_000).unref();
   let retrying: string | null = null;
   const withMenu = (turn: HistoryTurn) => ({ ...turn, menu: rowMenu(turn, retrying !== null) });
@@ -2518,7 +2520,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const startSidecar = async () => {
     if (binary === null || sidecar !== null) return;
     markPhase("dictation-sidecar-spawn:begin");
-    sidecar = startDictationSidecar({ binary, onEvent: onDictation });
+    sidecar = startDictationSidecar({
+      binary,
+      onEvent: onDictation,
+      onRecognised: (timing) => input.onNote?.("recognised", timing),
+    });
     markPhase("dictation-sidecar-spawn:end");
     dictionary = NodeFS.existsSync(dictionaryPath(input.stateDir))
       ? readDictionary(input.stateDir, [])
@@ -3700,7 +3706,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     home.refresh();
   };
   setInterval(() => void refreshNow().catch(() => undefined), NOW_REFRESH_MS).unref();
-  setTimeout(() => void refreshNow().catch(() => undefined), 15_000).unref();
+  setTimeout(() => void refreshNow().catch(() => undefined), QUIET_START_MS).unref();
 
   const cloudSettings = (): CloudSettings => ({ ...DEFAULT_CLOUD, ...settings.cloud });
   const saveCloud = (patch: Partial<CloudSettings>) => {

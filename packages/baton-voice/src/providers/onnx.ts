@@ -153,6 +153,7 @@ export const streamingScorer = (input: {
   let cooldown = 0;
   let last = 0;
   let stale = false;
+  let scored = 0;
   const feed = (frame: Int16Array) => {
     fed += frame.length;
     const joined = new Int16Array(pending.length + frame.length);
@@ -168,6 +169,7 @@ export const streamingScorer = (input: {
         // so it catches up with the microphone. Old speech is still scored: a name said at launch may be in it.
         if (fed - end > MAX_BEHIND && quiet(chunk)) {
           stale = true;
+          scored = Math.max(scored, end);
           return;
         }
         if (stale) {
@@ -176,6 +178,7 @@ export const streamingScorer = (input: {
         }
         const s = await input.score(chunk);
         last = s;
+        scored = Math.max(scored, end);
         if (cooldown > 0) {
           cooldown -= 1;
           return;
@@ -199,8 +202,10 @@ export const streamingScorer = (input: {
     },
     last: () => last,
     firedAgo: () => fed - firedEnd,
+    behind: () => fed - scored,
     reset: () => {
       pending = new Int16Array(0);
+      scored = fed;
       fired = null;
       cooldown = 0;
       input.reset();
@@ -300,5 +305,6 @@ export const createSileroVad = async (
     },
     reset: s.reset,
     drain: s.drain,
+    behind: s.behind,
   };
 };

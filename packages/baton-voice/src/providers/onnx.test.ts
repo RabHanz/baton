@@ -20,8 +20,11 @@ describe("streamingScorer", () => {
       },
     });
     for (let i = 0; i < 20; i += 1) s.feed(new Int16Array(320));
+    // Nothing scored yet: whatever it says now is about older audio.
+    expect(s.behind()).toBe(20 * 320);
     release();
     await s.drain();
+    expect(s.behind()).toBe(20 * 320 - 5 * 1280);
     expect(s.take()).toBe(1);
     expect(s.firedAgo()).toBe(20 * 320 - 2 * 1280);
   });

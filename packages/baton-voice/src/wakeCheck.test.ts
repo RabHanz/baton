@@ -186,6 +186,12 @@ const launch = () => {
     [];
   const routed: Array<{ readonly text: string; readonly wake: string | null | undefined }> = [];
   const events: VoiceCoreEvent[] = [];
+  /** Recognition held back (the recogniser busy right after launch) until `recognise`. */
+  let slow = false;
+  const recognitions: Array<() => void> = [];
+  /** The app stalled: frames arrive in a burst the speech detector has not scored, so it repeats its last answer. */
+  let stalled = false;
+  let lastSpeech = false;
   // Each sentence is its own sample value, so recognition can tell which sentences a clip holds.
   const SAID: Record<number, string> = {
     1_000: "what time is it",
@@ -207,14 +213,21 @@ const launch = () => {
       lastWord: () => word,
       firedAgo: () => ago,
     },
-    vad: { name: "fake", reset: () => {}, isSpeech: (frame) => frame[0] !== 0 },
+    vad: {
+      name: "fake",
+      reset: () => {},
+      isSpeech: (frame) => (stalled ? lastSpeech : (lastSpeech = frame[0] !== 0)),
+      behind: () => (stalled ? 16_000 : 0),
+    },
     stt: {
       name: "fake",
-      transcribe: async (pcm) =>
-        [...new Set(pcm)]
+      transcribe: async (pcm) => {
+        if (slow) await new Promise<void>((resolve) => recognitions.push(resolve));
+        return [...new Set(pcm)]
           .filter((v) => v !== 0)
           .map((v) => SAID[v])
-          .join(" "),
+          .join(" ");
+      },
     },
     router: {
       route: async (effect, context) => {
@@ -244,6 +257,12 @@ const launch = () => {
       firing = { word: w, ago: 0 };
     },
     confirm: (w: string) => checks.find((c) => c.word === w)?.answer(true),
+    slowRecognition: () => (slow = true),
+    recognise: () => {
+      slow = false;
+      recognitions.splice(0).forEach((resolve) => resolve());
+    },
+    stall: (on: boolean) => (stalled = on),
     settle: async () => {
       for (let i = 0; i < 5; i += 1) await new Promise((resolve) => setImmediate(resolve));
     },
@@ -293,6 +312,43 @@ describe("right after launch, when the wake check is slow", () => {
       { text: "what time is it", wake: "Freya" },
       { text: "what is the weather", wake: "Alfred" },
     ]);
+  });
+
+  it("answers a sentence whose recognition comes back after its window would have closed", async () => {
+    const r = launch();
+    r.quiet(4.4);
+    r.name("Freya", 1_000);
+    r.say(1_000, 1.4);
+    r.quiet(2);
+    // 0.1.59: the check took 28 s, and the sentence then waited another 20 s behind the next check.
+    r.slowRecognition();
+    r.quiet(26);
+    r.confirm("Freya");
+    await r.settle();
+    r.quiet(20);
+    r.recognise();
+    await r.settle();
+    r.quiet(1);
+    await r.core.idle();
+    expect(r.routed).toEqual([{ text: "what time is it", wake: "Freya" }]);
+  });
+
+  it("does not end the sentence after a name on frames the speech detector has not scored", async () => {
+    const r = launch();
+    r.quiet(4.4);
+    r.name("Freya", 1_000);
+    r.quiet(0.15);
+    // The app stalls as the sentence starts: its frames arrive in a burst, and the detector still says silence.
+    r.stall(true);
+    r.say(1_000, 1.4);
+    r.stall(false);
+    r.quiet(2);
+    r.confirm("Freya");
+    await r.settle();
+    r.quiet(1);
+    await r.core.idle();
+    expect(r.events.some((e) => e.type === "dropped" && e.reason === "no speech")).toBe(false);
+    expect(r.routed).toEqual([{ text: "what time is it", wake: "Freya" }]);
   });
 
   it("takes a name said after her voice stopped as his, though the scorer reports it while she speaks again", async () => {

@@ -60,6 +60,8 @@ export interface VadProvider {
   readonly isSpeech: (frame: Int16Array) => boolean;
   readonly reset: () => void;
   readonly drain?: () => Promise<void>;
+  /** Samples fed but not yet scored: past a frame or two, `isSpeech` is answering for older audio. */
+  readonly behind?: () => number;
 }
 
 export interface SttProvider {
