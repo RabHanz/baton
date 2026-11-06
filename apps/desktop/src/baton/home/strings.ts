@@ -98,7 +98,13 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "wizard.close": "Close",
     "wizard.next": "Next",
     "wizard.finish": "Finish",
-    "wizard.rerun": "Run the setup guide again",
+    "wizard.rerun": "Take the tour again",
+    "wizard.offer.title": "A two-minute tour of",
+    "wizard.offer.em": "Tessaya",
+    "wizard.offer.text":
+      "Your microphone, wake words and voices, what she may do on your screen, your privacy, and how to stop her. Skip any step.",
+    "wizard.offer.start": "Start the tour",
+    "wizard.offer.later": "Not now",
     "wizard.step": "Step {n} of {total}",
     "backup.section": "Back up and move to another computer",
     "backup.preview": "Restore preview",
@@ -120,15 +126,30 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "setup.section": "Setup",
     "setup.hold.label": "Hold to dictate",
     "setup.hold.own": "{key} (your own)",
+    "setup.welcome.title": "Meet Tessaya",
+    "setup.welcome.text":
+      "Tessaya is a voice assistant for your computer. Say her name and ask, or hold a key and dictate into any app. She can look at your screen, show you how, or do it for you, and she works through the coding assistant you already use. This tour takes about two minutes. Skip any step; you can come back to it from Help.",
     "setup.assistant.title": "Choose your assistant",
     "setup.assistant.text":
       "Tessaya works through a coding assistant you already pay for and are signed in to. Pick one that says Ready. Listening and speaking stay on this computer.",
     "setup.mic.title": "Check your microphone",
     "setup.mic.text":
       "Turn listening on, then say something. The bar should move. If it stays flat, pick another microphone.",
-    "setup.wake.title": "Pick the words that wake it",
+    "setup.wake.title": "Wake words and voices",
     "setup.wake.text":
-      "Say one of these and Tessaya starts listening. Keep the ones you like; switch off the rest.",
+      "Say one of these names and she starts listening. Each name is a persona with its own voice: press Play to hear it, and pick another if you like.",
+    "setup.hands.title": "What she may do on your screen",
+    "setup.hands.text":
+      "Tessaya can look at your screen, show you each step, or click and type for you. You decide how much she does alone. Some things always ask.",
+    "setup.hands.fact1": "Deleting, sending, paying or publishing",
+    "setup.hands.fact1.hint": "Always asks first, even with Act without asking on.",
+    "setup.hands.fact2": "Moving money",
+    "setup.hands.fact2.hint": "Refused. She never does it for you.",
+    "setup.hands.fact3": "Looking at your screen",
+    "setup.hands.fact3.hint": "Asks first unless you turn on Always allow screen capture.",
+    "setup.hands.fact4": "Your mouse",
+    "setup.hands.fact4.hint":
+      "Never moves. You see her own small cursor instead, and you can take over at any moment.",
     "setup.key.title": "Choose your dictation key",
     "setup.key.text":
       "Hold this key and speak: the words are typed into whatever app you are in. You can add more keys, or a mouse button, later under Settings, Keyboard and mouse.",
@@ -137,9 +158,28 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "setup.pill.title": "Where should the pill sit?",
     "setup.pill.text":
       "The pill is the small bar that shows when Tessaya is listening. It stays out of the way when it has nothing to say.",
-    "setup.privacy.title": "Your privacy choices",
+    "setup.privacy.title": "Memory and privacy",
     "setup.privacy.text":
-      "Both are off until you turn them on. Recording keeps your voice on this computer only. Awareness lets the assistant know which window you are in, and nothing more.",
+      "These are off until you turn them on. Recording keeps your voice on this computer only. Awareness tells her which window you are in, and nothing more.",
+    "setup.privacy.fact1": "What she remembers",
+    "setup.privacy.fact1.hint":
+      "What you ask her to remember, kept on this computer. See, correct or forget any of it on the Memory page.",
+    "setup.privacy.fact2": "Erase it all",
+    "setup.privacy.fact2.hint": "Settings, Memory and privacy, Erase my data.",
+    "setup.stop.title": "The tray, and how to stop her",
+    "setup.stop.text":
+      "Tessaya lives in the tray, by the clock. Closing this window keeps her running there.",
+    "setup.stop.fact1": "Stop what she is saying or doing",
+    "setup.stop.fact1.hint": "Press Esc, say stop, or click the pill.",
+    "setup.stop.fact2": "Mute the microphone",
+    "setup.stop.fact2.hint": "Mute in the tray menu, or its shortcut.",
+    "setup.stop.fact3": "Stop listening for the wake word",
+    "setup.stop.fact3.hint": "Untick Always listening in the tray menu.",
+    "setup.stop.fact4": "The tray menu",
+    "setup.stop.fact4.hint":
+      "Right-click the icon: listening, mute, wake now, copy the last reply, ask, open Tessaya, quit.",
+    "setup.stop.fact5": "Quit",
+    "setup.stop.fact5.hint": "Quit in the tray menu ends her completely until you start her again.",
     "cloud.pill": "Cloud",
     "tab.cloud": "Cloud",
     "intro.cloud.title": "Cloud tasks",

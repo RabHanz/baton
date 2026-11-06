@@ -230,9 +230,10 @@ export interface HomeActivity {
 
 /** What the tabs show beyond the controls: all data, nothing the page decides. */
 export interface HomeExtra {
-  /** The first-run guide: shown on its own when `show`, and run again from Settings. */
+  /** The tour: opens on its own when "open", one card on Home when "offer"; run again from Help or Settings. */
   readonly setup?: {
-    readonly show: boolean;
+    readonly mode: "open" | "offer" | "none";
+    readonly step: number;
     readonly steps: ReadonlyArray<{
       readonly id: string;
       readonly title: string;
@@ -240,6 +241,7 @@ export interface HomeExtra {
       readonly controls: ReadonlyArray<string>;
       readonly meter?: boolean;
       readonly tryBox?: boolean;
+      readonly facts?: ReadonlyArray<{ readonly label: string; readonly hint: string }>;
     }>;
     readonly hold: string;
   };
