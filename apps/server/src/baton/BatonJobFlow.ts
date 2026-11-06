@@ -497,7 +497,8 @@ const launchPart = Effect.fn("BatonJobFlow.launchPart")(function* (input: {
       goal: input.goal,
       // A part never has more than its parent: the same folders, projects and tools.
       permissions: parent.permissions,
-      // Routine work on the cheap model; a specialist on the model its pack file names; else the parent's.
+      // Routine work on the cheap model. On the lead's own model, a specialist runs on the model its pack
+      // file names; a model he picked for the job stays for its other parts.
       modelSelection: !(yield* routesByTable(shell.modelSelection.instanceId))
         ? shell.modelSelection
         : input.routine === true
@@ -505,7 +506,8 @@ const launchPart = Effect.fn("BatonJobFlow.launchPart")(function* (input: {
               model: readRouting(userdata).cheap,
               effort: ROUTINE_EFFORT,
             })
-          : input.role !== undefined
+          : input.role !== undefined &&
+              shell.modelSelection.model === modelOf(readPack(userdata), "executive").model
             ? onBrain(shell.modelSelection, modelOf(readPack(userdata), input.role))
             : shell.modelSelection,
       runtimeMode: "approval-required",

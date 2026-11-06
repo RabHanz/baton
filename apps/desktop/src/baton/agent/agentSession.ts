@@ -198,7 +198,12 @@ export const createAssistantAgent = (input: {
   };
 
   return {
-    warm: (brain) => void ensure(brain).catch(() => undefined),
+    // In line with the sentences, and only when there is no session: a live one (any persona's) is never replaced.
+    warm: (brain) => {
+      queue = queue
+        .then(() => (session === null ? ensure(brain) : undefined))
+        .catch(() => undefined);
+    },
     say: (text, where, onDelta) => {
       const asked = generation;
       const run = queue.then(() => {

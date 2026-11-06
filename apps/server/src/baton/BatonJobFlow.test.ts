@@ -238,14 +238,14 @@ layer("BatonJobFlow", (it) => {
         );
         assert.include(mine[0]?.text ?? "", "Your role (marketing)");
         assert.include(mine[0]?.text ?? "", "already agreed");
-        // Routine work runs on the cheap model at low effort; a specialist on its own file's model;
-        // a part with no role on the parent's.
+        // Routine work runs on the cheap model at low effort; a model he picked stays for the other
+        // parts, a specialist's too.
         assert.deepEqual(
           mine.map((l) => [l.modelSelection.model, l.modelSelection.options]),
           [
             ["haiku", [{ id: "effort", value: "low" }]],
             ["picked", undefined],
-            ["sonnet", [{ id: "effort", value: "medium" }]],
+            ["picked", undefined],
           ],
         );
         const parts = yield* jobs.parts(parent);
@@ -367,8 +367,9 @@ layer("BatonJobFlow", (it) => {
         "---\nmodel: lead-model\neffort: high\n---\n",
       );
       try {
-        yield* startJob({
-          id: WorkSessionId.make("job-flow-default"),
+        const parent = WorkSessionId.make("job-flow-default");
+        const { threadId } = yield* startJob({
+          id: parent,
           projectId: ProjectId.make("project-site"),
           title: "Default",
           goal: "do it",
@@ -384,6 +385,24 @@ layer("BatonJobFlow", (it) => {
           model: "lead-model",
           options: [{ id: "effort", value: "high" }],
         });
+        // On the lead's own model, a specialist's part runs on that specialist's model.
+        shells.push({
+          id: threadId,
+          status: "completed",
+          modelSelection: { instanceId: "claude", model: "lead-model" },
+        } as unknown as OrchestrationV2ThreadShell);
+        yield* agreeJob(parent);
+        yield* splitJob({
+          id: parent,
+          parts: [
+            { title: "Sources", goal: "check the sources", role: "research" },
+            { title: "Code", goal: "build it" },
+          ],
+        });
+        assert.deepEqual(
+          launched.slice(-2).map((l) => l.modelSelection.model),
+          ["sonnet", "lead-model"],
+        );
       } finally {
         NodeFS.rmSync(dir, { recursive: true, force: true });
       }
