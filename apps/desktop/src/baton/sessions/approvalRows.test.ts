@@ -33,7 +33,7 @@ describe("the Approvals area", () => {
       id: "a:p:j1",
       button: "Approve",
       secondary: "Deny",
-      hint: "Tessaya asks, in Shop. Would use: edit",
+      hint: '"Tessaya" asks, in "Shop". Would use: edit',
     });
     expect(rows[1]).toMatchObject({ id: "a:s:k1", button: "Open T3" });
     expect(approvalAction("a:p:j1:later")).toEqual({ kind: "plan", ref: "j1", deny: true });

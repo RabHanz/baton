@@ -17,6 +17,7 @@ const config = Layer.succeed(ServerConfig.ServerConfig, {
 const rows: RecordAppend[] = [];
 const record = Layer.succeed(BatonRecordService, {
   append: (entry) => Effect.sync(() => void rows.push(entry)),
+  appendFromClient: () => Effect.void,
   query: () => Effect.succeed([]),
 });
 

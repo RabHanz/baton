@@ -52,5 +52,14 @@ describe("the approvals list", () => {
       "a remote session",
     );
     expect(approvalRecord({ by: "assistant", action: "x", outcome: "allowed" })).toBeNull();
+    // The operator's gate names the raw command; a secret in it never reaches the server.
+    const token = "Bearer abcdefghijklmnop1234";
+    const row = approvalRecord({
+      by: "x",
+      action: `curl -H '${token}'`,
+      why: token,
+      outcome: "he said yes",
+    });
+    expect(JSON.stringify(row)).not.toContain("abcdefghijklmnop1234");
   });
 });

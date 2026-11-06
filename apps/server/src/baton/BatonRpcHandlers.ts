@@ -443,7 +443,11 @@ export const makeHandlers = Effect.gen(function* () {
         ),
       ),
     [BATON_RECORD_WS_METHODS.append]: (input) =>
-      run(Effect.flatMap(BatonRecordService, (record) => Effect.as(record.append(input), {}))),
+      run(
+        Effect.flatMap(BatonRecordService, (record) =>
+          Effect.as(record.appendFromClient(input), {}),
+        ),
+      ),
     [BATON_COMMITMENT_WS_METHODS.list]: () =>
       run(
         Effect.flatMap(BatonCommitmentService, (commitments) =>

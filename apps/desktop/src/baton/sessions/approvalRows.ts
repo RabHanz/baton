@@ -44,7 +44,7 @@ export const approvalControls = (
             id: `a:${a.id}`,
             section: "Waiting for you",
             label: `${a.title}: ${a.action}`,
-            hint: `${a.agent} asks${a.project === null ? "" : `, in ${a.project}`}. Would use: ${a.permission}`,
+            hint: `${JSON.stringify(a.agent)} asks${a.project === null ? "" : `, in ${JSON.stringify(a.project)}`}. Would use: ${a.permission}`,
             kind: "action",
             button: a.kind === "plan" ? "Approve" : "Open T3",
             ...(a.kind === "plan" ? { secondary: "Deny" } : {}),

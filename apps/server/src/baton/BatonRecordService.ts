@@ -30,6 +30,8 @@ export class BatonRecordService extends Context.Service<
   BatonRecordService,
   {
     readonly append: (entry: RecordAppend) => Effect.Effect<void>;
+    /** A row a client sent: an approval is kept as reported by it, so a remote client cannot pass one off as the server's. */
+    readonly appendFromClient: (entry: RecordAppend) => Effect.Effect<void>;
     /** Newest first. */
     readonly query: (input: {
       readonly since?: string;
@@ -79,7 +81,10 @@ const make = Effect.gen(function* () {
     `;
   }, Effect.orDie);
 
-  return BatonRecordService.of({ append, query });
+  const appendFromClient = (entry: RecordAppend) =>
+    append(entry.kind === "approval" ? { ...entry, kind: "approval_reported_by_client" } : entry);
+
+  return BatonRecordService.of({ append, appendFromClient, query });
 });
 
 export const layer = Layer.effect(BatonRecordService, make);

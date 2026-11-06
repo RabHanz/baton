@@ -5,6 +5,8 @@
  */
 import type { BatonJob, BatonSessionSummary } from "@t3tools/baton-contracts";
 
+import { redactText } from "./diagnostics.ts";
+
 export interface Approval {
   readonly id: string;
   readonly kind: "plan" | "session";
@@ -74,8 +76,9 @@ export const approvalRecord = (entry: Readonly<Record<string, unknown>>) => {
       0,
       60,
     ),
-    subject: (text("action") || text("tool")).slice(0, 300),
+    // The operator's gate names the raw command or text, which can hold a token he approved.
+    subject: redactText(text("action") || text("tool")).slice(0, 300),
     outcome: outcome === "he said yes" ? ("approved" as const) : ("declined" as const),
-    detail: text("why").slice(0, 1000),
+    detail: redactText(text("why")).slice(0, 1000),
   };
 };
