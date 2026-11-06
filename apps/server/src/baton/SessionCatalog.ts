@@ -63,6 +63,11 @@ export interface CatalogPorts {
   readonly autoResumed?: (sessionId: string) => boolean;
   /** How long a resume holds the caller before answering "resuming" (machines with no Herdr); tests shorten it. */
   readonly resumeWaitMs?: number;
+  /** Where messages kept for a stopped session are stored, so a restart does not lose them. */
+  readonly kept?: {
+    readonly read: () => Record<string, ReadonlyArray<string>>;
+    readonly write: (all: Record<string, ReadonlyArray<string>>) => void;
+  };
   /** What the Herdr pane shows now (the last lines), to explain a session that never became ready. */
   readonly screen?: (session: string, pane: string) => Promise<string>;
   readonly sleep: (ms: number) => Promise<void>;
@@ -103,7 +108,12 @@ export interface ResumeResult {
 export const createSessionCatalog = (ports: CatalogPorts) => {
   /** Resumes in flight and messages waiting on them: kept so nothing is dropped and a second tap changes nothing. */
   const resuming = new Map<string, Promise<ResumeResult>>();
-  const waiting = new Map<string, string[]>();
+  const waiting = new Map<string, ReadonlyArray<string>>(Object.entries(ports.kept?.read() ?? {}));
+  const keep = (sessionId: string, texts: ReadonlyArray<string>) => {
+    if (texts.length === 0) waiting.delete(sessionId);
+    else waiting.set(sessionId, texts);
+    ports.kept?.write(Object.fromEntries(waiting));
+  };
   const failed = new Map<string, string>();
 
   const liveRow = (s: ClaudeLiveSession): BatonCatalogSession => ({
@@ -327,10 +337,12 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
       if (r.state === "failed") failed.set(input.sessionId, r.detail ?? "It could not be resumed.");
       else failed.delete(input.sessionId);
       // Messages that arrived while it came back go now, in order, once.
+      // One the pane does not take (a question is up) stays kept, never typed again by itself.
       if (r.state === "running" && r.pane !== null) {
-        const queued = waiting.get(input.sessionId) ?? [];
-        waiting.delete(input.sessionId);
-        for (const text of queued) await ports.type(r.pane, text);
+        const left: string[] = [];
+        for (const text of waiting.get(input.sessionId) ?? [])
+          if (!(await ports.type(r.pane, text))) left.push(text);
+        keep(input.sessionId, left);
       }
       // No Herdr: the session came back as a thread, so what waited goes there. Anything not taken stays kept.
       if (r.state === "running" && r.pane === null) {
@@ -343,8 +355,7 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
             (await ports.threadSend(r.threadId, text).catch(() => false));
           if (!sent) left.push(text);
         }
-        if (left.length === 0) waiting.delete(input.sessionId);
-        else waiting.set(input.sessionId, left);
+        keep(input.sessionId, left);
       }
       return r;
     });
@@ -378,7 +389,7 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
         detail: "It is running in a plain terminal. Bring it into Herdr to send to it from here.",
       };
     // Stopped: keep the message, bring it back, and let the resume deliver it.
-    waiting.set(input.sessionId, [...(waiting.get(input.sessionId) ?? []), input.text]);
+    keep(input.sessionId, [...(waiting.get(input.sessionId) ?? []), input.text]);
     const result = await resume({
       sessionId: input.sessionId,
       ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
@@ -394,7 +405,14 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
       };
     }
     if (result.state === "running")
-      return { state: "running" as const, delivered: true, detail: null };
+      return waiting.has(input.sessionId)
+        ? {
+            state: "running" as const,
+            delivered: false,
+            detail:
+              "It is back, but it is waiting on a question in its terminal. Your message is kept; answer the question, then resume or send again.",
+          }
+        : { state: "running" as const, delivered: true, detail: null };
     if (result.state === "resuming")
       return {
         state: "resuming" as const,

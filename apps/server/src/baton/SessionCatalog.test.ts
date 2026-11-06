@@ -158,6 +158,29 @@ describe("sending to a stopped session", () => {
     expect(row).toMatchObject({ state: "failed", waiting: 1 });
   });
 
+  it("a kept message survives a restart and goes on the next resume; one the pane refuses stays kept", async () => {
+    let disk: Record<string, ReadonlyArray<string>> = {};
+    const kept = {
+      read: () => disk,
+      write: (all: Record<string, ReadonlyArray<string>>) => void (disk = all),
+    };
+    const down = machine({ kept, baton: async () => ({ ok: false, out: "herdr: no server" }) });
+    await down.catalog.send({ sessionId: ID, text: "hello" });
+    expect(disk).toEqual({ [ID]: ["hello"] });
+
+    const refusing = machine({ kept, type: async () => false });
+    expect((await refusing.catalog.list({})).sessions.find((r) => r.id === ID)).toMatchObject({
+      waiting: 1,
+    });
+    await refusing.catalog.resume({ sessionId: ID });
+    expect(disk).toEqual({ [ID]: ["hello"] });
+
+    const after = machine({ kept });
+    await after.catalog.resume({ sessionId: ID });
+    expect(after.typed).toEqual([["fab-shop~p1", "hello"]]);
+    expect(disk).toEqual({});
+  });
+
   it("names Claude's folder-trust question when that is what the session is waiting on", async () => {
     const { catalog, typed } = machine({
       live: async () => [],

@@ -359,6 +359,8 @@ export const layer = Layer.effect(
       Option.isSome(config) ? NodePath.dirname(config.value.dbPath) : NodeOS.homedir(),
       "baton-autoresume.json",
     );
+    // Messages sent to a stopped session while it comes back, kept across a restart.
+    const keptFile = NodePath.join(NodePath.dirname(stateFile), "baton-catalog-kept.json");
     let autoState: AutoResumeState = emptyAutoResumeState;
     try {
       autoState = {
@@ -398,6 +400,25 @@ export const layer = Layer.effect(
               ),
           }),
       autoResumed: (id) => autoResumedWithin(autoState, id, Date.now(), 2 * HOUR_MS),
+      kept: {
+        read: () => {
+          try {
+            return JSON.parse(NodeFS.readFileSync(keptFile, "utf8")) as Record<
+              string,
+              ReadonlyArray<string>
+            >;
+          } catch {
+            return {};
+          }
+        },
+        write: (all) => {
+          try {
+            NodeFS.writeFileSync(keptFile, JSON.stringify(all), { mode: 0o600 });
+          } catch {
+            // a read-only data directory keeps them in memory only
+          }
+        },
+      },
     };
     const catalog = createSessionCatalog(ports);
     // On by default on a server; off on a person's own Windows computer until he turns it on (BATON_AUTO_RESUME=on).

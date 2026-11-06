@@ -231,7 +231,11 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const run = (file, args, timeout = 15_000) =>
   new Promise((resolve) =>
     NodeChildProcess.execFile(file, args, { timeout }, (error, stdout, stderr) =>
-      resolve({ ok: error === null, out: `${stdout}${stderr}`.trim() }),
+      resolve({
+        ok: error === null,
+        timedOut: error?.killed === true,
+        out: `${stdout}${stderr}`.trim(),
+      }),
     ),
   );
 
@@ -245,6 +249,9 @@ const herdrArgs = (paneRef, verb, rest) => {
 
 const BLOCKED_NOTE =
   "Claude Code is waiting on a question or an approval in its terminal; answer it there first.";
+/** Herdr did not answer in time: the text may already be in the pane, so it is never typed again. */
+export const UNSURE_NOTE =
+  "Herdr did not answer in time, so it may or may not have reached the session; it is not sent again in case it did.";
 
 // ---------------------------------------------------------------------------------------------
 // The message queue. A message that cannot be delivered now is kept, in order, in a small file per
@@ -440,7 +447,7 @@ async function drainLocked(dir, sessionId, deps) {
     }
     if (failure === BLOCKED_NOTE) return;
     const tries = head.tries + 1;
-    if (tries >= QUEUE_TRIES) {
+    if (tries >= QUEUE_TRIES || failure === UNSURE_NOTE) {
       settleHead(dir, sessionId, head, null);
       deps.say(sessionId, lostNote(failure, head.shown));
       continue;
@@ -541,6 +548,7 @@ async function typeInto(paneRef, text) {
     }
     return null;
   }
+  if (sent.timedOut) return UNSURE_NOTE;
   return /agent_blocked/.test(sent.out)
     ? BLOCKED_NOTE
     : `Herdr did not take the message: ${sent.out.slice(0, 200)}`;
@@ -854,6 +862,10 @@ async function prompt(params) {
         say(sessionId, answered);
         return { stopReason: "end_turn" };
       }
+    }
+    if (failure === UNSURE_NOTE) {
+      say(sessionId, lostNote(failure, shown));
+      return { stopReason: "end_turn" };
     }
     if (failure !== null) {
       const count = enqueue(QUEUE_DIR, sessionId, { text, shown, at: new Date().toISOString() });
