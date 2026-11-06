@@ -452,6 +452,25 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodePlatformCrypto.layer))(
     );
 
     it.effect(
+      "gives a sync-only credential a year, so his servers need not be paired again each month",
+      () =>
+        Effect.gen(function* () {
+          const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
+          const lifetime = (scopes: ReadonlyArray<"orchestration:read" | "baton:memory-sync">) =>
+            Effect.flatMap(serverAuth.issuePairingCredential({ scopes }), (pairing) =>
+              serverAuth.exchangeBootstrapCredentialForAccessToken(
+                pairing.credential,
+                undefined,
+                requestMetadata,
+              ),
+            ).pipe(Effect.map((token) => token.expires_in / 86_400));
+
+          expect(yield* lifetime(["baton:memory-sync"])).toBeGreaterThan(360);
+          expect(yield* lifetime(["orchestration:read"])).toBeLessThanOrEqual(30);
+        }).pipe(Effect.provide(layerEnvironmentAuth())),
+    );
+
+    it.effect(
       "preserves a rejected MCP pairing code for exactly one concurrent lower-access retry",
       () =>
         Effect.gen(function* () {
