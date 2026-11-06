@@ -74,6 +74,42 @@ export const notSentNote = (live) =>
 /** T3's own restart continuation: not the user's words, so never typed into the session. */
 export const isAppContinuation = (text) => text.trim() === "Continue where you left off.";
 
+/**
+ * A live thread's id names the Claude session it mirrors (`baton-live4:<session id>`), and T3 starts this bridge with
+ * that id in `T3CODE_THREAD_ID`. T3 opens a restarted bridge with session/new, not session/resume, so session/new binds
+ * to that session again instead of answering unbound.
+ */
+export const sessionOfLiveThread = (threadId) => {
+  const m = /^baton-live4:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(
+    threadId ?? "",
+  );
+  return m === null ? null : m[1];
+};
+
+/**
+ * The bridge is plumbing, not an agent, but T3 starts it through AgentScope, which raises oom_score_adj to 800 so
+ * earlyoom kills it first and every live thread detaches. Lowering it back is allowed down to what was inherited; a
+ * refusal is only warned about (on stderr: stdout is the ACP stream).
+ */
+export const BRIDGE_OOM_SCORE_ADJ = 100;
+export function lowerOomScore({
+  // oxlint-disable-next-line t3code/no-global-process-runtime -- Node built-ins only, no Effect runtime here
+  platform = NodeOS.platform(),
+  write = (value) => NodeFS.writeFileSync("/proc/self/oom_score_adj", value),
+  warn = (line) => process.stderr.write(`${line}\n`),
+} = {}) {
+  if (platform !== "linux") return false;
+  try {
+    write(String(BRIDGE_OOM_SCORE_ADJ));
+    return true;
+  } catch (error) {
+    warn(
+      `baton-live-acp: could not lower oom_score_adj to ${BRIDGE_OOM_SCORE_ADJ}: ${error.message}`,
+    );
+    return false;
+  }
+}
+
 /** Every Claude config directory's sessions folder (same list as ClaudeLiveSessions.ts). */
 export function sessionsDirs() {
   if (process.env.BATON_CLAUDE_SESSIONS_DIR) return [process.env.BATON_CLAUDE_SESSIONS_DIR];
@@ -111,6 +147,37 @@ export function safeInboxName(fileName, stamp) {
     .replace(/[^A-Za-z0-9._-]+/g, "-")
     .replace(/^[.-]+/, "");
   return `${stamp}-${base.length === 0 ? "file" : base.slice(0, 120)}`;
+}
+
+/**
+ * The pane Herdr shows a Claude session in now, from `herdr agent list`: found by the session's own id, so it still
+ * matches after a Herdr restart renumbers the panes (the pane id in the process environment never changes).
+ */
+export function paneFromAgentList(json, sessionId) {
+  try {
+    const agents = JSON.parse(json)?.result?.agents;
+    const agent = Array.isArray(agents)
+      ? agents.find((a) => a?.agent_session?.value === sessionId)
+      : undefined;
+    return typeof agent?.pane_id === "string" ? agent.pane_id : null;
+  } catch {
+    return null;
+  }
+}
+
+function currentPaneRef(env, sessionId) {
+  const session = env.get("HERDR_SESSION");
+  const named = !session || session === "default" ? [] : ["--session", session];
+  let listed = "";
+  try {
+    listed = NodeChildProcess.execFileSync(HERDR, [...named, "agent", "list"], {
+      timeout: 5_000,
+      encoding: "utf8",
+    });
+  } catch {}
+  const pane = paneFromAgentList(listed, sessionId);
+  if (pane === null) return herdrPaneRef(env);
+  return named.length === 0 ? pane : `${session}~${pane}`;
 }
 
 export function herdrPaneRef(env) {
@@ -214,7 +281,7 @@ function findIn(sessionId, dir) {
       continue;
     if (!alive(d.pid)) continue;
     const env = herdrEnvOf(d.pid);
-    const pane = process.env.BATON_TEST_HERDR_PANE ?? herdrPaneRef(env);
+    const pane = process.env.BATON_TEST_HERDR_PANE ?? currentPaneRef(env, sessionId);
     return {
       pid: d.pid,
       cwd: d.cwd,
@@ -960,6 +1027,8 @@ async function handle(message) {
         authMethods: [],
       };
     case "session/new": {
+      const bound = sessionOfLiveThread(process.env.T3CODE_THREAD_ID);
+      if (bound !== null) return { sessionId: bound };
       const unbound = `${UNBOUND}-${process.pid}-${id}`;
       if (typeof params.cwd === "string") newSessionCwd.set(unbound, params.cwd);
       return { sessionId: unbound };
@@ -983,6 +1052,9 @@ async function handle(message) {
 }
 
 function main() {
+  // A name of its own, so earlyoom's --avoid can match it.
+  process.title = "baton-live-acp";
+  lowerOomScore();
   startDrainer();
   const lines = NodeReadline.createInterface({ input: process.stdin });
   lines.on("line", (line) => {

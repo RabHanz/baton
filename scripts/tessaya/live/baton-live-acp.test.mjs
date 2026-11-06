@@ -13,6 +13,10 @@ import {
   isAnswerInTerminal,
   notSentNote,
   isAppContinuation,
+  lowerOomScore,
+  paneFromAgentList,
+  sessionOfLiveThread,
+  BRIDGE_OOM_SCORE_ADJ,
   promptText,
   splitAttachments,
   safeInboxName,
@@ -220,6 +224,7 @@ NodeTest.test(
         BATON_CLAUDE_SESSIONS_DIR: sessions,
         BATON_HERDR_BIN: herdr,
         BATON_TEST_HERDR_PANE: "fab-x~p1",
+        T3CODE_THREAD_ID: "",
         BATON_LIVE_ATTACHMENT_ENTER_MS: "10",
         BATON_LIVE_POLL_MS: "50",
         BATON_LIVE_QUEUE_DIR: NodePath.join(dir, "queue"),
@@ -791,5 +796,139 @@ NodeTest.test(
     NodeAssert.equal(a.text, "hello");
     NodeAssert.notEqual(a.id, b.id);
     NodeAssert.equal(b.threadId, "t1");
+  },
+);
+
+NodeTest.test(
+  "the bridge lowers its own OOM score on Linux, and only warns when it may not",
+  () => {
+    const written = [];
+    const warned = [];
+    const write = (value) => written.push(value);
+    const warn = (line) => warned.push(line);
+    NodeAssert.equal(lowerOomScore({ platform: "linux", write, warn }), true);
+    NodeAssert.deepEqual(written, [String(BRIDGE_OOM_SCORE_ADJ)]);
+    NodeAssert.equal(BRIDGE_OOM_SCORE_ADJ, 100);
+    const refused = () => {
+      throw Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
+    };
+    NodeAssert.equal(lowerOomScore({ platform: "linux", write: refused, warn }), false);
+    NodeAssert.match(warned.join("\n"), /could not lower oom_score_adj to 100: EACCES/);
+    NodeAssert.equal(lowerOomScore({ platform: "darwin", write: refused, warn }), false);
+    NodeAssert.equal(warned.length, 1);
+  },
+);
+
+NodeTest.test(
+  "a live thread's id names its session, and Herdr's agent list names its pane now",
+  () => {
+    const sid = "5ab4ae0c-3cf4-4d50-aae3-94117d982204";
+    NodeAssert.equal(sessionOfLiveThread(`baton-live4:${sid}`), sid);
+    for (const other of [undefined, "", "thread-1", `baton-live4:${sid}/../x`, "baton-live4:abc"])
+      NodeAssert.equal(sessionOfLiveThread(other), null);
+    const listed = JSON.stringify({
+      result: {
+        agents: [
+          { agent_session: { value: "other" }, pane_id: "w1:p2" },
+          { agent_session: { value: sid }, pane_id: "w2:p1" },
+        ],
+      },
+    });
+    NodeAssert.equal(paneFromAgentList(listed, sid), "w2:p1");
+    NodeAssert.equal(paneFromAgentList(listed, "missing"), null);
+    NodeAssert.equal(paneFromAgentList("not json", sid), null);
+  },
+);
+
+NodeTest.test(
+  "a bridge killed mid-thread comes back bound to the same session, typing into the pane Herdr names now",
+  async () => {
+    const dir = NodeFS.mkdtempSync(
+      NodePath.join(process.env.TMPDIR ?? NodeOS.tmpdir(), "baton-live-acp-"),
+    );
+    const sessions = NodePath.join(dir, "sessions");
+    NodeFS.mkdirSync(sessions);
+    const sid = "11111111-2222-4333-8444-555555555555";
+    NodeFS.writeFileSync(
+      NodePath.join(sessions, `${process.pid}.json`),
+      JSON.stringify({
+        pid: process.pid,
+        sessionId: sid,
+        cwd: dir,
+        kind: "interactive",
+        status: "idle",
+      }),
+    );
+    // After a Herdr restart the session sits in a pane its process environment never heard of.
+    const log = NodePath.join(dir, "herdr.log");
+    const herdr = NodePath.join(dir, "herdr");
+    const listed = JSON.stringify({
+      result: { agents: [{ agent_session: { value: sid }, pane_id: "w9:p7" }] },
+    });
+    NodeFS.writeFileSync(
+      herdr,
+      `#!/bin/sh\ncase "$*" in *"agent list"*) printf '%s\\n' '${listed}' ;; *) printf '%s\\n' "$*" >> ${log} ;; esac\n`,
+      { mode: 0o755 },
+    );
+    const start = () => {
+      const child = NodeChildProcess.spawn(process.execPath, [AGENT], {
+        env: {
+          ...process.env,
+          BATON_CLAUDE_SESSIONS_DIR: sessions,
+          BATON_HERDR_BIN: herdr,
+          BATON_LIVE_POLL_MS: "50",
+          BATON_LIVE_QUEUE_DIR: NodePath.join(dir, "queue"),
+          T3CODE_THREAD_ID: `baton-live4:${sid}`,
+        },
+        stdio: ["pipe", "pipe", "inherit"],
+      });
+      const replies = new Map();
+      NodeReadline.createInterface({ input: child.stdout }).on("line", (line) => {
+        const message = JSON.parse(line);
+        if (message.id !== undefined) replies.get(message.id)?.(message);
+      });
+      const call = (id, method, params) =>
+        new Promise((resolve) => {
+          replies.set(id, resolve);
+          child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`);
+        });
+      return { child, call };
+    };
+    const first = start();
+    let second;
+    try {
+      await first.call(1, "initialize", { protocolVersion: 1 });
+      NodeAssert.equal(
+        (await first.call(2, "session/new", { cwd: dir, mcpServers: [] })).result.sessionId,
+        sid,
+      );
+      await first.call(3, "session/prompt", {
+        sessionId: sid,
+        prompt: [{ type: "text", text: "one" }],
+      });
+      first.child.kill("SIGKILL");
+      // T3 starts a new bridge and opens it with session/new, never session/resume.
+      second = start();
+      await second.call(1, "initialize", { protocolVersion: 1 });
+      NodeAssert.equal(
+        (await second.call(2, "session/new", { cwd: dir, mcpServers: [] })).result.sessionId,
+        sid,
+      );
+      await second.call(3, "session/prompt", {
+        sessionId: sid,
+        prompt: [{ type: "text", text: "two" }],
+      });
+      const calls = NodeFS.readFileSync(log, "utf8");
+      NodeAssert.match(calls, /agent prompt w9:p7 one\n/);
+      NodeAssert.match(calls, /agent prompt w9:p7 two\n/);
+      NodeAssert.equal(
+        NodeFS.existsSync(NodePath.join(dir, "queue", "unbound-messages.ndjson")),
+        false,
+      );
+    } finally {
+      first.child.kill();
+      second?.child.kill();
+      NodeFS.rmSync(dir, { recursive: true, force: true });
+    }
   },
 );
