@@ -20,6 +20,7 @@ import {
   BATON_RPC_REQUIRED_SCOPES,
   DESK_METHODS,
   askSourceOf,
+  memoryViewerOf,
   missingBatonScope,
 } from "./BatonRpcAuthorization.ts";
 
@@ -158,5 +159,12 @@ describe("whose words an ask carries", () => {
     expect(askSourceOf({ method: "dpop-access-token", scopes: standard, subject: "x" })).toBe(
       "device",
     );
+  });
+
+  it("lets only the desktop app's own session read memory as itself; every other token is a client", () => {
+    expect(memoryViewerOf({ scopes: [...AuthStandardClientScopes, AuthBatonHandsHostScope] })).toBe(
+      "desktop",
+    );
+    expect(memoryViewerOf({ scopes: AuthStandardClientScopes })).toBe("client");
   });
 });

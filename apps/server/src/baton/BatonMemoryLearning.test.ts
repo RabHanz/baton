@@ -11,7 +11,7 @@ import * as ServerConfig from "../config.ts";
 import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
 import { dayOf } from "./BatonMemoryEpisode.ts";
 import { BatonMemoryLearning, layer as learningLayer } from "./BatonMemoryLearning.ts";
-import { BatonMemoryService, layer as memoryLayer } from "./BatonMemoryService.ts";
+import { BatonMemoryService, MemoryViewer, layer as memoryLayer } from "./BatonMemoryService.ts";
 import { BatonOneShot, BatonOneShotError } from "./BatonOneShot.ts";
 
 let reply: unknown = { items: [] };
@@ -317,12 +317,18 @@ it.effect(
       );
       assert.notInclude(prompts.join("\n"), secret.id);
       // Not shown it, so it replaced nothing; what it learned in the walled project is kept behind the wall.
-      const all = yield* memory.list({ includeSuperseded: true, includeProposed: true });
+      const all = yield* memory.list({
+        includeSuperseded: true,
+        includeProposed: true,
+        admin: true,
+      });
       assert.isNull(all.find((i) => i.id === secret.id)?.supersededBy);
       const learned = all.find((i) => i.text === "Shop releases go out from the studio computer");
       assert.strictEqual(learned?.scope, "project");
       assert.strictEqual(learned?.scopeRef, "shop");
     }).pipe(
+      // The desktop app runs learning; it may name the turn's persona.
+      Effect.provideService(MemoryViewer, "desktop"),
       Effect.provide(
         learningLayer.pipe(
           Layer.provideMerge(memoryLayer),

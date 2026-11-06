@@ -39,6 +39,7 @@ import type * as RpcGroup from "effect/rpc/RpcGroup";
 
 import { OWN_PAIRING_SUBJECTS, type AuthenticatedSession } from "../auth/EnvironmentAuth.ts";
 import { rpcAuthorizationError } from "../auth/RpcAuthorization.ts";
+import { MemoryViewer } from "./BatonMemoryService.ts";
 import { AskSource } from "./BatonPhoneInbox.ts";
 
 type BatonRpcMethod = RpcGroup.Rpcs<typeof BatonRpcGroup>["_tag"];
@@ -226,6 +227,10 @@ export const missingBatonScope = (
   return [...all, ...desktopOnly].find((scope) => !scopes.includes(scope)) ?? null;
 };
 
+/** Only the desktop app's own session sees walled memory or names a persona; no grant can give hands-host. */
+export const memoryViewerOf = (session: Pick<AuthenticatedSession, "scopes">) =>
+  session.scopes.includes(AuthBatonHandsHostScope) ? ("desktop" as const) : ("client" as const);
+
 /**
  * Whose words an ask carries: his own from a browser he paired (the phone page, the web app) or the desktop app's own
  * session; any token's are a device's, which may be an agent's, and so is any cookie whose pairing is not one of his own
@@ -243,6 +248,9 @@ export const layer = (session: Pick<AuthenticatedSession, "method" | "scopes" | 
   Layer.succeed(BatonRpcScopeAuthorization)((effect, { rpc, payload }) => {
     const missing = missingBatonScope(rpc._tag, session.scopes, payload);
     return missing === null
-      ? Effect.provideService(effect, AskSource, askSourceOf(session))
+      ? effect.pipe(
+          Effect.provideService(AskSource, askSourceOf(session)),
+          Effect.provideService(MemoryViewer, memoryViewerOf(session)),
+        )
       : Effect.fail(rpcAuthorizationError(missing));
   });

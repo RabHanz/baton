@@ -96,6 +96,16 @@ export interface MemoryRecall {
   readonly ids: ReadonlyArray<string>;
 }
 
+/**
+ * Who is reading memory, set from the session by the transport (Baton's RPC middleware, the desk route): "desktop" is the
+ * desktop app's own session, which may name a persona and ask for his own view (`admin`); "client" is any other token,
+ * which sees nothing walled and whose `agent` is ignored. "server" is this server's own upkeep. Unset means "client".
+ */
+export const MemoryViewer = Context.Reference<"server" | "desktop" | "client">(
+  "t3/baton/BatonMemoryService/MemoryViewer",
+  { defaultValue: () => "client" },
+);
+
 export class BatonMemoryService extends Context.Service<
   BatonMemoryService,
   {
@@ -200,7 +210,7 @@ export const make = Effect.gen(function* () {
     (query.kinds === undefined || query.kinds.length === 0 || query.kinds.includes(item.kind)) &&
     (query.scope === undefined || item.scope === query.scope);
 
-  const list = Effect.fn("BatonMemoryService.list")(function* (query: MemoryQuery = {}) {
+  const listAll = Effect.fn("BatonMemoryService.listAll")(function* (query: MemoryQuery = {}) {
     const rows = yield* sql<ItemRow>`
       SELECT * FROM fabric_memory_items ORDER BY pinned DESC, updated_at DESC
     `.pipe(Effect.orDie);
@@ -220,13 +230,28 @@ export const make = Effect.gen(function* () {
       item.scope !== "project" || item.scopeRef === null || mayRecall(pack, agent, item.scopeRef);
   });
 
+  /** What this reader may see: walled unless it is upkeep or his own view on the desktop; a persona only from the desktop. */
+  const viewFor = Effect.fn("BatonMemoryService.viewFor")(function* (
+    agent: string | undefined,
+    admin: boolean | undefined,
+  ) {
+    const viewer = yield* MemoryViewer;
+    if (viewer === "server" || (viewer === "desktop" && admin === true)) return () => true;
+    return yield* walls(viewer === "desktop" ? agent : undefined);
+  });
+
+  const list = Effect.fn("BatonMemoryService.list")(function* (query: MemoryQuery = {}) {
+    const seen = yield* viewFor(query.agent, query.admin);
+    return (yield* listAll({ ...query, limit: 100_000 })).filter(seen).slice(0, query.limit ?? 500);
+  });
+
   const search = Effect.fn("BatonMemoryService.search")(function* (query: MemoryQuery) {
     const words = tokens(query.text ?? "");
     const limit = query.limit ?? DEFAULT_LIMIT;
-    // Walled unless it is his own view: a caller that forgets to name its persona sees nothing walled.
-    const seen = query.admin === true ? () => true : yield* walls(query.agent);
+    // A caller that forgets to name its persona sees nothing walled.
+    const seen = yield* viewFor(query.agent, query.admin);
     if (words.length === 0) {
-      const items = (yield* list(query)).filter(seen);
+      const items = (yield* listAll(query)).filter(seen);
       return items.slice(0, limit).map((item) => ({ item, score: item.pinned ? 1 : 0.5 }));
     }
     const expression = words.map((w) => `"${w}"*`).join(" OR ");
@@ -413,7 +438,7 @@ export const make = Effect.gen(function* () {
     readonly agent?: string | undefined;
   }) {
     const now = yield* nowMs;
-    const seen = yield* walls(context.agent);
+    const seen = yield* viewFor(context.agent, false);
     const words = context.text === undefined ? [] : tokens(context.text);
     // A sentence gets what matches it: the standing set is already in the session's system prompt.
     const hits =
@@ -424,7 +449,7 @@ export const make = Effect.gen(function* () {
             ...(context.agent === undefined ? {} : { agent: context.agent }),
             limit: 40,
           })).filter((hit) => hit.score >= RECALL_FLOOR)
-        : (yield* list({ kinds: ["note", "preference", "correction", "decision"] }))
+        : (yield* listAll({ kinds: ["note", "preference", "correction", "decision"] }))
             .filter((item) => item.pinned || item.source === "user" || item.confidence >= 0.6)
             .slice(0, 40)
             .map((item) => ({ item, score: effectiveConfidence(item, now) }));
@@ -457,13 +482,17 @@ export const make = Effect.gen(function* () {
       )
       ORDER BY i.pinned DESC, i.updated_at DESC
     `.pipe(Effect.orDie);
-    return rows.map(fromRow);
+    return rows.map(fromRow).filter(yield* viewFor(undefined, true));
   });
 
   const sweep = Effect.gen(function* () {
     const now = yield* nowMs;
     const at = yield* nowIso;
-    const all = yield* list({ includeSuperseded: true, includeProposed: true, limit: 100_000 });
+    const all = yield* listAll({
+      includeSuperseded: true,
+      includeProposed: true,
+      limit: 100_000,
+    });
     const gone = all.filter((item) => shouldDelete(item, now));
     for (const item of gone) yield* remove(item.id, at);
     return gone.length;
@@ -543,8 +572,11 @@ export const make = Effect.gen(function* () {
       WHERE COALESCE(received_at, deleted_at) >= ${from}
       ORDER BY arrived LIMIT ${BATCH}
     `.pipe(Effect.orDie);
+    const seen = yield* viewFor(undefined, true);
     const changes: MemoryChange[] = [
-      ...rows.map((row) => ({ item: fromRow(row), tombstone: null, writer: row.origin })),
+      ...rows
+        .map((row) => ({ item: fromRow(row), tombstone: null, writer: row.origin }))
+        .filter(({ item }) => seen(item)),
       ...stones.map((s) => ({
         item: null,
         tombstone: { id: s.id, deletedAt: s.deleted_at, origin: s.origin },
@@ -639,7 +671,7 @@ export const make = Effect.gen(function* () {
     recall,
     markUsed,
     used,
-    exportMarkdown: Effect.map(list({ limit: 100_000 }), exportMarkdown),
+    exportMarkdown: Effect.map(list({ limit: 100_000, admin: true }), exportMarkdown),
     sweep,
     noteOnce,
     flag,

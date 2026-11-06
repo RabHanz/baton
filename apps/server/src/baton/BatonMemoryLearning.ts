@@ -23,7 +23,7 @@ import * as NodePath from "node:path";
 import * as ServerConfig from "../config.ts";
 import { BatonOneShot } from "./BatonOneShot.ts";
 import { dayOf } from "./BatonMemoryEpisode.ts";
-import { BatonMemoryService } from "./BatonMemoryService.ts";
+import { BatonMemoryService, MemoryViewer } from "./BatonMemoryService.ts";
 import { readPack, readRouting } from "./OperatingSystemPack.ts";
 import { isWalled } from "@t3tools/baton-shared/osPack";
 
@@ -114,11 +114,10 @@ export const make = Effect.gen(function* () {
   });
 
   const consolidate = Effect.gen(function* () {
-    const all = yield* memory.list({
-      includeSuperseded: true,
-      includeProposed: true,
-      limit: 100_000,
-    });
+    // Upkeep sees every item, walled or not.
+    const all = yield* memory
+      .list({ includeSuperseded: true, includeProposed: true, limit: 100_000 })
+      .pipe(Effect.provideService(MemoryViewer, "server"));
     const plans = planMerges(all);
     for (const { keep, drop } of plans) {
       // Saying it twice is repetition: re-adding the survivor reinforces it (MEMORY.md section 2).
@@ -138,7 +137,9 @@ export const make = Effect.gen(function* () {
   });
 
   const rewriteNearDuplicates = Effect.gen(function* () {
-    const all = yield* memory.list({ includeSuperseded: true, limit: 100_000 });
+    const all = yield* memory
+      .list({ includeSuperseded: true, limit: 100_000 })
+      .pipe(Effect.provideService(MemoryViewer, "server"));
     let done = 0;
     for (const { keep, drop, text } of planRewrites(all)) {
       if (text !== keep.text) yield* memory.rewrite(keep.id, text).pipe(Effect.ignore);

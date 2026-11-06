@@ -12,7 +12,7 @@ import { BatonMemoryRefusedError } from "@t3tools/baton-contracts";
 import { parseLearningFile } from "@t3tools/baton-shared/memory";
 import * as Effect from "effect/Effect";
 
-import { BatonMemoryService } from "./BatonMemoryService.ts";
+import { BatonMemoryService, MemoryViewer } from "./BatonMemoryService.ts";
 
 const MAX_FILES = 500;
 const same = (text: string): string => text.trim().replace(/\s+/g, " ");
@@ -85,7 +85,9 @@ export const importFolder = Effect.fn("BatonMemoryImport.importFolder")(function
     const fresh = new Set(drafts.map((d) => same(d.text)));
     // The file's full path: another folder's file of the same name is a different source.
     const ref = NodePath.join(folder, rel);
-    const before = (yield* memory.list({ includeProposed: true, limit: 100_000 })).filter(
+    const before = (yield* memory
+      .list({ includeProposed: true, limit: 100_000 })
+      .pipe(Effect.provideService(MemoryViewer, "server"))).filter(
       (i) => i.source === "import" && i.sourceRef === ref,
     );
     const kept = new Set(before.map((i) => same(i.text)));

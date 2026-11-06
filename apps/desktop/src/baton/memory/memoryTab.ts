@@ -41,7 +41,9 @@ export const createMemoryTab = (input: {
     if (loading) return;
     loading = true;
     try {
+      // His own view: the server honours it only from the desktop app's own session.
       const listed = (await input.call("list", {
+        admin: true,
         includeSuperseded: true,
         includeProposed: true,
         limit: 2_000,

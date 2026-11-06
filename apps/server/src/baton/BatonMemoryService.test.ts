@@ -11,7 +11,7 @@ import * as TestClock from "effect/testing/TestClock";
 
 import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
 import * as ServerConfig from "../config.ts";
-import { BatonMemoryService, layer as memoryLayer } from "./BatonMemoryService.ts";
+import { BatonMemoryService, MemoryViewer, layer as memoryLayer } from "./BatonMemoryService.ts";
 
 const layer = it.layer(memoryLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)));
 const DAY = 86_400_000;
@@ -226,7 +226,27 @@ it.effect(
       assert.isFalse(yield* found());
       const own = yield* memory.search({ text: "deploy key", admin: true });
       assert.isTrue(own.some((h) => h.item.scopeRef === "shop"));
+      yield* memory.recall({ text: "deploy key", agent: "engineering", turnRef: "t1" });
+      assert.isTrue((yield* memory.used("t1")).some((i) => i.scopeRef === "shop"));
+      assert.include(yield* memory.exportMarkdown, "shop deploy key");
+
+      // Any token but the desktop app's own: no persona, no admin view, nothing walled on any read.
+      const asClient = <A>(effect: Effect.Effect<A>) =>
+        effect.pipe(Effect.provideService(MemoryViewer, "client"));
+      const shop = (items: ReadonlyArray<{ readonly scopeRef: string | null } | null>) =>
+        items.some((i) => i?.scopeRef === "shop");
+      assert.isFalse(yield* asClient(recalled("engineering")));
+      assert.isFalse(yield* asClient(found("engineering")));
+      const hits = yield* asClient(memory.search({ text: "deploy key", admin: true }));
+      assert.isFalse(shop(hits.map((h) => h.item)));
+      assert.isFalse(shop(yield* asClient(memory.list({ admin: true }))));
+      assert.isFalse(shop(yield* asClient(memory.used("t1"))));
+      assert.notInclude(yield* asClient(memory.exportMarkdown), "shop deploy key");
+      const pulled = yield* asClient(memory.changesSince(null));
+      assert.isFalse(shop(pulled.changes.map((c) => c.item)));
+      assert.isTrue(shop((yield* memory.changesSince(null)).changes.map((c) => c.item)));
     }).pipe(
+      Effect.provideService(MemoryViewer, "desktop"),
       Effect.provide(
         Layer.mergeAll(memoryLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)), config),
       ),
