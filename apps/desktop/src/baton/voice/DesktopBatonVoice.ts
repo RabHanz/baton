@@ -922,6 +922,13 @@ export interface DesktopBatonVoice {
 const wordName = (word: string | null): string | null =>
   word === null ? null : `${word[0]!.toUpperCase()}${word.slice(1)}`;
 
+const OVER_HER_VOICE: ReadonlySet<string> = new Set([
+  "own voice",
+  "not a stop, said over her voice",
+  "recogniser busy",
+  "recognition failed",
+]);
+
 export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBatonVoice => {
   // Legacy name (D71): existing settings live in this file, so it keeps "fabric".
   const settingsPath = NodePath.join(input.stateDir, "fabric-voice.json");
@@ -2718,6 +2725,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         case "nothing":
           return { type: "failed", message: "Didn't catch that" };
         case "dropped":
+          // Set aside over her voice: the pill keeps saying she is speaking.
+          if (OVER_HER_VOICE.has(event.reason)) return null;
           return { type: event.reason === "wake not confirmed" ? "unconfirmed" : "resume" };
         case "stop_heard":
           input.onSpokenStop?.();

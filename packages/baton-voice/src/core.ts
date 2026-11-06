@@ -93,7 +93,13 @@ export type VoiceCoreEvent =
   /** Speech recognition came back with nothing usable. */
   | { readonly type: "nothing" }
   /** Heard and set aside: silence after a wake, a lone filler, its own voice over the speakers. */
-  | { readonly type: "dropped"; readonly text: string; readonly reason: string }
+  | {
+      readonly type: "dropped";
+      readonly text: string;
+      readonly reason: string;
+      /** The wake model's score, for a wake set aside as her own voice. */
+      readonly score?: number;
+    }
   /** He said only a dismissal ("never mind"): the window ended at once, no model was asked. */
   | { readonly type: "dismissed"; readonly text: string; readonly at: number }
   /** He said a stop phrase over Baton's voice. No wake word needed. */
@@ -626,7 +632,8 @@ export const createVoiceCore = (input: {
     const parts = stopFrames;
     const spoken = stopSpeech;
     clearStop();
-    if (stopBusy || spoken < msToSamples(STOP_MIN_SPEECH_MS)) return;
+    if (spoken < msToSamples(STOP_MIN_SPEECH_MS)) return;
+    if (stopBusy) return emit({ type: "dropped", text: "", reason: "recogniser busy" });
     stopBusy = true;
     void input.stt
       .transcribe(joined(parts))
@@ -636,20 +643,28 @@ export const createVoiceCore = (input: {
         const said = [1, 2, 3, 4]
           .map((n) => stripWake(words.slice(-n).join(" "), timings.wakeWords))
           .find(isStopPhrase);
+        const hers = spokenLately.slice(-2);
         if (said === undefined) {
           if (words.length > 0)
-            emit({ type: "dropped", text: text.trim(), reason: "not a stop, said over her voice" });
+            emit({
+              type: "dropped",
+              text: text.trim(),
+              reason: echoesSpeech(text, hers) ? "own voice" : "not a stop, said over her voice",
+            });
           return;
         }
-        // Only the sentence she is saying (or just said) can have put the word there; a clip that is
-        // nothing but the command ("Stop.", "Tessaya, stop") is his, whatever her sentence holds.
+        // Only the sentence she is saying (or just said) can have put the word there. A clip that is
+        // nothing but the command ("Stop.") is his, unless she said that command on its own too.
         const whole = isStopPhrase(stripWake(words.join(" "), timings.wakeWords));
-        if (!whole && echoesSpeech(said, spokenLately.slice(-2))) {
+        const sheSaidIt = hers
+          .flatMap((sentence) => sentence.split(/(?<=[.!?])\s+/))
+          .some((part) => isStopPhrase(part));
+        if ((!whole || sheSaidIt) && echoesSpeech(said, hers)) {
           return emit({ type: "dropped", text: said, reason: "own voice" });
         }
         emit({ type: "stop_heard", text: said, at: now() });
       })
-      .catch(() => undefined)
+      .catch(() => emit({ type: "dropped", text: "", reason: "recognition failed" }))
       .finally(() => {
         stopBusy = false;
       });
@@ -785,10 +800,11 @@ export const createVoiceCore = (input: {
       heardItselfAt(firedAt) &&
       wakeWord !== null &&
       echoesSpeech(wakeWord, spokenLately) &&
-      input.trustWake?.(wakeWord, score) !== true
+      // A sure score alone could be her own clean "Tessaya": only with his voice heard over hers too.
+      !((bargeRun > 0 || ducked) && input.trustWake?.(wakeWord, score) === true)
     ) {
       // The reply itself says the name: it is its own voice, never a barge-in.
-      emit({ type: "dropped", text: wakeWord, reason: "own voice" });
+      emit({ type: "dropped", text: wakeWord, reason: "own voice", score });
     } else if (score !== null) {
       // Over its own voice too: a barge-in needs the recogniser to hear the name, not just the model.
       if (input.verifyWake !== undefined && machine.mode !== "dictation") {

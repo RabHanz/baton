@@ -87,6 +87,7 @@ describe("Baton hearing itself", () => {
 describe("silence after a wake word", () => {
   /** The rig, with the VAD and the recogniser under the test's control. */
   const scripted = (transcript = "Yeah.") => {
+    let failing = false;
     let fire = false;
     let speech = false;
     const heard: number[] = [];
@@ -108,6 +109,10 @@ describe("silence after a wake word", () => {
         name: "fake",
         transcribe: async (pcm) => {
           heard.push(pcm.length);
+          if (failing) {
+            failing = false;
+            throw new Error("recogniser crashed");
+          }
           return transcript;
         },
       },
@@ -123,6 +128,9 @@ describe("silence after a wake word", () => {
       for (let i = 0; i < frames(seconds); i += 1) core.pushAudio(new Int16Array(FRAME));
     };
     return {
+      failNext: () => {
+        failing = true;
+      },
       core,
       push,
       heard,
@@ -266,6 +274,33 @@ describe("silence after a wake word", () => {
       const r = await talking("is to stop.", "The next step is to stop.");
       expect(r.events.some((e) => e.type === "stop_heard")).toBe(false);
       expect(r.events.find((e) => e.type === "dropped")).toMatchObject({ reason: "own voice" });
+    });
+
+    it("does not take her own command-only sentence for his", async () => {
+      const r = await talking("Wait.", "Wait. That's not right.");
+      expect(r.events.some((e) => e.type === "stop_heard")).toBe(false);
+      expect(r.events.find((e) => e.type === "dropped")).toMatchObject({ reason: "own voice" });
+    });
+
+    it("labels her own words heard back as her own voice", async () => {
+      const r = await talking("the folder holds", "The folder holds three reports.");
+      expect(r.events.find((e) => e.type === "dropped")).toMatchObject({ reason: "own voice" });
+    });
+
+    it("says when the recogniser failed on words over her voice", async () => {
+      const r = scripted("Stop.");
+      r.core.noteSpoken("A sentence.");
+      r.failNext();
+      r.core.setSpeaking(true);
+      r.push(0.5);
+      r.speech(true);
+      r.push(0.5);
+      r.speech(false);
+      r.push(0.6);
+      await settled();
+      expect(r.events.find((e) => e.type === "dropped")).toMatchObject({
+        reason: "recognition failed",
+      });
     });
 
     it("takes a clip that is only the command, even when her sentence has the word", async () => {
