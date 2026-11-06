@@ -75,7 +75,14 @@ export const startBatonMcp = async (input: {
         ? (params["arguments"] as Record<string, unknown>)
         : {};
     const started = Date.now();
-    const took = () => ({ argKeys: Object.keys(args), ms: Date.now() - started });
+    // Only the names the tool declares: a key the model made up could carry screen text into the trace.
+    const declared = Object.keys(
+      (tool.inputSchema["properties"] ?? {}) as Readonly<Record<string, unknown>>,
+    );
+    const took = () => ({
+      argKeys: Object.keys(args).filter((k) => declared.includes(k)),
+      ms: Date.now() - started,
+    });
     const verdict = await input
       .gate({ tool: `${BATON_TOOL_PREFIX}${name}`, input: args })
       .catch(() => ({ allow: false as const, reason: "Baton could not check that." }));

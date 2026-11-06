@@ -5,6 +5,7 @@
  * written only from his words and fields code wrote, tested by replaying the turn with and without it,
  * and used only after it passed and he tapped Accept.
  */
+import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
@@ -69,12 +70,26 @@ const writeStates = (dir: string, states: SkillStates) => {
 
 export const skillsDirOf = (packDir: string) => NodePath.join(packDir, SKILLS_FOLDER);
 
-/** The skills for one sentence, and their block for the turn. */
+/** What a test result is bound to: everything a skill says, so an edit after the test is noticed. */
+export const fingerprint = (s: LearnedSkill): string =>
+  NodeCrypto.createHash("sha256")
+    .update(JSON.stringify([s.when, s.apps, s.tools, s.persona, s.project, s.body]))
+    .digest("hex");
+
+/**
+ * The skills for one sentence, and their block for the turn: only one whose text is the text that
+ * passed its test, and whose tools this persona may still use.
+ */
 export const skillsForTurn = (
   dir: string,
   turn: Parameters<typeof matchSkills>[2],
+  allowed: ReadonlyArray<string>,
 ): { readonly slugs: ReadonlyArray<string>; readonly block: string } => {
-  const skills = matchSkills(readSkills(dir), readStates(dir), turn);
+  const states = readStates(dir);
+  const usable = readSkills(dir).filter(
+    (s) => states[s.slug]?.hash === fingerprint(s) && s.tools.every((t) => allowed.includes(t)),
+  );
+  const skills = matchSkills(usable, states, turn);
   return { slugs: skills.map((s) => s.slug), block: skillsBlock(skills) };
 };
 
@@ -88,7 +103,8 @@ export const decideSkill = (
   const states = readStates(dir);
   const skill = readSkills(dir).find((s) => s.slug === slug);
   if (skill === undefined) return false;
-  if (decision === "accept" && !skill.verified) return false;
+  const tested = skill.verified && states[slug]?.hash === fingerprint(skill);
+  if (decision === "accept" && !tested) return false;
   const rest = Object.fromEntries(Object.entries(states).filter(([k]) => k !== slug));
   if (decision === "forget") {
     NodeFS.rmSync(NodePath.join(dir, `${slug}.md`), { force: true });
@@ -101,6 +117,7 @@ export const decideSkill = (
       state: decision === "accept" ? "accepted" : "rejected",
       at: now.toISOString(),
       uses: states[slug]?.uses ?? 0,
+      ...(states[slug]?.hash === undefined ? {} : { hash: states[slug].hash }),
     },
   });
   return true;
@@ -139,15 +156,16 @@ export const learnedControls = (
       continue;
     }
     const accepted = state?.state === "accepted";
+    const tested = skill.verified && state?.hash === fingerprint(skill);
     rows.push({
       id: `s.learned:${skill.slug}`,
       section,
       label: `When ${skill.when}`,
-      hint: `${skill.body} ${skill.verified ? `Tested: ${skill.evidence}.` : "Not tested, so it is not used."}${accepted ? " In use." : " Waiting for your yes."}`,
+      hint: `${skill.body} ${tested ? `Tested: ${skill.evidence}.` : "Not tested as it reads now, so it is not used."}${accepted ? " In use." : " Waiting for your yes."}`,
       kind: "action",
       ...(accepted
         ? { button: "Forget" }
-        : { button: "Accept", secondary: "Reject", disabled: !skill.verified }),
+        : { button: "Accept", secondary: "Reject", disabled: !tested }),
     });
   }
   return rows;
@@ -281,13 +299,16 @@ export const learnFromTurn = async (input: {
       NodePath.join(input.dir, ".history", `${skill.slug}-${input.now.getTime()}.md`),
     );
   }
-  NodeFS.writeFileSync(
-    file,
-    skillFileText({ ...skill, verified: true, evidence: result.evidence }),
-  );
+  const kept = { ...skill, verified: true, evidence: result.evidence };
+  NodeFS.writeFileSync(file, skillFileText(kept));
   writeStates(input.dir, {
     ...states,
-    [skill.slug]: { state: "waiting", at: input.now.toISOString(), uses: 0 },
+    [skill.slug]: {
+      state: "waiting",
+      at: input.now.toISOString(),
+      uses: 0,
+      hash: fingerprint(kept),
+    },
   });
   return `I learned a skill for "${skill.when}" and tested it: ${result.evidence}. It waits for your yes under What I've learned.`;
 };

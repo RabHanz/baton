@@ -2356,12 +2356,11 @@ export const startScreenCompanion = (input: {
         return `${frame}\n\n${standing === "" ? notesBlock(notes.list()) : standing}`;
       },
       recall: async (text, project) => {
-        const learned = skillsForTurn(skillsDir(), {
-          text,
-          app: appOf(focus?.label ?? null),
-          persona: face.id,
-          project,
-        });
+        const learned = skillsForTurn(
+          skillsDir(),
+          { text, app: appOf(focus?.label ?? null), persona: face.id, project },
+          face.tools ?? buildBatonTools(toolHost).map((t) => t.name),
+        );
         turns.current().skills.push(...learned.slugs);
         const remembered = await memory.forSentence(text, project);
         return [remembered, learned.block].filter((b) => b !== "").join("\n\n");
@@ -2667,6 +2666,8 @@ export const startScreenCompanion = (input: {
       learning = line;
       input.onChange?.();
     };
+    // Learning's model turns are counted in the turn log, never limited.
+    let replays = 0;
     try {
       const lead = leadBrain();
       const reply = await learnFromTurn({
@@ -2682,24 +2683,25 @@ export const startScreenCompanion = (input: {
           timeoutMs: 90_000,
         }),
         // Tested on the model that will use it, with every call refused except the recorded answers.
-        replay: async (c, extra) =>
-          (
-            await replayTurn({
-              claudeBinary: settings.claudeBinary,
-              brain: turn.brain,
-              said: c.said,
-              where: { window: c.window, session: null },
-              answers: c.answers,
-              ...(extra === undefined ? {} : { extra }),
-              env: claudeEnv(),
-              platform: input.platform,
-            })
-          ).calls,
+        replay: async (c, extra) => {
+          replays += 1;
+          const replayed = await replayTurn({
+            claudeBinary: settings.claudeBinary,
+            brain: turn.brain,
+            said: c.said,
+            where: { window: c.window, session: null },
+            answers: c.answers,
+            ...(extra === undefined ? {} : { extra }),
+            env: claudeEnv(),
+            platform: input.platform,
+          });
+          return replayed.calls;
+        },
         now: new Date(),
         progress,
       });
       linger("Tessaya", reply);
-      input.onNote?.("learned", { said: turn.trace.said, reply });
+      input.onNote?.("learned", { said: turn.trace.said, reply, replays, model: turn.brain.model });
     } catch (error) {
       linger(
         "Tessaya",

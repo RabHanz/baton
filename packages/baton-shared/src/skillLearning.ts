@@ -75,6 +75,8 @@ export interface SkillState {
   readonly state: "waiting" | "accepted" | "rejected";
   readonly at: string;
   readonly uses: number;
+  /** The fingerprint of the text that passed its test; a skill whose text differs is not used. */
+  readonly hash?: string;
 }
 export type SkillStates = Readonly<Record<string, SkillState>>;
 
@@ -88,6 +90,7 @@ export const parseSkillStates = (text: string | undefined): SkillStates => {
           state: s.state,
           at: typeof s.at === "string" ? s.at : "",
           uses: typeof s.uses === "number" ? s.uses : 0,
+          ...(typeof s.hash === "string" ? { hash: s.hash } : {}),
         };
       }
     }

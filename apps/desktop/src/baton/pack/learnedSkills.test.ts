@@ -81,15 +81,25 @@ describe("learning from a turn", () => {
       persona: "executive",
       project: null,
     };
+    const allowed = turn.allowed;
     // Waiting for his tap: not used yet.
-    expect(skillsForTurn(dir, sentence).slugs).toEqual([]);
+    expect(skillsForTurn(dir, sentence, allowed).slugs).toEqual([]);
     const row = learnedControls(dir, { lastTurn: null, busy: null, now }).find((c) =>
       c.id.startsWith("s.learned:"),
     );
     expect(row).toMatchObject({ button: "Accept", secondary: "Reject" });
     expect(learnedAction(row!.id)).toEqual({ slug: skill!.slug, secondary: false });
     expect(decideSkill(dir, skill!.slug, "accept", now)).toBe(true);
-    expect(skillsForTurn(dir, sentence).slugs).toEqual([skill!.slug]);
+    expect(skillsForTurn(dir, sentence, allowed).slugs).toEqual([skill!.slug]);
+    // A persona that may not use its tools does not get it.
+    expect(skillsForTurn(dir, sentence, ["screen_capture"]).slugs).toEqual([]);
+    // Edited after its test, it is not used, and cannot be accepted again until tested.
+    const file = NodePath.join(dir, `${skill!.slug}.md`);
+    const tested = NodeFS.readFileSync(file, "utf8");
+    NodeFS.writeFileSync(file, tested.replace("Do not take", "Always take"));
+    expect(skillsForTurn(dir, sentence, allowed).slugs).toEqual([]);
+    expect(decideSkill(dir, skill!.slug, "accept", now)).toBe(false);
+    NodeFS.writeFileSync(file, tested);
     expect(decideSkill(dir, skill!.slug, "forget", now)).toBe(true);
     expect(readSkills(dir)).toEqual([]);
     NodeFS.rmSync(dir, { recursive: true, force: true });

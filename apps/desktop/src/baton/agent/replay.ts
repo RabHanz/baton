@@ -66,7 +66,8 @@ export const replayTurn = async (input: {
         env: input.env,
         platform: input.platform,
         timeoutMs: input.timeoutMs ?? 120_000,
-        gate: refuse,
+        // No harness gate: with one the session gets Bash, Read and the web, and a read-only Bash skips
+        // the gate. Without it only Baton's tools exist, behind the tool server's own refusal.
         mcp: { url: mcp.url, token: mcp.token },
         onTool: (call) => void calls.push(call.tool),
       }),
