@@ -106,6 +106,7 @@ export interface MemoryClient {
   exportMarkdown(): Promise<string>;
 }
 
+// @effect-diagnostics-next-line extendsNativeError:off -- a Promise API, never in an Effect failure channel.
 export class MemoryRefusal extends Error {
   override readonly name = "MemoryRefusal";
 }
