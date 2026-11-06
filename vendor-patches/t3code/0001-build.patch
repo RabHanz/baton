@@ -6,7 +6,7 @@ The scripts package typecheck leaves out scripts/tessaya, whose run-by-node tool
 app sources outside that project.
 
 diff --git a/apps/desktop/package.json b/apps/desktop/package.json
-index 68321456683eb2b1757468a416e819757121002b..7603290d54d86800b6e185cb308cba330afbd1f5 100644
+index 3d9e3239840cfe53200983ed3b0de487191cb551..530735fd2f21100eaf37bc3ba10ab2ba2bfd58e9 100644
 --- a/apps/desktop/package.json
 +++ b/apps/desktop/package.json
 @@ -15,6 +15,9 @@
@@ -50,7 +50,7 @@ index 7f277fdcbf9c294049c9b981bd4de697ee3bc353..06c264c558f3b638ef723cc68a82f78a
      ${IfNot} ${FileExists} "$newStartMenuLink"
        !insertmacro createMenuDirectory
 diff --git a/apps/mobile/package.json b/apps/mobile/package.json
-index a49c3856864f1566947e5b715f32b9d028fe531c..4b9c9ae0a392e0bfa821469e39a0e882ed17c5d5 100644
+index a58e0e50360e98f1f15e54eff4815e260cd4f9d1..76aa764f4daeeb08d3488f58ac1e18abcadabcdf 100644
 --- a/apps/mobile/package.json
 +++ b/apps/mobile/package.json
 @@ -68,6 +68,8 @@
@@ -63,10 +63,10 @@ index a49c3856864f1566947e5b715f32b9d028fe531c..4b9c9ae0a392e0bfa821469e39a0e882
      "@t3tools/contracts": "workspace:*",
      "@t3tools/mobile-highlights-native": "file:./modules/t3-highlights",
 diff --git a/apps/server/package.json b/apps/server/package.json
-index 5d6c7e8d460581a704c28d7c6644c4b518d9dab0..76cb569bbb9f8a6f4b9b0092a50a800d109965b9 100644
+index c2e711e96cfe313ff524f0d10ae1b474025de846..7644ebe659eb858431e13e6ed0cbe2c050a724af 100644
 --- a/apps/server/package.json
 +++ b/apps/server/package.json
-@@ -40,6 +40,8 @@
+@@ -41,6 +41,8 @@
      "@ff-labs/fff-node": "0.11.0",
      "@muse-code/sdk": "1.4.6",
      "@napi-rs/keyring": "^1.3.0",
@@ -76,7 +76,7 @@ index 5d6c7e8d460581a704c28d7c6644c4b518d9dab0..76cb569bbb9f8a6f4b9b0092a50a800d
      "@t3tools/provider-acp-registry": "workspace:*",
      "@t3tools/provider-core": "workspace:*",
 diff --git a/apps/web/package.json b/apps/web/package.json
-index 3cb58dec9cd6c337e0af1682c4ef87eba7f147b4..7ce1356a0d86b9959a5898c3228b0b7603b6daf8 100644
+index 57ed8f275f020cd039d3de9cd6c0b8fa24b2d4d3..5b134dc74a279cb5c12b74ff26420c6b8e51b1b1 100644
 --- a/apps/web/package.json
 +++ b/apps/web/package.json
 @@ -31,6 +31,8 @@
@@ -111,22 +111,22 @@ index 1aa5796b00378dd3160fa9e805f11b31bcb1e8ce..20b51dc8636243ba33dd693c487d75b8
  ## Run an eval
  
 diff --git a/evals/package.json b/evals/package.json
-index 681da5963142baed48950a653ef660ee5d3b512b..bc3b9cf9aeb9e520ee88fd5517c94f28cee5b287 100644
+index 2662da06068bbe5334a68aeb8d8e0c93becc5549..9cd61008a710746f7585fe5926859122c17b536a 100644
 --- a/evals/package.json
 +++ b/evals/package.json
-@@ -7,6 +7,7 @@
-     "mcp-tool-use:trim-capture": "node mcp-tool-use/trim-capture.ts",
+@@ -8,6 +8,7 @@
+     "mcp-tool-use:regrade": "node mcp-tool-use/regrade.ts",
      "thread-titles": "node --env-file-if-exists=../.env thread-titles/run.ts",
      "test-signal": "node --env-file-if-exists=../.env test-signal/run.ts",
 +    "tessaya-assistant": "node tessaya-assistant/run.ts",
-     "typecheck": "tsc --noEmit",
+     "typecheck": "effect-tsgo tsrs --noEmit",
      "test": "vp test run --config ../vite.config.ts --dir ."
    },
 diff --git a/knip.jsonc b/knip.jsonc
-index e7289c39147dc337714f8b081d641b6957f32c59..62d36a1985f242480a7bc0565165607dfd12049c 100644
+index 1190e54c57b6e1d0b91fe57d655ec376ee0bcc0e..d1c3a6e23791d5e2ab10ea02f60b94480902b424 100644
 --- a/knip.jsonc
 +++ b/knip.jsonc
-@@ -35,6 +35,9 @@
+@@ -36,6 +36,9 @@
          "prepare-server-compile-cache.cjs",
          "smoke-desktop-app.ts",
          "verify-windows-desktop-artifact.ts",
@@ -136,7 +136,7 @@ index e7289c39147dc337714f8b081d641b6957f32c59..62d36a1985f242480a7bc0565165607d
        ],
        "ignoreDependencies": ["agent-device", "esbuild"],
        // The `t3` npm package's files: copied into the package, never imported.
-@@ -48,6 +51,8 @@
+@@ -49,6 +52,8 @@
          "src/bin.ts!",
          "src/claude-history-worker.ts!",
          "scripts/cli.ts",
@@ -145,7 +145,7 @@ index e7289c39147dc337714f8b081d641b6957f32c59..62d36a1985f242480a7bc0565165607d
          "scripts/fetch-expo-schema.ts",
          "scripts/probe-claude-fork-local-rollback-replay.ts",
          "scripts/update-test-shard-weights.ts",
-@@ -57,7 +62,12 @@
+@@ -58,7 +63,12 @@
          "graphql.config.ts",
        ],
        // The generated operations export every selection's class.
@@ -159,7 +159,7 @@ index e7289c39147dc337714f8b081d641b6957f32c59..62d36a1985f242480a7bc0565165607d
        // Keep the transitive Effect runtime pinned for standalone npm installs.
        // The Vite+ web build prerequisite.
        // Native and disk-loaded provider packages stay external to the bundle; the
-@@ -70,8 +80,13 @@
+@@ -71,8 +81,13 @@
        ],
      },
      "apps/desktop": {
@@ -173,7 +173,7 @@ index e7289c39147dc337714f8b081d641b6957f32c59..62d36a1985f242480a7bc0565165607d
          "gnome-extension/extension.js!",
          "src/electron/WindowsForegroundFocusWorker.ts!",
          "src/snapShot/GlobalShiftShortcutWorker.ts!",
-@@ -89,7 +104,8 @@
+@@ -90,7 +105,8 @@
        ],
        // The injected runtime resolves Playwright by string; release tooling runs
        // electron-builder from this workspace, outside its package scripts.
@@ -183,7 +183,7 @@ index e7289c39147dc337714f8b081d641b6957f32c59..62d36a1985f242480a7bc0565165607d
      },
      "apps/web": {
        // Worktree setup (scripts/setup-worktree.ts) runs this directly, and evidence
-@@ -98,13 +114,20 @@
+@@ -99,13 +115,20 @@
        // UI component modules are copied and adapted as cohesive sets. Keep their
        // named subcomponents even before they have callers; the file audit still
        // reports an entire component module when nothing imports it.
@@ -205,7 +205,7 @@ index e7289c39147dc337714f8b081d641b6957f32c59..62d36a1985f242480a7bc0565165607d
        // Expo loads plugins and the fingerprint config by string; Metro embeds the browser entry in the native WebView.
        "entry": [
          "index.ts!",
-@@ -147,6 +170,9 @@
+@@ -148,6 +171,9 @@
        // These workspace packages are private to this monorepo.
        "includeEntryExports": true,
      },
@@ -216,10 +216,10 @@ index e7289c39147dc337714f8b081d641b6957f32c59..62d36a1985f242480a7bc0565165607d
        "includeEntryExports": true,
        "entry": ["test/fixtures/*.ts"],
 diff --git a/packages/client-runtime/package.json b/packages/client-runtime/package.json
-index d1b48e1d76f4f4eec09424703b03cde988717316..130c0b327e62918f9e93c3db8f734c80b8c361c8 100644
+index 15d9bc6696281a71fcf9a61d8d5182cadebd4745..8d6ba02474fa9aec1a9b88af76295979113d8acf 100644
 --- a/packages/client-runtime/package.json
 +++ b/packages/client-runtime/package.json
-@@ -526,6 +526,7 @@
+@@ -538,6 +538,7 @@
    },
    "dependencies": {
      "@pierre/diffs": "catalog:",
@@ -228,12 +228,12 @@ index d1b48e1d76f4f4eec09424703b03cde988717316..130c0b327e62918f9e93c3db8f734c80
      "@t3tools/provider-acp-registry": "workspace:*",
      "@t3tools/provider-core": "workspace:*",
 diff --git a/pnpm-workspace.yaml b/pnpm-workspace.yaml
-index be4d3c29ea763a8294a8ab765fcc46abd5096003..2a19711255896c99c97f0f757a8dd988b583f8d9 100644
+index 8169c1b806f6dd6616902e3cf32ce4271fd2b1f0..0374e71de0c00791cbb11d3e2fba085f7412e1db 100644
 --- a/pnpm-workspace.yaml
 +++ b/pnpm-workspace.yaml
-@@ -21,6 +21,8 @@ allowBuilds:
-   msgpackr-extract: true
-   msw: false
+@@ -19,6 +19,8 @@ allowBuilds:
+   electron-winstaller: false
+   esbuild: true
    node-pty: true
 +  # Baton voice (packages/baton-voice) uses the prebuilt CPU binaries it ships.
 +  onnxruntime-node: false
@@ -303,10 +303,10 @@ index aa04d9bfbf17d9891c21f0a6280a3326f0b01a40..a97f4715fe6495e51b14ad05fbe83b5b
 +  assert.include(batonSidecarBuild("mac", "x64")[0]!.cmake, "CMAKE_OSX_ARCHITECTURES=x86_64");
 +});
 diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
-index 5de3c068fc6c6345963bef019e1e9eadb4faf08e..49d14c0791010b069baf39cd0517411860054251 100644
+index 9bc12cde9854c34c314239e55c18e8e6a0028ce5..979826e0a8050dc15f0612cf833316944fbe5f9b 100644
 --- a/scripts/build-desktop-artifact.ts
 +++ b/scripts/build-desktop-artifact.ts
-@@ -740,6 +740,7 @@ const WindowsPackagedPayloadValidationReason = Schema.Literals([
+@@ -749,6 +749,7 @@ const WindowsPackagedPayloadValidationReason = Schema.Literals([
    "sidecar-invalid",
    "unpacked-native-missing",
    "resource-monitor-missing",
@@ -314,7 +314,7 @@ index 5de3c068fc6c6345963bef019e1e9eadb4faf08e..49d14c0791010b069baf39cd05174118
    "wsl-runtime-missing",
    "wsl-runtime-invalid",
    "file-limit-exceeded",
-@@ -766,6 +767,9 @@ export class WindowsPackagedPayloadValidationError extends Schema.TaggedError<Wi
+@@ -775,6 +776,9 @@ export class WindowsPackagedPayloadValidationError extends Schema.TaggedError<Wi
      if (this.reason === "resource-monitor-missing") {
        return "Windows packaged payload is missing the resource monitor executable.";
      }
@@ -324,7 +324,7 @@ index 5de3c068fc6c6345963bef019e1e9eadb4faf08e..49d14c0791010b069baf39cd05174118
      if (this.reason === "wsl-runtime-missing") {
        return "Windows packaged payload is missing the WSL runtime archive or SHA-256 sidecar.";
      }
-@@ -985,6 +989,8 @@ export const DESKTOP_FILE_EXCLUSIONS = [
+@@ -994,6 +998,8 @@ export const DESKTOP_FILE_EXCLUSIONS = [
    "!**/*.d.cts",
    "!apps/desktop/resources/browser-secret",
    "!apps/desktop/resources/browser-secret/**/*",
@@ -333,7 +333,7 @@ index 5de3c068fc6c6345963bef019e1e9eadb4faf08e..49d14c0791010b069baf39cd05174118
    "!apps/desktop/prod-resources/browser-secret",
    "!apps/desktop/prod-resources/browser-secret/**/*",
    "!apps/desktop/prod-resources/windows-server",
-@@ -1014,6 +1020,21 @@ export function resolveMacFileExclusions(arch?: typeof BuildArch.Type) {
+@@ -1023,6 +1029,21 @@ export function resolveMacFileExclusions(arch?: typeof BuildArch.Type) {
    const unusedArch = arch === "arm64" ? "x64" : "arm64";
    return [...MAC_FILE_EXCLUSIONS, `!**/node_modules/node-pty/prebuilds/darwin-${unusedArch}/**/*`];
  }
@@ -355,7 +355,7 @@ index 5de3c068fc6c6345963bef019e1e9eadb4faf08e..49d14c0791010b069baf39cd05174118
  // Large ASAR sidecars avoid NSIS extracting thousands of loose files during installs and updates.
  export const WINDOWS_SERVER_ASAR_RESOURCE = "server.asar";
  // Native modules and executables need real paths, so place them in ASAR's .unpacked sibling.
-@@ -1051,7 +1072,8 @@ export function resolveWindowsServerAsarIgnoreGlobs(arch: typeof BuildArch.Type)
+@@ -1060,7 +1081,8 @@ export function resolveWindowsServerAsarIgnoreGlobs(arch: typeof BuildArch.Type)
    ];
  }
  
@@ -365,7 +365,7 @@ index 5de3c068fc6c6345963bef019e1e9eadb4faf08e..49d14c0791010b069baf39cd05174118
  export const WINDOWS_SERVER_RESOURCE_SOURCE_DIR = "apps/desktop/prod-resources/windows-server";
  export const WINDOWS_SERVER_EXTRA_RESOURCES = [
    {
-@@ -1089,6 +1111,10 @@ export const DESKTOP_EXTRA_RESOURCES = [
+@@ -1098,6 +1120,10 @@ export const DESKTOP_EXTRA_RESOURCES = [
      from: "apps/desktop/prod-resources/resource-monitor",
      to: "resource-monitor",
    },
@@ -376,7 +376,7 @@ index 5de3c068fc6c6345963bef019e1e9eadb4faf08e..49d14c0791010b069baf39cd05174118
  ] as const;
  export const LINUX_CAPTURE_EXTRA_RESOURCES = [
    {
-@@ -2338,6 +2364,94 @@ export const stageLinuxCaptureHelper = Effect.fn("stageLinuxCaptureHelper")(func
+@@ -2346,6 +2372,94 @@ export const stageLinuxCaptureHelper = Effect.fn("stageLinuxCaptureHelper")(func
    }
  });
  
@@ -471,7 +471,7 @@ index 5de3c068fc6c6345963bef019e1e9eadb4faf08e..49d14c0791010b069baf39cd05174118
  export const stageResourceMonitor = Effect.fn("stageResourceMonitor")(function* (input: {
    readonly repoRoot: string;
    readonly stageResourcesDir: string;
-@@ -2783,6 +2897,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
+@@ -2791,6 +2905,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
          : platform === "linux"
            ? LINUX_FILE_EXCLUSIONS
            : []),
@@ -479,7 +479,7 @@ index 5de3c068fc6c6345963bef019e1e9eadb4faf08e..49d14c0791010b069baf39cd05174118
      ],
      directories: {
        buildResources: "apps/desktop/resources",
-@@ -3401,6 +3516,20 @@ export const validateWindowsPackagedPayload = Effect.fn(
+@@ -3410,6 +3525,20 @@ export const validateWindowsPackagedPayload = Effect.fn(
      });
    }
  
@@ -500,7 +500,7 @@ index 5de3c068fc6c6345963bef019e1e9eadb4faf08e..49d14c0791010b069baf39cd05174118
    const wslArchivePath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_NAME);
    const wslArchiveHashPath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_HASH_NAME);
    const [hasWslArchive, hasWslArchiveHash] = yield* Effect.all([
-@@ -3762,6 +3891,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
+@@ -3771,6 +3900,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
      arch: options.arch,
      verbose: options.verbose,
    });

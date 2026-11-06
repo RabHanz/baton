@@ -1,5 +1,5 @@
 diff --git a/apps/server/src/provider/Drivers/ClaudeDriver.ts b/apps/server/src/provider/Drivers/ClaudeDriver.ts
-index d4a16a22204657e31181d93a670260807ce7bda4..d49fe02dfab0aeba1c1a604530fc1d5b16f85d7e 100644
+index c0a9c5698d92c64463244df9fb2a95006f05e77a..974b125f94e3123b1640d3727d6dbf2277dfa8bc 100644
 --- a/apps/server/src/provider/Drivers/ClaudeDriver.ts
 +++ b/apps/server/src/provider/Drivers/ClaudeDriver.ts
 @@ -41,6 +41,7 @@ import {
@@ -8,9 +8,9 @@ index d4a16a22204657e31181d93a670260807ce7bda4..d49fe02dfab0aeba1c1a604530fc1d5b
  } from "@t3tools/provider-core/server/driver";
 +import { withProbeLimits } from "../../baton/ClaudeProbeLimits.ts";
  import { withInstanceIdentity } from "@t3tools/provider-core/server/instanceIdentity";
+ import { enrichProviderSnapshotWithVersionAdvisory } from "@t3tools/provider-core/server/maintenanceResolver";
  import {
-   enrichProviderSnapshotWithVersionAdvisory,
-@@ -279,6 +280,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
+@@ -255,6 +256,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
                ? Cache.invalidateAll(capabilitiesProbeCache)
                : Effect.void,
            ),
@@ -39,7 +39,7 @@ index b46614a8b418d6adcf03846f6aa336519934e834..b4568bba2a8e1d336a60ed7a11b9fe35
                  <Button
                    size="sm"
 diff --git a/apps/web/src/components/chat/ThreadDetailsUsage.tsx b/apps/web/src/components/chat/ThreadDetailsUsage.tsx
-index 05211d6ace44e7bbe4a6df44b3ce41de865af423..207ae3b20961bd00f169c9b2864328c853f9eab7 100644
+index f3ee87e1b7f7b9baafd49d2864cf82b06103342a..ed660521611ea77acc6ac4de499035ed62d19163 100644
 --- a/apps/web/src/components/chat/ThreadDetailsUsage.tsx
 +++ b/apps/web/src/components/chat/ThreadDetailsUsage.tsx
 @@ -1,3 +1,4 @@
@@ -55,7 +55,7 @@ index 05211d6ace44e7bbe4a6df44b3ce41de865af423..207ae3b20961bd00f169c9b2864328c8
  import type { ReactNode } from "react";
  
  import { usePrimarySettings } from "../../hooks/useSettings";
-@@ -74,7 +76,24 @@ export function ThreadDetailsUsage({
+@@ -75,7 +77,24 @@ export function ThreadDetailsUsage({
              tooltip={<span className="text-foreground">{notice}</span>}
            />
          ) : (
@@ -175,10 +175,10 @@ index 1e4bcd0090854f7856140516420843c648bdc690..2301b0e95e66445363e0b4c6f166c49d
    };
  }
 diff --git a/packages/shared/src/usageLimits.ts b/packages/shared/src/usageLimits.ts
-index bf7dfea4e04bf55ea2eb0188620d9834134393f9..a62a2a9534b083d70d311f7b87cd93b6bb2fb48c 100644
+index 869f676acae699f583a85621df439e70ff7e4f36..aab325ba6771e187b17fab52dc1d547dc25e49c8 100644
 --- a/packages/shared/src/usageLimits.ts
 +++ b/packages/shared/src/usageLimits.ts
-@@ -199,7 +199,7 @@ function accountKey(
+@@ -200,7 +200,7 @@ function accountKey(
      : null;
  }
  
@@ -187,7 +187,7 @@ index bf7dfea4e04bf55ea2eb0188620d9834134393f9..a62a2a9534b083d70d311f7b87cd93b6
    readonly driver: ServerProvider["driver"];
    readonly email?: string | undefined;
    readonly workspaceId?: string | undefined;
-@@ -214,7 +214,7 @@ const nativeReport = (provider: ServerProvider): AccountReport => ({
+@@ -215,7 +215,7 @@ const nativeReport = (provider: ServerProvider): AccountReport => ({
  });
  
  // Include every enabled login, even unreadable workspaces.

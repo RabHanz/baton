@@ -1,16 +1,16 @@
 Approving a cloud task is its own permission (baton:cloud-approve): not in the standard client scopes, held by the desktop app session and by a client paired for it.
 
 diff --git a/apps/server/src/auth/PairingGrantStore.test.ts b/apps/server/src/auth/PairingGrantStore.test.ts
-index 4e940cd36cc51989f8c03cfc7d9150101f35b070..f1a55954afdcb3b8f150816388918eb86fc8e5e9 100644
+index baa7f388f2bd4958aa179cc0984920b2e266df22..b5cbbecca0e2126d1c552115b3850856c408f122 100644
 --- a/apps/server/src/auth/PairingGrantStore.test.ts
 +++ b/apps/server/src/auth/PairingGrantStore.test.ts
 @@ -1,4 +1,4 @@
 -import { AuthStandardClientScopes } from "@t3tools/contracts";
 +import { AuthBatonCloudApproveScope, AuthStandardClientScopes } from "@t3tools/contracts";
+ import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
  import * as NodeServices from "@effect/platform-node/NodeServices";
  import { expect, it } from "@effect/vitest";
- import * as Crypto from "effect/Crypto";
-@@ -55,6 +55,7 @@ it.layer(NodeServices.layer)("PairingGrantStore.layer", (it) => {
+@@ -56,6 +56,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("PairingGrantStor
  
        expect(first.method).toBe("one-time-token");
        expect(first.scopes).toEqual(AuthStandardClientScopes);
@@ -18,7 +18,7 @@ index 4e940cd36cc51989f8c03cfc7d9150101f35b070..f1a55954afdcb3b8f150816388918eb8
        expect(first.subject).toBe("one-time-token");
        expect(first.label).toBe("Julius iPhone");
        expect(issued.label).toBe("Julius iPhone");
-@@ -141,6 +142,8 @@ it.layer(NodeServices.layer)("PairingGrantStore.layer", (it) => {
+@@ -139,6 +140,8 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("PairingGrantStor
        const otherCase = yield* Effect.flip(bootstrapCredentials.consume("ABCDEFGHJKMN"));
  
        expect(exact.method).toBe("desktop-bootstrap");
@@ -28,7 +28,7 @@ index 4e940cd36cc51989f8c03cfc7d9150101f35b070..f1a55954afdcb3b8f150816388918eb8
      }).pipe(
        Effect.provide(
 diff --git a/apps/server/src/auth/PairingGrantStore.ts b/apps/server/src/auth/PairingGrantStore.ts
-index 0709f371684fb90b7f97893bae780d3f0d1ecf95..a728c92917728a1cb01a496c672025c8551e0778 100644
+index add1c7990f13c7d123ed0975004a8f24dfaac596..4ade8ccb7aca59fea03bc06d3efefb683d24f4e2 100644
 --- a/apps/server/src/auth/PairingGrantStore.ts
 +++ b/apps/server/src/auth/PairingGrantStore.ts
 @@ -1,4 +1,6 @@
@@ -38,7 +38,7 @@ index 0709f371684fb90b7f97893bae780d3f0d1ecf95..a728c92917728a1cb01a496c672025c8
    AuthStandardClientScopes,
    type AuthEnvironmentScope,
    type AuthPairingLink,
-@@ -249,6 +251,12 @@ type ConsumeResult =
+@@ -250,6 +252,12 @@ type ConsumeResult =
      };
  
  const DEFAULT_ONE_TIME_TOKEN_TTL_MINUTES = Duration.minutes(5);
@@ -51,7 +51,7 @@ index 0709f371684fb90b7f97893bae780d3f0d1ecf95..a728c92917728a1cb01a496c672025c8
  const DESKTOP_BOOTSTRAP_TTL_HOURS = Duration.hours(24);
  const DEV_STARTUP_TTL_HOURS = Duration.hours(24);
  const PAIRING_TOKEN_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
-@@ -320,7 +328,7 @@ const make = Effect.gen(function* () {
+@@ -325,7 +333,7 @@ const make = Effect.gen(function* () {
      const now = yield* DateTime.now;
      yield* seedGrant(config.desktopBootstrapToken, {
        method: "desktop-bootstrap",
@@ -60,8 +60,8 @@ index 0709f371684fb90b7f97893bae780d3f0d1ecf95..a728c92917728a1cb01a496c672025c8
        subject: "desktop-bootstrap",
        expiresAt: DateTime.add(now, {
          milliseconds: Duration.toMillis(DESKTOP_BOOTSTRAP_TTL_HOURS),
-@@ -441,7 +449,7 @@ const make = Effect.gen(function* () {
-       if (consumeRotatingDesktopToken(credential, now.epochMilliseconds)) {
+@@ -446,7 +454,7 @@ const make = Effect.gen(function* () {
+       if (yield* consumeRotatingDesktopToken(credential, now.epochMilliseconds)) {
          return {
            method: "desktop-bootstrap",
 -          scopes: AuthStandardClientScopes,
