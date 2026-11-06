@@ -5,6 +5,18 @@
  * and every drive plan its own Run it. How each mode runs is in docs/baton/DECISIONS.md.
  */
 import { createModelAsk } from "../writing/modelAsk.ts";
+import { appOf } from "@t3tools/baton-shared/skillLearning";
+import { replayTurn } from "../agent/replay.ts";
+import {
+  decideSkill,
+  learnedAction,
+  learnedControls,
+  learnFromTurn,
+  readStates,
+  skillsDirOf,
+  skillsForTurn,
+  type LastTurn,
+} from "../pack/learnedSkills.ts";
 import { createTextEdit } from "../writing/textEdit.ts";
 import { createTransformStore } from "../writing/transformStore.ts";
 import { changedFrom, writeJsonFile } from "../writing/jsonStore.ts";
@@ -83,7 +95,7 @@ import {
 import { BATON_TOOL_PREFIX } from "@t3tools/baton-shared/operator";
 import { createMouseConsent, pointerMoved } from "../agent/pointerGuard.ts";
 import { createAgentGate, createTaint } from "../agent/agentGate.ts";
-import { createTurnLedger } from "../agent/turnLedger.ts";
+import { createTurnLedger, stoppedBy, traceCalls } from "../agent/turnLedger.ts";
 import { buildRemoteHandsTools, type RemoteHandsDeps } from "../agent/remoteHandsTools.ts";
 import type { HandsResult } from "@t3tools/baton-shared/remoteHands";
 import { startBatonMcp, type BatonMcp } from "../agent/batonMcp.ts";
@@ -889,6 +901,11 @@ export const startScreenCompanion = (input: {
     wake: null,
     text: "",
   });
+  /** The last assistant turn, kept on this machine for "Learn from that". */
+  let lastTurn: (LastTurn & { readonly brain: Brain }) | null = null;
+  /** What the learning loop is doing, shown on its button while it runs. */
+  let learning: string | null = null;
+  const skillsDir = () => skillsDirOf(NodePath.join(input.stateDir, PACK_FOLDER));
   /** The model and effort the answering persona's file names. */
   let faceModel: Brain = modelOf(DEFAULT_OS_PACK, "executive");
   const leadBrain = () =>
@@ -2302,7 +2319,12 @@ export const startScreenCompanion = (input: {
       tools: withFailureGuard(buildBatonTools(toolHost), toolFailures),
       gate: agentGate,
       scrub: (text) => vaultHost?.scrub(text) ?? text,
-      onResult: (r) => turns.current().results.push(r),
+      onResult: ({ text, ...r }) => {
+        const record = turns.current();
+        record.results.push(r);
+        // The answer stays on this machine, only for replaying the turn if he asks to learn from it.
+        if (r.ok && text !== undefined) record.answers[r.tool] ??= text.slice(0, 2_000);
+      },
     });
     return startVisionSession({
       claudeBinary: settings.claudeBinary,
@@ -2333,7 +2355,16 @@ export const startScreenCompanion = (input: {
         const frame = assistantFrame(readPack(NodePath.join(input.stateDir, PACK_FOLDER)));
         return `${frame}\n\n${standing === "" ? notesBlock(notes.list()) : standing}`;
       },
-      recall: (text, project) => memory.forSentence(text, project),
+      recall: async (text, project) => {
+        const learned = skillsForTurn(
+          skillsDir(),
+          { text, app: appOf(focus?.label ?? null), persona: face.id, project },
+          face.tools ?? buildBatonTools(toolHost).map((t) => t.name),
+        );
+        turns.current().skills.push(...learned.slugs);
+        const remembered = await memory.forSentence(text, project);
+        return [remembered, learned.block].filter((b) => b !== "").join("\n\n");
+      },
       learn: (said, reply, project) => {
         // Called before this turn is written, so the newest turn in the file is the one before.
         const before = conversation.recent(1)[0];
@@ -2370,6 +2401,26 @@ export const startScreenCompanion = (input: {
     const record = mine.record;
     let firstTokenAt: number | null = null;
     let firstAudioAt: number | null = null;
+    const project = focusedSession === null ? null : (actions?.projectOf?.(focusedSession) ?? null);
+    const windowLabel = titlesAllowed() && focus !== null ? redactFocusLabel(focus.label) : null;
+    /** The turn as the learning loop may see it, for "Learn from that". */
+    const keepTurn = (error: unknown) => {
+      const results = record().results;
+      lastTurn = {
+        trace: {
+          said: text,
+          app: appOf(windowLabel),
+          persona: face.id,
+          project,
+          calls: traceCalls(results),
+          stoppedBy: stoppedBy(results, error),
+        },
+        window: windowLabel,
+        answers: { ...record().answers },
+        allowed: face.tools ?? buildBatonTools(toolHost).map((t) => t.name),
+        brain: faceModel,
+      };
+    };
     try {
       const voice = streamSpeech(() => (firstAudioAt ??= Date.now()));
       const who = {
@@ -2379,8 +2430,6 @@ export const startScreenCompanion = (input: {
         model: faceModel.model,
         effort: faceModel.effort,
       };
-      const project =
-        focusedSession === null ? null : (actions?.projectOf?.(focusedSession) ?? null);
       input.onNote?.("agent_turn_start", { said: text, ...who });
       const introduce = face.name !== lastFace;
       lastFace = face.name;
@@ -2389,7 +2438,7 @@ export const startScreenCompanion = (input: {
       const reply = await agentOf().say(
         direct ? `(to the focused session) ${text}` : text,
         {
-          window: titlesAllowed() && focus !== null ? redactFocusLabel(focus.label) : null,
+          window: windowLabel,
           session: focusedSession,
           project,
           persona: { name: face.name, role: face.role, introduce },
@@ -2403,9 +2452,11 @@ export const startScreenCompanion = (input: {
       voice.finish(reply);
       input.onActivity?.(null);
       if (runningMode() === null) linger(who.persona, reply);
+      keepTurn(null);
       input.onNote?.("agent_turn", {
         ok: true,
         ...who,
+        skills: [...record().skills],
         project,
         said: text,
         reply,
@@ -2419,9 +2470,12 @@ export const startScreenCompanion = (input: {
         route: "agent",
       });
     } catch (error) {
+      keepTurn(error);
       // Every turn leaves its line, a failed one too, with what the tools did before it stopped.
       input.onNote?.("agent_turn", {
         ok: false,
+        skills: [...record().skills],
+        stoppedBy: lastTurn?.trace.stoppedBy ?? null,
         wake: woke,
         persona: face.name,
         voice: voiceNow(),
@@ -2604,6 +2658,60 @@ export const startScreenCompanion = (input: {
   Electron.globalShortcut.register(ASK_HOTKEY, openAskBox);
 
   const stop = () => perform({ route: "control", control: "stop", source: "instant" }, 0, 0);
+  /** "Learn from that": a skill from the last turn, tested by replaying it, shown for his yes. */
+  const learnFromLast = async () => {
+    const turn = lastTurn;
+    if (turn === null || learning !== null) return;
+    const progress = (line: string) => {
+      learning = line;
+      input.onChange?.();
+    };
+    // Learning's model turns are counted in the turn log, never limited.
+    let replays = 0;
+    try {
+      const lead = leadBrain();
+      const reply = await learnFromTurn({
+        dir: skillsDir(),
+        turn,
+        // The writer is judgment work: the lead's model. It sees only his words and code-written fields.
+        ask: createModelAsk({
+          claudeBinary: () => settings.claudeBinary,
+          model: () => lead.model,
+          workDir: NodePath.join(input.stateDir, "edit"),
+          env: claudeEnv,
+          platform: input.platform,
+          timeoutMs: 90_000,
+        }),
+        // Tested on the model that will use it, with every call refused except the recorded answers.
+        replay: async (c, extra) => {
+          replays += 1;
+          const replayed = await replayTurn({
+            claudeBinary: settings.claudeBinary,
+            brain: turn.brain,
+            said: c.said,
+            where: { window: c.window, session: null },
+            answers: c.answers,
+            ...(extra === undefined ? {} : { extra }),
+            env: claudeEnv(),
+            platform: input.platform,
+          });
+          return replayed.calls;
+        },
+        now: new Date(),
+        progress,
+      });
+      linger("Tessaya", reply);
+      input.onNote?.("learned", { said: turn.trace.said, reply, replays, model: turn.brain.model });
+    } catch (error) {
+      linger(
+        "Tessaya",
+        `I could not learn from that: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    } finally {
+      learning = null;
+      input.onChange?.();
+    }
+  };
   const dismissQuietly = () => {
     hush();
     dropOperator();
@@ -2714,6 +2822,11 @@ export const startScreenCompanion = (input: {
         : []),
     ],
     controls: () => [
+      ...learnedControls(skillsDir(), {
+        lastTurn: lastTurn?.trace.said ?? null,
+        busy: learning,
+        now: new Date(),
+      }),
       {
         id: "s.output",
         section: "Answers and voice",
@@ -2938,6 +3051,18 @@ export const startScreenCompanion = (input: {
       else if (id === "s.cursor") save({ actCursor: value === true });
       else if (id === "s.handsAway") save({ remoteHandsAway: value === true });
       else if (id === "s.capture") save({ captureApproval: value === true ? "always" : "ask" });
+      else if (id === "s.learn") void learnFromLast();
+      else if (learnedAction(id) !== null) {
+        const act = learnedAction(id)!;
+        const accepted = readStates(skillsDir())[act.slug]?.state === "accepted";
+        decideSkill(
+          skillsDir(),
+          act.slug,
+          act.secondary ? "reject" : accepted ? "forget" : "accept",
+          new Date(),
+        );
+        input.onChange?.();
+      }
     },
     dispose: () => {
       stopMemorySync?.();

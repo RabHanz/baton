@@ -119,6 +119,7 @@ export const tabOf = (id: string): TabId => {
   if (/^k[:.]/.test(id)) return "tools";
   if (/^p[:.]/.test(id)) return "memory";
   if (id.startsWith("vt:") || id.startsWith("vt.")) return "vault";
+  if (id === "s.learn" || id.startsWith("s.learned:")) return "memory";
   if (id.startsWith("m:") || id.startsWith("m.")) return "memory";
   if (id.startsWith("u.")) return "settings";
   return "settings";

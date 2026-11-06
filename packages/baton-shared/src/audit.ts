@@ -104,6 +104,7 @@ export const buildAuditTrail = (input: {
   }
 
   for (const row of input.record ?? []) {
+    if (row.kind === "turn_trace") continue;
     entries.push({
       at: row.at,
       actor: "agent",

@@ -1,3 +1,4 @@
+import { pathPasses } from "../../packages/baton-shared/src/skillLearning.ts";
 import type { AssistantCase } from "./cases.ts";
 
 /** The tool a sample reached for first, without the MCP server prefix; "none" when it used none. */
@@ -14,7 +15,8 @@ export const passes = (c: AssistantCase, sample: Sample): boolean => {
   return (
     c.first.includes(first) &&
     !(c.not ?? []).includes(first) &&
-    (c.says === undefined || sample.reply.toLowerCase().includes(c.says.toLowerCase()))
+    (c.says === undefined || sample.reply.toLowerCase().includes(c.says.toLowerCase())) &&
+    (c.goal === undefined || pathPasses({ goal: c.goal, maxCalls: c.maxCalls ?? 99 }, sample.calls))
   );
 };
 

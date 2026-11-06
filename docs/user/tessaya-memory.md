@@ -13,3 +13,7 @@ Say "remember that ..." or open the **Memory** page. Every memory is a row you c
 - Once a week near-duplicates are folded into one. Your own wording is never rewritten and pinned items are never dropped.
 - It refuses to keep passwords and keys. Use the [Vault](./tessaya-vault.md) for those.
 - Memory is used in the first prompt of a turn within a small budget; **used in the last answer** marks what it was.
+
+## What she has learned
+
+When a turn took her far too many steps, open **Memory**, **What I've learned**, and press **Learn from that**. She writes a short skill from what you said and which tools she used (never from what was on your screen or in a file), then tests it by replaying that turn without and with it. A skill is kept only if the turn gets shorter and none of the turns she kept for testing gets worse. It then waits for your **Accept**; **Reject** keeps the idea from coming back for 30 days, and **Forget** deletes it. Skills are plain files in the `skills` folder of your operating-system pack. A skill is advice only: everything she does still asks you exactly as before.

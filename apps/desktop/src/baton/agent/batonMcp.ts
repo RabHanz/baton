@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off
+// @effect-diagnostics nodeBuiltinImport:off globalDate:off
 /**
  * Baton's tools over MCP (D143): 127.0.0.1 only, a random port, this session's token on every request,
  * no browsers, closed when the session ends. The gate runs here in the handler, before any tool.
@@ -54,6 +54,11 @@ export const startBatonMcp = async (input: {
     readonly tool: string;
     readonly ok: boolean;
     readonly error?: string;
+    /** The argument names, never their values. */
+    readonly argKeys: ReadonlyArray<string>;
+    readonly ms: number;
+    /** What a call that worked answered, kept only on this machine so a turn can be replayed. */
+    readonly text?: string;
   }) => void;
 }): Promise<BatonMcp> => {
   const token = NodeCrypto.randomBytes(32).toString("hex");
@@ -69,6 +74,15 @@ export const startBatonMcp = async (input: {
       typeof params["arguments"] === "object" && params["arguments"] !== null
         ? (params["arguments"] as Record<string, unknown>)
         : {};
+    const started = Date.now();
+    // Only the names the tool declares: a key the model made up could carry screen text into the trace.
+    const declared = Object.keys(
+      (tool.inputSchema["properties"] ?? {}) as Readonly<Record<string, unknown>>,
+    );
+    const took = () => ({
+      argKeys: Object.keys(args).filter((k) => declared.includes(k)),
+      ms: Date.now() - started,
+    });
     const verdict = await input
       .gate({ tool: `${BATON_TOOL_PREFIX}${name}`, input: args })
       .catch(() => ({ allow: false as const, reason: "Baton could not check that." }));
@@ -77,6 +91,7 @@ export const startBatonMcp = async (input: {
         tool: name,
         ok: false,
         error: `refused: ${verdict.reason}`.slice(0, 300),
+        ...took(),
       });
       return {
         isError: true,
@@ -85,7 +100,12 @@ export const startBatonMcp = async (input: {
     }
     try {
       const out = await tool.run(args);
-      input.onResult?.({ tool: name, ok: true });
+      input.onResult?.({
+        tool: name,
+        ok: true,
+        ...took(),
+        ...(out.text === undefined ? {} : { text: (input.scrub ?? ((t) => t))(out.text) }),
+      });
       return {
         content: [
           ...(out.text === undefined
@@ -101,6 +121,7 @@ export const startBatonMcp = async (input: {
         error: (input.scrub ?? ((t) => t))(
           error instanceof Error ? error.message : String(error),
         ).slice(0, 300),
+        ...took(),
       });
       return {
         isError: true,

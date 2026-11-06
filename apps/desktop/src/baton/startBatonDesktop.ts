@@ -397,6 +397,29 @@ export const startBatonDesktop = Effect.gen(function* () {
             1000,
           ),
       }).catch(() => undefined);
+      // Learning's trace: tools, argument names and times, never values, errors or his words.
+      const calls = (Array.isArray(fields["toolResults"]) ? fields["toolResults"] : []).map(
+        (r: { tool?: unknown; argKeys?: unknown; ok?: unknown; ms?: unknown }) => ({
+          tool: String(r.tool),
+          argKeys: Array.isArray(r.argKeys) ? r.argKeys.map(String) : [],
+          ok: r.ok === true,
+          ms: typeof r.ms === "number" ? r.ms : 0,
+        }),
+      );
+      void direct("baton.record.append", {
+        kind: "turn_trace",
+        actor: (text("persona") || "Tessaya").slice(0, 60),
+        ...(text("project") === "" ? {} : { project: text("project").slice(0, 200) }),
+        subject: `${calls.length} calls, ${calls.filter((c) => !c.ok).length} failed, ${fields["totalMs"] ?? "?"} ms`,
+        outcome: ok ? "answered" : "failed",
+        // The last calls, so the line stays whole JSON under the Record's 1000 characters.
+        detail: JSON.stringify({
+          calls: calls.slice(-10),
+          skills: fields["skills"] ?? [],
+          stoppedBy: fields["stoppedBy"] ?? null,
+          model: fields["model"] ?? null,
+        }).slice(0, 1000),
+      }).catch(() => undefined);
     };
     markPhase("screen-companion:begin");
     try {

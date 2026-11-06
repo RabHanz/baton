@@ -7,15 +7,10 @@
  * for first.
  */
 import * as NodeFS from "node:fs";
-import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeUtil from "node:util";
 
-import { createAssistantAgent } from "../../apps/desktop/src/baton/agent/agentSession.ts";
-import { startBatonMcp } from "../../apps/desktop/src/baton/agent/batonMcp.ts";
-import { buildBatonTools, type ToolHost } from "../../apps/desktop/src/baton/agent/batonTools.ts";
-import { createConversationLog } from "../../apps/desktop/src/baton/conversation/conversationLog.ts";
-import { startVisionSession } from "../../apps/desktop/src/baton/screen/claudeVision.ts";
+import { replayTurn } from "../../apps/desktop/src/baton/agent/replay.ts";
 import { DEFAULT_OS_PACK, modelOf, personaFor } from "../../packages/baton-shared/src/osPack.ts";
 import { assistantCases, type AssistantCase } from "./cases.ts";
 import { casePasses, firstTool, type Sample } from "./grade.ts";
@@ -29,6 +24,8 @@ const { values } = NodeUtil.parseArgs({
     case: { type: "string", multiple: true },
     samples: { type: "string", default: "2" },
     claude: { type: "string", default: "claude" },
+    // A file added to every turn the way a matched skill is, to test a skill against the suite.
+    "extra-notes": { type: "string" },
   },
 });
 if (values.out === undefined) throw new Error("Use --out <directory>.");
@@ -36,69 +33,34 @@ const out = values.out;
 const samples = Number(values.samples);
 const cases = assistantCases.filter((c) => values.case === undefined || values.case.includes(c.id));
 
-const REFUSED = "This is a test run and nothing runs. Do not try anything else; reply 'ok'.";
-// Every host call fails: the gates refuse first, so this is only a backstop.
-const host = new Proxy(
-  {},
-  {
-    get: () => async () => {
-      throw new Error(REFUSED);
-    },
-  },
-) as ToolHost;
+const extra =
+  values["extra-notes"] === undefined
+    ? undefined
+    : NodeFS.readFileSync(values["extra-notes"], "utf8");
 
 const sample = async (c: AssistantCase): Promise<Sample> => {
-  const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "tessaya-eval-"));
-  const calls: string[] = [];
-  const answers = c.answers ?? {};
-  const refuse = async (call: { readonly tool: string }) =>
-    answers[firstTool([call.tool])] === undefined
-      ? { allow: false as const, reason: REFUSED }
-      : { allow: true as const };
-  const tools = buildBatonTools(host).map((t) => {
-    const text = answers[t.name];
-    return text === undefined ? t : { ...t, run: async () => ({ text }) };
-  });
-  const mcp = await startBatonMcp({ tools, gate: refuse });
-  const agent = createAssistantAgent({
-    start: async (systemPrompt, brain) =>
-      startVisionSession({
-        claudeBinary: values.claude!,
-        model: values.model ?? brain!.model,
-        effort: values.effort ?? brain!.effort,
-        systemPrompt,
-        workDir: dir,
-        env: process.env,
-        // oxlint-disable-next-line t3code/no-global-process-runtime -- a plain script, not Effect code
-        platform: process.platform,
-        timeoutMs: 120_000,
-        gate: refuse,
-        mcp: { url: mcp.url, token: mcp.token },
-        onTool: (call) => void calls.push(call.tool),
-      }),
-    conversation: createConversationLog({ file: NodePath.join(dir, "conversation.ndjson") }),
-    clockLine: () => "Wednesday 10:00",
-    beginTurn: () => undefined,
-  });
-  try {
-    const face =
-      c.wake === undefined
-        ? undefined
-        : personaFor(DEFAULT_OS_PACK.personas, { wake: c.wake, text: c.said });
-    const reply = await agent.say(c.said, {
+  const face =
+    c.wake === undefined
+      ? undefined
+      : personaFor(DEFAULT_OS_PACK.personas, { wake: c.wake, text: c.said });
+  const brain = modelOf(DEFAULT_OS_PACK, face?.id ?? "executive");
+  return replayTurn({
+    claudeBinary: values.claude!,
+    brain: { model: values.model ?? brain.model, effort: values.effort ?? brain.effort },
+    said: c.said,
+    where: {
       window: c.window ?? "Notepad",
       session: null,
-      brain: modelOf(DEFAULT_OS_PACK, face?.id ?? "executive"),
       ...(face === undefined
         ? {}
         : { persona: { name: face.name, role: face.role, introduce: !face.lead } }),
-    });
-    return { calls, reply };
-  } finally {
-    agent.dispose();
-    await mcp.close();
-    NodeFS.rmSync(dir, { recursive: true, force: true });
-  }
+    },
+    ...(c.answers === undefined ? {} : { answers: c.answers }),
+    ...(extra === undefined ? {} : { extra }),
+    env: process.env,
+    // oxlint-disable-next-line t3code/no-global-process-runtime -- a plain script, not Effect code
+    platform: process.platform,
+  });
 };
 
 NodeFS.mkdirSync(out, { recursive: true });
