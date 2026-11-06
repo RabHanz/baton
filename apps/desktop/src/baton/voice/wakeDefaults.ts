@@ -12,7 +12,7 @@ const ALFRED = { word: "Alfred", enabled: true, threshold: 0.9 };
 const ONYX = { word: "Onyx", enabled: false, threshold: 0.9 };
 
 // The fewer words are listened for, the fewer false wakes. A fresh install wakes to Freya and Alfred, the
-// roster's two trained faces, until Tessaya's own model ships and replaces one. Sebastian answers to his name
+// roster's two trained faces; Tessaya's model ships off until he turns it on. Sebastian answers to his name
 // in text until his false wakes are measured. Alfred and Freya carry stricter thresholds than before.
 export const FRESH_WAKE_WORDS: ReadonlyArray<WakeWordSetting> = [
   { word: "Tessaya", enabled: false, threshold: 0.95 },
@@ -29,23 +29,10 @@ const LEGACY_WAKE_WORDS: ReadonlyArray<WakeWordSetting> = [
   ONYX,
 ];
 
-/** Which wake words have a model in the app. A word that is not here is shipped. Flip Tessaya the day its model is wired. */
-export const MODEL_SHIPPED: Readonly<Record<string, boolean>> = { Tessaya: false };
-export const modelShipped = (word: string): boolean => MODEL_SHIPPED[word] !== false;
-/** A word with no model can never be on: it could not wake anything. Same list back when nothing changes. */
-export const withShippedModels = (
-  words: ReadonlyArray<WakeWordSetting>,
-): ReadonlyArray<WakeWordSetting> =>
-  words.some((w) => w.enabled && !modelShipped(w.word))
-    ? words.map((w) => (w.enabled && !modelShipped(w.word) ? { ...w, enabled: false } : w))
-    : words;
-
 /** `saved` is the parsed settings file, or null when there is none. */
 export const wakeWordsFor = (saved: unknown): ReadonlyArray<WakeWordSetting> => {
   if (typeof saved !== "object" || saved === null) return FRESH_WAKE_WORDS;
-  return withShippedModels(
-    Array.isArray((saved as { wakeWords?: unknown }).wakeWords)
-      ? (saved as { wakeWords: ReadonlyArray<WakeWordSetting> }).wakeWords
-      : LEGACY_WAKE_WORDS,
-  );
+  return Array.isArray((saved as { wakeWords?: unknown }).wakeWords)
+    ? (saved as { wakeWords: ReadonlyArray<WakeWordSetting> }).wakeWords
+    : LEGACY_WAKE_WORDS;
 };

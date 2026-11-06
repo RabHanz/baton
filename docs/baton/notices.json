@@ -112,6 +112,12 @@
       "holder": "trained here on third-party data",
       "mention": "onyx.onnx"
     },
+    "model:tessaya.onnx": {
+      "name": "Tessaya wake model: Tessaya",
+      "licence": "CC-BY-NC-SA-4.0",
+      "holder": "trained here on third-party data",
+      "mention": "tessaya.onnx"
+    },
     "font:Newsreader": {
       "name": "Newsreader",
       "licence": "OFL-1.1-newsreader",

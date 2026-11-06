@@ -277,7 +277,7 @@ import {
 } from "../sessions/sessionRows.ts";
 import type { SessionsBridge } from "../sessions/sessionsBridge.ts";
 import type { BatonUpdates } from "../update/BatonUpdater.ts";
-import { FRESH_WAKE_WORDS, modelShipped, wakeWordsFor } from "./wakeDefaults.ts";
+import { FRESH_WAKE_WORDS, wakeWordsFor } from "./wakeDefaults.ts";
 import { TRAY_PNG, TRAY_SIZES } from "./trayArt.ts";
 import { setHideFromCapture } from "../captureProtection.ts";
 import { brandMarkSvg, markSvg, withTrayState, type MarkOptions } from "./trayMark.ts";
@@ -3457,9 +3457,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         steps: SETUP_STEPS,
         hold: settings.holdKey,
       },
-      wakeWords: settings.wakeWords
-        .filter((w) => w.enabled && modelShipped(w.word))
-        .map((w) => w.word),
+      wakeWords: settings.wakeWords.filter((w) => w.enabled).map((w) => w.word),
       activity,
       stats: {
         turns: today.turns,
@@ -3924,9 +3922,6 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         label: `Wake word: ${wake.word}`,
         kind: "toggle" as const,
         on: wake.enabled,
-        ...(!modelShipped(wake.word)
-          ? { disabled: true, hint: "Coming: model training. It cannot wake yet." }
-          : {}),
       })),
       {
         id: "v.direct",
