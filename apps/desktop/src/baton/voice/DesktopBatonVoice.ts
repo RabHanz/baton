@@ -296,6 +296,7 @@ import {
 import { parseAppearance, type Appearance } from "../home/theme.ts";
 import { createBatonHome, type HomeControl, type HomeState } from "../home/batonHome.ts";
 import { isCompanionWindow, keepRunningForTray } from "../lastAppWindow.ts";
+import { createDictationHold } from "./dictationHold.ts";
 import * as Electron from "electron";
 
 import {
@@ -1474,7 +1475,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const pendingFile = NodePath.join(input.stateDir, "voice", "dictation-pending.json");
   let collecting = false;
   /** The window and field he was in at the wake word: dictation and the turn's focus go there. */
-  let wakeTarget: Promise<FocusedApp | null> | null = null;
+  const dictationHold = createDictationHold<Promise<FocusedApp | null>>(
+    input.holdEscape,
+    () => void core?.setDictation(false),
+  );
   /** A window as the assistant is told of it. */
   const asFocus = (app: FocusedApp | null | undefined): AssistantFocus | null => {
     if (app == null || app.exe.length === 0) return null;
@@ -1553,7 +1557,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     collecting = false;
     if (oneShot.pending().length === 0 || sidecar === null) return;
     pill.on({ type: "thinking" });
-    flushApp = (await wakeTarget) ?? (await sidecar.foreground().catch(() => null)) ?? focusedApp;
+    flushApp =
+      (await dictationHold.target()) ??
+      (await sidecar.foreground().catch(() => null)) ??
+      focusedApp;
     const raw = oneShot.pending().join(" ");
     const turnId = openTurn;
     openTurn = null;
@@ -1614,13 +1621,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       }
       // Wake-word dictation takes the same path as the hold key, so the same text comes out.
       const app =
-        (await wakeTarget) ?? (await sidecar.foreground().catch(() => null)) ?? focusedApp;
+        (await dictationHold.target()) ??
+        (await sidecar.foreground().catch(() => null)) ??
+        focusedApp;
       const { text } = await writeClean(request.text, app);
       const fitted = await fitToCaret(text, app);
       if (app.window === undefined) return sidecar.paste(fitted);
       if (await sidecar.pasteInto(fitted, app.window).catch(() => false)) return;
-      // As the hold key does: the words stay on the pill and in the tray, and the router hears inserted: false.
-      keepText("Not pasted", fitted);
+      // The router hears inserted: false, and the outcome keeps the words on the pill and in the tray.
       throw new Error("Not pasted");
     },
   };
@@ -2183,9 +2191,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     focus: async () => asFocus(await sidecar?.foreground()),
     // Once per wake: a follow-up with no new wake reads where the keyboard is now.
     wakeFocus: async () => {
-      const target = wakeTarget;
-      wakeTarget = null;
-      return asFocus((await target) ?? undefined);
+      return asFocus((await dictationHold.takeTarget()) ?? undefined);
     },
     windowAt: async (point) => {
       if (sidecar === null) return null;
@@ -2710,36 +2716,33 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     })().catch(() => undefined);
   }, 3_000).unref();
   let dictatingByVoice = false;
-  /** Esc ends voice dictation while it is on, as it ends a hold-key recording. */
-  let releaseDictatingEscape: (() => void) | null = null;
   const stateTurn = (next: VoiceState, target: string | null): TurnEvent | null => {
     const wasDictating = dictatingByVoice;
     dictatingByVoice = next === "dictation";
     if (dictatingByVoice) {
       // Where he is as dictation starts; the turn that started it may have used the wake's.
-      if (!wasDictating && sidecar !== null) wakeTarget = sidecar.foreground().catch(() => null);
-      releaseDictatingEscape ??= input.holdEscape(
-        () => void core?.setDictation(false),
-        "recording",
-      );
+      if (!wasDictating)
+        dictationHold.start(sidecar === null ? null : sidecar.foreground().catch(() => null));
       if (!wasDictating) void duck.start(settings.duckWhileDictating);
       if (!wasDictating && (settings["dictation.delivery"] ?? "oneshot") === "oneshot")
         collecting = true;
       pill.on({ type: "window_open" });
       return { type: "dictating", caption: STOP_DICTATING_HINT };
     }
-    if (wasDictating && !dictatingByVoice) {
-      releaseDictatingEscape?.();
-      releaseDictatingEscape = null;
-    }
     if (wasDictating) {
+      dictationHold.stop();
       void duck.stop();
       pill.on({ type: "dictating", caption: null });
       // The last chunk is still on its way through the core: flush once everything has landed.
-      if (collecting) void core?.idle().then(flushDictation);
+      if (collecting)
+        void core
+          ?.idle()
+          .then(flushDictation)
+          .finally(() => dictationHold.setTarget(null));
+      else dictationHold.setTarget(null);
     }
     if (next === "sleeping" || next === "direct_session") {
-      if (!collecting) wakeTarget = null;
+      if (!collecting) dictationHold.setTarget(null);
       return { type: "window_closed" };
     }
     if (next !== "command_window" && next !== "conversation") return null;
@@ -2753,7 +2756,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         case "wake":
           // Read before anything of ours shows: what he had in front of him when he said the name.
           if (!dictatingByVoice && sidecar !== null)
-            wakeTarget = sidecar.foreground().catch(() => null);
+            dictationHold.setTarget(sidecar.foreground().catch(() => null));
           return { type: "wake", word: wordName(event.word) };
         case "speech_end":
           return null;
@@ -3089,6 +3092,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
 
   const stop = async () => {
+    // Off mid-dictation: Esc is his again and the old window is forgotten, so no later wake acts there.
+    if (dictatingByVoice) stateTurn("sleeping", null);
+    dictationHold.clear();
     await loop?.stop();
     if (loop === null) core?.dispose();
     loop = null;

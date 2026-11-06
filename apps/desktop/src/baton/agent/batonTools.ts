@@ -230,18 +230,19 @@ const lineParts = (line: string): { readonly kind: string; readonly name: string
 
 const FIELD_KINDS = new Set(["edit", "document", "combo box"]);
 
-/** click_element on a text box of the last tree, by its line number or its whole name: it only focuses. */
+/**
+ * click_element on a text box of the last tree, by its line number: it only focuses. Never by name: a
+ * name can be a button's as well as a box's.
+ */
 export const clickTargetsField = (
   controls: ReadonlyArray<string>,
   call: Readonly<Record<string, unknown>>,
 ): boolean => {
   const id = call["id"];
-  const label = typeof call["label"] === "string" ? call["label"].trim().toLowerCase() : "";
+  if (typeof id !== "number") return false;
   return controls.some((line) => {
     const parts = lineParts(line);
-    if (parts === null || !FIELD_KINDS.has(parts.kind)) return false;
-    if (typeof id === "number") return line.startsWith(`[${id}] `);
-    return label !== "" && parts.name.toLowerCase() === label;
+    return parts !== null && FIELD_KINDS.has(parts.kind) && line.startsWith(`[${id}] `);
   });
 };
 

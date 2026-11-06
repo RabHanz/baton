@@ -230,8 +230,6 @@ const LOOK_MEMORY_MS = 15 * 60_000;
 const OPERATOR_TURN_MS = 30 * 60_000;
 /** He said stop or the box must open: neither waits for a sidecar that is restarting. */
 const FOCUS_WAIT_MS = 400;
-/** Longer than Windows' double-click time (500 ms by default). */
-const DOUBLE_CLICK_GAP_MS = 600;
 const KEYBOARD_WAIT_MS = 1_500;
 const REMOTE_QUIET_MS = 4_000;
 const TEACH_MAX_STEPS = 30;
@@ -2193,25 +2191,17 @@ export const startScreenCompanion = (input: {
         );
       }
       if (found.invoked === "focus") {
-        // A text box, given the keyboard by UI Automation: checked, and clicked once if that did not take.
+        // A text box, given the keyboard by UI Automation and checked. No blind click after: it could land
+        // on a dialog or move the caret in his draft, so the model decides what next.
         void showAct({ kind: "click", name: found.name }, found);
-        const inBox = async () =>
-          focusIsOn((await actions?.focusState?.().catch(() => null))?.focus, found.name);
-        let there = await inBox();
-        if (there === false) {
-          // Past the double-click time, so the click cannot select a word of what is in the box.
-          await sleep(DOUBLE_CLICK_GAP_MS);
-          const to = { x: found.x, y: found.y };
-          await mouse.need();
-          await pointerAction(to, () => driverFor().clickAt(to, "left", 1));
-          there = await inBox();
-        }
+        const now = (await actions?.focusState?.().catch(() => null))?.focus;
+        const there = focusIsOn(now, found.name);
         await followOwnClick();
         return there === null
           ? `Focused ${found.name}; where the keyboard is could not be checked.`
           : there
             ? `The keyboard is in ${found.name}.`
-            : `Focused and then clicked ${found.name}, but the keyboard is not in it.`;
+            : `Focused ${found.name}, but the keyboard is in ${now}.`;
       }
       if (found.invoked !== undefined) {
         // A press by pattern has already happened: her cursor follows it rather than lead it.

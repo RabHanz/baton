@@ -95,11 +95,10 @@ describe("the assistant's tool table", () => {
       "[3] document: Notes",
     ];
     expect(clickTargetsField(tree, { id: 2 })).toBe(true);
-    expect(clickTargetsField(tree, { label: "Message t3code-a2" })).toBe(true);
+    // Never by name, even the box's own: a name can be a button's as well.
+    expect(clickTargetsField(tree, { label: "Message t3code-a2" })).toBe(false);
     expect(clickTargetsField(tree, { id: 1 })).toBe(false);
-    // Only the whole name: "Send" is not the box "Send a message".
-    expect(clickTargetsField(["[4] edit: Send a message"], { label: "Send" })).toBe(false);
-    expect(clickTargetsField(['[5] edit: Notes = "draft"'], { label: "notes" })).toBe(true);
+    expect(clickTargetsField(['[5] edit: Notes = "draft"'], { id: 5 })).toBe(true);
     expect(clickTargetsField(tree, { label: "Send" })).toBe(false);
     expect(clickTargetsField(tree, { x: 1, y: 2 })).toBe(false);
   });
