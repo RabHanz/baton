@@ -11,6 +11,8 @@ export const BATON_MEMORY_WS_METHODS = {
   search: "baton.memory.search",
   add: "baton.memory.add",
   edit: "baton.memory.edit",
+  history: "baton.memory.history",
+  restore: "baton.memory.restore",
   pin: "baton.memory.pin",
   forget: "baton.memory.forget",
   accept: "baton.memory.accept",
@@ -96,6 +98,29 @@ export const BatonMemoryEditInput = Schema.Struct({
   id: TrimmedNonEmptyString,
   text: Schema.optionalKey(Schema.String),
   kind: Schema.optionalKey(BatonMemoryKind),
+});
+/** One earlier wording of an item (KIRO-4), kept when it changed. */
+export const BatonMemoryVersion = Schema.Struct({
+  version: Schema.Number,
+  text: Schema.String,
+  kind: BatonMemoryKind,
+  at: Schema.String,
+  by: Schema.Literals(["him", "consolidate", "rewrite", "sync", "import"]),
+  why: Schema.String,
+});
+/** `agent` and `admin` as for a list: the desktop's own view, or a persona's walled one. */
+export const BatonMemoryHistoryInput = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  agent: Schema.optionalKey(Schema.String),
+  admin: Schema.optionalKey(Schema.Boolean),
+});
+export const BatonMemoryHistoryResult = Schema.Struct({
+  versions: Schema.Array(BatonMemoryVersion),
+});
+/** An earlier wording back as a new version; the history is never rewritten. */
+export const BatonMemoryRestoreInput = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  version: Schema.Number,
 });
 export const BatonMemoryPinInput = Schema.Struct({
   id: TrimmedNonEmptyString,

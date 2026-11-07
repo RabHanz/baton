@@ -239,6 +239,14 @@ export function createBatonWorkSessionAtoms<R, E>(
       label: "environment-data:baton:memory-recall",
       tag: BATON_MEMORY_WS_METHODS.recall,
     }),
+    memoryHistory: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:memory-history",
+      tag: BATON_MEMORY_WS_METHODS.history,
+    }),
+    memoryRestore: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:memory-restore",
+      tag: BATON_MEMORY_WS_METHODS.restore,
+    }),
     memoryUsed: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:memory-used",
       tag: BATON_MEMORY_WS_METHODS.used,

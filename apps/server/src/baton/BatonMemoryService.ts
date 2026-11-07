@@ -26,6 +26,9 @@ import {
   type MemoryDraft,
   type MemoryItem,
   type MemoryKind,
+  type MemoryVersion,
+  type MemoryVersionBy,
+  MEMORY_VERSIONS_KEPT,
   type MemoryQuery,
 } from "@t3tools/baton-shared/memory";
 import { DEFAULT_OS_PACK, mayRecall } from "@t3tools/baton-shared/osPack";
@@ -149,10 +152,21 @@ export class BatonMemoryService extends Context.Service<
       id: string,
       patch: { readonly text?: string | undefined; readonly kind?: MemoryKind | undefined },
     ) => Effect.Effect<MemoryItem, BatonMemoryRefusedError>;
-    /** The weekly pass's rewrite: new wording, but the source and confidence stay as they were. */
+    /** The weekly pass's rewrite (or the consolidation's): new wording, but the source and confidence stay as they were. */
     readonly rewrite: (
       id: string,
       text: string,
+      by?: "rewrite" | "consolidate",
+    ) => Effect.Effect<MemoryItem, BatonMemoryRefusedError>;
+    /** The item's earlier wordings, newest first; behind a wall it cannot see, "no such memory". */
+    readonly history: (
+      id: string,
+      view?: { readonly agent?: string | undefined; readonly admin?: boolean | undefined },
+    ) => Effect.Effect<ReadonlyArray<MemoryVersion>, BatonMemoryRefusedError>;
+    /** An earlier wording back as a new version: the history is kept, never rewritten. */
+    readonly restore: (
+      id: string,
+      version: number,
     ) => Effect.Effect<MemoryItem, BatonMemoryRefusedError>;
     readonly pin: (
       id: string,
@@ -385,6 +399,8 @@ export const make = Effect.gen(function* () {
         // The new one first: on a tie in time it is still the later statement.
         const loser = winner(created, old).id === old.id ? created : old;
         const keeper = loser.id === old.id ? created : old;
+        // No copy into the keeper's history: the replaced item stays, as itself, under "Replaced". A copy would carry a
+        // walled item's words into an unwalled one, outlive a forget of it, and show a model's draft as his to restore.
         yield* sql`
           UPDATE fabric_memory_items SET superseded_by = ${keeper.id}, updated_at = ${at}, received_at = ${at}, origin = ${origin}
           WHERE id = ${loser.id}
@@ -394,6 +410,27 @@ export const make = Effect.gen(function* () {
     return yield* requireItem(id);
   });
 
+  /** The wording an item had before a change, kept with who and why; only the newest MEMORY_VERSIONS_KEPT stay. */
+  /** The wording an item had before a change, kept with who and why; only the newest MEMORY_VERSIONS_KEPT stay. */
+  const keepVersion = Effect.fn("BatonMemoryService.keepVersion")(function* (
+    prior: MemoryItem,
+    by: MemoryVersionBy,
+    why: string,
+    at: string,
+  ) {
+    // One statement, so two changes at once cannot both take the same next number.
+    yield* sql`
+        INSERT INTO fabric_memory_versions (item_id, version, text, kind, at, by, why)
+        SELECT ${prior.id}, COALESCE(MAX(version), 0) + 1, ${prior.text}, ${prior.kind}, ${at}, ${by}, ${why}
+        FROM fabric_memory_versions WHERE item_id = ${prior.id}
+      `;
+    yield* sql`
+        DELETE FROM fabric_memory_versions WHERE item_id = ${prior.id} AND version <= (
+          SELECT MAX(version) FROM fabric_memory_versions WHERE item_id = ${prior.id}
+        ) - ${MEMORY_VERSIONS_KEPT}
+      `;
+  }, Effect.orDie);
+
   const touch = (id: string, at: string) =>
     sql`UPDATE fabric_memory_items SET updated_at = ${at}, received_at = ${at}, origin = ${origin} WHERE id = ${id}`.pipe(
       Effect.orDie,
@@ -402,12 +439,15 @@ export const make = Effect.gen(function* () {
   const edit = Effect.fn("BatonMemoryService.edit")(function* (
     id: string,
     patch: { readonly text?: string | undefined; readonly kind?: MemoryKind | undefined },
+    why = "he edited it",
   ) {
     const current = yield* requireSeen(id);
     const at = yield* nowIso;
     const text = patch.text === undefined ? current.text : patch.text.trim().replace(/\s+/g, " ");
     const reason = refuseToStore(text, privateTexts());
     if (reason !== null) return yield* refuse(reason);
+    if (text !== current.text || (patch.kind ?? current.kind) !== current.kind)
+      yield* keepVersion(current, "him", why, at);
     yield* sql`
       UPDATE fabric_memory_items SET
         text = ${text}, kind = ${patch.kind ?? current.kind}, source = 'user', confidence = 1,
@@ -417,12 +457,23 @@ export const make = Effect.gen(function* () {
     return yield* requireItem(id);
   });
 
-  const rewrite = Effect.fn("BatonMemoryService.rewrite")(function* (id: string, wording: string) {
-    yield* requireItem(id);
+  const rewrite = Effect.fn("BatonMemoryService.rewrite")(function* (
+    id: string,
+    wording: string,
+    by: "rewrite" | "consolidate" = "rewrite",
+  ) {
+    const prior = yield* requireItem(id);
     const text = wording.trim().replace(/\s+/g, " ");
     const reason = refuseToStore(text, privateTexts());
     if (reason !== null) return yield* refuse(reason);
     const at = yield* nowIso;
+    if (text !== prior.text)
+      yield* keepVersion(
+        prior,
+        by,
+        by === "rewrite" ? "the weekly pass reworded it" : "consolidated with similar memories",
+        at,
+      );
     yield* sql`
       UPDATE fabric_memory_items SET text = ${text}, updated_at = ${at}, received_at = ${at}, origin = ${origin}
       WHERE id = ${id}
@@ -445,6 +496,8 @@ export const make = Effect.gen(function* () {
         sql`INSERT OR REPLACE INTO fabric_memory_tombstones (id, deleted_at, origin, received_at) VALUES (${id}, ${at}, ${origin}, ${at})`,
       ),
       Effect.andThen(sql`DELETE FROM fabric_memory_uses WHERE item_id = ${id}`),
+      // Forgotten means forgotten: its earlier wordings go with it.
+      Effect.andThen(sql`DELETE FROM fabric_memory_versions WHERE item_id = ${id}`),
       Effect.orDie,
     );
 
@@ -475,6 +528,34 @@ export const make = Effect.gen(function* () {
         Effect.orDie,
       );
     }
+  });
+
+  const history = Effect.fn("BatonMemoryService.history")(function* (
+    id: string,
+    view: { readonly agent?: string | undefined; readonly admin?: boolean | undefined } = {},
+  ) {
+    // Walls apply as they do to the item: one behind a wall this reader cannot see has no history to it either.
+    const item = yield* requireItem(id);
+    if (!(yield* viewFor(view.agent, view.admin))(item))
+      return yield* refuse("there is no such memory");
+    const rows = yield* sql<{
+      version: number;
+      text: string;
+      kind: MemoryKind;
+      at: string;
+      by: MemoryVersionBy;
+      why: string;
+    }>`
+      SELECT version, text, kind, at, by, why FROM fabric_memory_versions
+      WHERE item_id = ${id} ORDER BY version DESC
+    `.pipe(Effect.orDie);
+    return rows.map((r) => ({ ...r }));
+  });
+
+  const restore = Effect.fn("BatonMemoryService.restore")(function* (id: string, version: number) {
+    const past = (yield* history(id, { admin: true })).find((v) => v.version === version);
+    if (past === undefined) return yield* refuse("there is no such version");
+    return yield* edit(id, { text: past.text, kind: past.kind }, `he restored version ${version}`);
   });
 
   /** The items nearest the sentence in meaning, among those this reader may see: walls apply before ranking. */
@@ -728,12 +809,20 @@ export const make = Effect.gen(function* () {
         change,
       );
       if (decision === "ignore") continue;
+      // The words it had here are kept when another server's change replaces them.
+      if (
+        row[0] !== undefined &&
+        change.item !== null &&
+        (change.item.text !== row[0].text || change.item.kind !== row[0].kind)
+      )
+        yield* keepVersion(fromRow(row[0]), "sync", "changed on another of his servers", at);
       yield* sql`DELETE FROM fabric_memory_items WHERE id = ${id}`.pipe(Effect.orDie);
       if (change.tombstone !== null) {
         yield* sql`INSERT OR REPLACE INTO fabric_memory_tombstones (id, deleted_at, origin, received_at) VALUES (${id}, ${change.tombstone.deletedAt}, ${change.tombstone.origin}, ${at})`.pipe(
           Effect.orDie,
         );
         yield* sql`DELETE FROM fabric_memory_uses WHERE item_id = ${id}`.pipe(Effect.orDie);
+        yield* sql`DELETE FROM fabric_memory_versions WHERE item_id = ${id}`.pipe(Effect.orDie);
       } else if (change.item !== null) {
         const i = change.item;
         yield* sql`DELETE FROM fabric_memory_tombstones WHERE id = ${id}`.pipe(Effect.orDie);
@@ -822,8 +911,21 @@ export const make = Effect.gen(function* () {
       yield* poke;
       return item;
     }),
-    rewrite: Effect.fn("BatonMemoryService.rewriteThenEmbed")(function* (id: string, text: string) {
-      const item = yield* rewrite(id, text);
+    rewrite: Effect.fn("BatonMemoryService.rewriteThenEmbed")(function* (
+      id: string,
+      text: string,
+      by: "rewrite" | "consolidate" = "rewrite",
+    ) {
+      const item = yield* rewrite(id, text, by);
+      yield* poke;
+      return item;
+    }),
+    history,
+    restore: Effect.fn("BatonMemoryService.restoreThenEmbed")(function* (
+      id: string,
+      version: number,
+    ) {
+      const item = yield* restore(id, version);
       yield* poke;
       return item;
     }),

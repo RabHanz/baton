@@ -1,5 +1,10 @@
 /** The Memory area of Tessaya's window (D150): the bar, then one row per memory, grouped by kind. */
-import { whyRemembered, type MemoryItem, type MemoryKind } from "@t3tools/baton-shared/memory";
+import {
+  whyRemembered,
+  type MemoryItem,
+  type MemoryKind,
+  type MemoryVersion,
+} from "@t3tools/baton-shared/memory";
 
 import type { HomeControl } from "../home/batonHome.ts";
 import type { SyncPeer } from "./memorySync.ts";
@@ -16,7 +21,46 @@ export interface MemoryTabState {
   readonly peers: ReadonlyArray<SyncPeer>;
   readonly pullOn: boolean;
   readonly status: string;
+  /** The item whose History is open, and its earlier wordings (newest first). */
+  readonly history?: {
+    readonly id: string;
+    readonly versions: ReadonlyArray<MemoryVersion>;
+  } | null;
 }
+
+const BY_TEXT: Readonly<Record<MemoryVersion["by"], string>> = {
+  him: "you",
+  consolidate: "merging similar memories",
+  rewrite: "the weekly rewrite",
+  sync: "another of your servers",
+  import: "an import",
+};
+
+/** An item's earlier wordings under it, each with Restore (a new version; the history stays). */
+export const historyRows = (
+  item: MemoryItem,
+  section: string,
+  versions: ReadonlyArray<MemoryVersion>,
+): ReadonlyArray<HomeControl> =>
+  versions.length === 0
+    ? [
+        {
+          id: `m.history.none:${item.id}`,
+          section,
+          label: "No earlier wording",
+          kind: "check",
+          status: "ok",
+          detail: "This memory has not been changed.",
+        },
+      ]
+    : versions.map((v) => ({
+        id: `m.restore:${item.id}:${v.version}`,
+        section,
+        label: v.text,
+        hint: `Version ${v.version}, ${v.at.slice(0, 16).replace("T", " ")}, changed by ${BY_TEXT[v.by]}: ${v.why}.`,
+        kind: "action" as const,
+        button: "Restore",
+      }));
 
 const KINDS: ReadonlyArray<readonly [MemoryKind, string]> = [
   ["preference", "Preferences"],
@@ -109,7 +153,10 @@ export const memoryControls = (s: MemoryTabState): ReadonlyArray<HomeControl> =>
       Number(b.pinned) - Number(a.pinned) ||
       b.updatedAt.localeCompare(a.updatedAt),
   );
-  const rows = ordered.map((i) => row(i, sectionOf(i)));
+  const rows = ordered.flatMap((i) => [
+    row(i, sectionOf(i)),
+    ...(s.history?.id === i.id ? historyRows(i, sectionOf(i), s.history.versions) : []),
+  ]);
   if (rows.length > 0) return [bar, ...rows];
   return [
     bar,

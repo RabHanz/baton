@@ -196,6 +196,19 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     not: ["job_create"],
   },
   {
+    id: "memory-history",
+    source:
+      "KIRO-4a: 'what did it say before?' reaches the memory's history (finding its id first)",
+    said: "what did my memory about the shop's deploy day say before it was changed?",
+    first: ["memory_search", "memory_history"],
+    goal: "memory_history",
+    maxCalls: 3,
+    answers: {
+      memory_search: "[id: mem-42] The shop deploys on Thursdays (fact, his own words)",
+      memory_history: "- version 1, 2026-11-01, by him (he edited it): The shop deploys on Fridays",
+    },
+  },
+  {
     id: "anything-stuck",
     model: "haiku",
     source: "agentPrompt status rules",

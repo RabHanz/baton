@@ -142,7 +142,8 @@ export const make = Effect.gen(function* () {
     const all = yield* memory.list({ includeSuperseded: true, limit: 100_000 });
     let done = 0;
     for (const { keep, drop, text } of planRewrites(all)) {
-      if (text !== keep.text) yield* memory.rewrite(keep.id, text).pipe(Effect.ignore);
+      if (text !== keep.text)
+        yield* memory.rewrite(keep.id, text, "consolidate").pipe(Effect.ignore);
       yield* memory.forget(drop.id);
       done++;
     }

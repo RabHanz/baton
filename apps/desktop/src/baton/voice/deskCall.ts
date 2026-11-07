@@ -7,6 +7,8 @@ import type { BatonJobBridgeRequest } from "@t3tools/baton-contracts";
 
 const MEMORY_OPS = new Set([
   "list",
+  "history",
+  "restore",
   "search",
   "add",
   "edit",

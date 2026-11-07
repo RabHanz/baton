@@ -83,6 +83,8 @@ export interface ToolHost {
   /** Memory the assistant may pin and the list of what the last answer used (D150). */
   readonly pin?: (id: string, pinned: boolean) => Promise<string>;
   readonly used?: () => Promise<string>;
+  /** A memory's earlier wordings (KIRO-4), as this persona may see it. */
+  readonly memoryHistory?: (id: string) => Promise<string>;
   /** The vault (D151): the model gets names and sentences, never a value. */
   /** Which way to work a browser, with the reason: his Chrome, the controls, pixels or a plain fetch. */
   readonly browserRoute?: (ask: {
@@ -817,6 +819,15 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
         text:
           (await host.pin?.(str(a, "id", 200), a["pinned"] !== false)) ??
           "Pinning is not available here.",
+      }),
+    },
+    {
+      name: "memory_history",
+      description:
+        "The earlier wordings of one memory (its id from memory_search), newest first, with when, who and why each changed. Read only; he restores an old wording on the Memory page.",
+      inputSchema: object({ id: { type: "string", maxLength: 80 } }, ["id"]),
+      run: async (a) => ({
+        text: (await host.memoryHistory?.(str(a, "id", 80))) ?? "That is not available here.",
       }),
     },
     {

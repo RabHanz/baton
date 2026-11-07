@@ -96,3 +96,29 @@ describe("memoryControls", () => {
     expect(memoryIdOf("m:abc", "m.pin")).toBeNull();
   });
 });
+
+describe("an item's history on the Memory page", () => {
+  it("lists its earlier wordings under it, each with Restore, only while its History is open", () => {
+    const one = item({ id: "m1", text: "The shop deploys on Thursdays" });
+    const versions = [
+      {
+        version: 1,
+        text: "The shop deploys on Fridays",
+        kind: "fact" as const,
+        at: "2026-11-01T09:30:00.000Z",
+        by: "him" as const,
+        why: "he edited it",
+      },
+    ];
+    const open = memoryControls(state({ items: [one], history: { id: "m1", versions } }));
+    const restore = open.find((c) => c.id === "m.restore:m1:1");
+    expect(restore?.label).toBe("The shop deploys on Fridays");
+    expect(restore?.hint).toContain("changed by you: he edited it");
+    expect(memoryIdOf("m.restore:m1:1", "m.restore")).toBe("m1:1");
+    expect(memoryControls(state({ items: [one] })).some((c) => c.id.startsWith("m.restore:"))).toBe(
+      false,
+    );
+    const none = memoryControls(state({ items: [one], history: { id: "m1", versions: [] } }));
+    expect(none.some((c) => c.id === "m.history.none:m1")).toBe(true);
+  });
+});

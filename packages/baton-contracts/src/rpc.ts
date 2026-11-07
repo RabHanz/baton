@@ -187,6 +187,9 @@ import {
   BatonMemorySyncPushResult,
   BatonMemorySearchResult,
   BatonMemoryUsedInput,
+  BatonMemoryHistoryInput,
+  BatonMemoryHistoryResult,
+  BatonMemoryRestoreInput,
 } from "./memory.ts";
 import {
   BATON_HANDOFF_WS_METHODS,
@@ -479,6 +482,16 @@ const WsBatonMemoryEditRpc = Rpc.make(BATON_MEMORY_WS_METHODS.edit, {
   success: BatonMemoryItemResult,
   error: MemoryErrors,
 });
+const WsBatonMemoryHistoryRpc = Rpc.make(BATON_MEMORY_WS_METHODS.history, {
+  payload: BatonMemoryHistoryInput,
+  success: BatonMemoryHistoryResult,
+  error: MemoryErrors,
+});
+const WsBatonMemoryRestoreRpc = Rpc.make(BATON_MEMORY_WS_METHODS.restore, {
+  payload: BatonMemoryRestoreInput,
+  success: BatonMemoryItemResult,
+  error: MemoryErrors,
+});
 const WsBatonMemoryPinRpc = Rpc.make(BATON_MEMORY_WS_METHODS.pin, {
   payload: BatonMemoryPinInput,
   success: BatonMemoryItemResult,
@@ -758,6 +771,8 @@ export const BatonRpcGroup = RpcGroup.make(
   WsBatonMemoryAcceptRpc,
   WsBatonMemoryRecallRpc,
   WsBatonMemoryUsedRpc,
+  WsBatonMemoryHistoryRpc,
+  WsBatonMemoryRestoreRpc,
   WsBatonMemoryExportRpc,
   WsBatonMemoryLearnRpc,
   WsBatonMemoryImportRpc,

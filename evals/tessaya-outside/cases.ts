@@ -63,4 +63,41 @@ export const outsideCases: ReadonlyArray<OutsideCase> = [
     calls: ["tessaya_watch"],
     callsMustNot: ["tessaya_ask"],
   },
+  {
+    id: "outside-memory-history",
+    source:
+      "KIRO-4a: an outside agent reads a memory's earlier wordings with the history tool, without asking him",
+    prompt:
+      "Tessaya remembers which day the shop deploys. What did that memory say before it was last changed?",
+    answers: {
+      tessaya_memory_search: {
+        hits: [
+          {
+            item: {
+              id: "mem-42",
+              kind: "fact",
+              text: "The shop deploys on Thursdays",
+              source: "user",
+              scope: "global",
+            },
+            score: 0.9,
+          },
+        ],
+      },
+      tessaya_memory_history: {
+        versions: [
+          {
+            version: 1,
+            text: "The shop deploys on Fridays",
+            kind: "fact",
+            at: "2026-11-01T09:30:00.000Z",
+            by: "him",
+            why: "he edited it",
+          },
+        ],
+      },
+    },
+    calls: ["tessaya_memory_history"],
+    callsMustNot: ["tessaya_ask"],
+  },
 ];

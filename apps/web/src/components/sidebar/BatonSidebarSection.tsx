@@ -116,6 +116,8 @@ export function BatonSidebarSection(props: {
   const memoryAccept = useAtomCommand(batonWorkSessions.memoryAccept, quiet);
   const memoryRecall = useAtomCommand(batonWorkSessions.memoryRecall, quiet);
   const memoryUsed = useAtomCommand(batonWorkSessions.memoryUsed, quiet);
+  const memoryHistory = useAtomCommand(batonWorkSessions.memoryHistory, quiet);
+  const memoryRestore = useAtomCommand(batonWorkSessions.memoryRestore, quiet);
   const memoryExport = useAtomCommand(batonWorkSessions.memoryExport, quiet);
   const memoryLearn = useAtomCommand(batonWorkSessions.memoryLearn, quiet);
   const memoryImport = useAtomCommand(batonWorkSessions.memoryImport, quiet);
@@ -560,6 +562,8 @@ export function BatonSidebarSection(props: {
       accept: memoryAccept,
       recall: memoryRecall,
       used: memoryUsed,
+      history: memoryHistory,
+      restore: memoryRestore,
       export: memoryExport,
       learn: memoryLearn,
       import: memoryImport,

@@ -8,6 +8,7 @@ import {
   BatonCatalogListResult,
   BatonJobListResult,
   BatonMemorySearchResult,
+  BatonMemoryHistoryResult,
   BatonRecordListInput,
   BatonRecordListResult,
   BatonWeaveListResult,
@@ -195,11 +196,25 @@ const WeaveListTool = Tool.make("weave_list", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+const MemoryHistoryTool = Tool.make("tessaya_memory_history", {
+  ...shared,
+  description:
+    "The earlier wordings of one of Tessaya's memories (by id from tessaya_memory_search), newest first, with when, who and why each changed. Walled projects' memories have no history here.",
+  parameters: Schema.Struct({ id: Schema.String.check(Schema.isMaxLength(80)) }),
+  success: BatonMemoryHistoryResult,
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
 export const TessayaToolkit = Toolkit.make(
   JobsTool,
   WatchTool,
   RecordTool,
   MemorySearchTool,
+  MemoryHistoryTool,
   RulesTool,
   SessionsTool,
   AskTool,

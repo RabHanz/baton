@@ -2439,6 +2439,7 @@ export const startScreenCompanion = (input: {
     remember: (text) => memory.remember(text),
     forget: (id) => memory.forget(id),
     pin: (id, pinned) => memory.pin(id, pinned),
+    memoryHistory: (id) => memory.history(id),
     used: async () => {
       const text = await memory.used();
       // The memories behind the last answer, shown where he is looking as well as read out.

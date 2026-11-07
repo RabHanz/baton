@@ -84,6 +84,10 @@ export const layer = McpToolAccess.toLayer(
           handlers[BATON_MEMORY_WS_METHODS.search]({ text: input.text, limit: input.limit ?? 10 }),
         ),
       ),
+      // A client's view, as for search: a walled item has no history to an outside agent.
+      tessaya_memory_history: McpToolAccess.reads((input) =>
+        call(handlers[BATON_MEMORY_WS_METHODS.history]({ id: input.id })),
+      ),
       tessaya_rules: McpToolAccess.reads((input) =>
         call(handlers[BATON_ORCHESTRATION_WS_METHODS.ruleList](input)),
       ),

@@ -538,3 +538,21 @@ export const whyRemembered = (item: MemoryItem): string => {
     .filter((x): x is string => x !== null)
     .join(" ");
 };
+
+// ---------- history (KIRO-4) ----------
+
+/** Who changed an item's words: him, the consolidation pass, the weekly rewrite, a sync from another server, or an import. */
+export type MemoryVersionBy = "him" | "consolidate" | "rewrite" | "sync" | "import";
+
+/** One earlier wording of an item, kept when it changed; a restore makes a new one and never rewrites these. */
+export interface MemoryVersion {
+  readonly version: number;
+  readonly text: string;
+  readonly kind: MemoryKind;
+  readonly at: string;
+  readonly by: MemoryVersionBy;
+  readonly why: string;
+}
+
+/** Versions kept per item; the oldest go first. */
+export const MEMORY_VERSIONS_KEPT = 20;
