@@ -751,7 +751,7 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
         text:
           (await host.history?.({
             ...(typeof a["query"] === "string" ? { query: a["query"].slice(0, 300) } : {}),
-            ...(typeof a["session"] === "string" ? { session: a["session"] } : {}),
+            ...(typeof a["session"] === "string" ? { session: a["session"].slice(0, 64) } : {}),
           })) ?? "The history index is not available here.",
       }),
     },

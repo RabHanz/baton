@@ -137,6 +137,8 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   ],
   // Runs the history script on this machine and writes held proposals.
   [BATON_MEMORY_WS_METHODS.pull]: AuthOrchestrationOperateScope,
+  // Past work across every venture, secrets marked and walled hits left out: his own servers (a sync-only credential) and the desktop app, like sync.
+  [BATON_MEMORY_WS_METHODS.historySearch]: AuthBatonMemorySyncScope,
   // Sync carries every item, walled or not, and overwrites or deletes them: a sync-only credential or the desktop app.
   // This server's own sync carries every item, walled or not, with credentials it keeps: the desktop app only.
   [BATON_MEMORY_WS_METHODS.syncState]: [AuthOrchestrationReadScope, AuthBatonHandsHostScope],
@@ -197,6 +199,7 @@ const SYNC_METHODS: ReadonlySet<string> = new Set([
   BATON_MEMORY_WS_METHODS.syncHello,
   BATON_MEMORY_WS_METHODS.syncPull,
   BATON_MEMORY_WS_METHODS.syncPush,
+  BATON_MEMORY_WS_METHODS.historySearch,
 ]);
 
 /** What the desktop may call while T3's window is closed: jobs it does not have to place, the watch, the Record, rules (standing jobs), memory, commitments and weave. */
@@ -251,6 +254,8 @@ export const DESK_METHODS: ReadonlySet<string> = new Set([
       "learn",
       // Reads a folder on this machine: its scope is the desktop app's own session only.
       "import",
+      // Running it now is the desktop app's own session only.
+      "pull",
       "syncState",
       "syncSetEnabled",
       "syncAddPeer",
@@ -283,7 +288,10 @@ export const missingBatonScope = (
   // Only the desktop app's own session holds hands-host, and no grant can: seeing through memory walls is his own view,
   // and only the desktop works the phone inbox (taking his asks, answering them, mirroring its questions).
   const desktopOnly =
-    (tag === BATON_MEMORY_WS_METHODS.search && (fields as { admin?: unknown }).admin === true) ||
+    ((tag === BATON_MEMORY_WS_METHODS.search || tag === BATON_MEMORY_WS_METHODS.historySearch) &&
+      (fields as { admin?: unknown }).admin === true) ||
+    // Running the pull now spends the history script here and writes held proposals: his desktop's Memory tab only.
+    (tag === BATON_MEMORY_WS_METHODS.pull && (fields as { action?: unknown }).action === "run") ||
     (tag === BATON_PHONE_WS_METHODS.call &&
       !PHONE_CLIENT_OPS.has(String((fields as { op?: unknown }).op)))
       ? [AuthBatonHandsHostScope]

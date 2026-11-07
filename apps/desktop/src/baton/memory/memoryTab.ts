@@ -159,7 +159,11 @@ export const createMemoryTab = (input: {
       if (text.trim() === "") return true;
       void input.sync
         .link(target, text.trim())
-        .then(() => void (status = "Paired: its walled memory now syncs too."))
+        .then(
+          () =>
+            void (status =
+              "Paired: its walled memory now syncs too, and this server can search its history index."),
+        )
         .catch((error: unknown) => void (status = reason(error)))
         .then(load);
     } else if ((target = memoryIdOf(id, "m.syncForget")) !== null) {

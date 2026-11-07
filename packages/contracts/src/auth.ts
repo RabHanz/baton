@@ -61,8 +61,9 @@ export const AuthBatonHandsScope = "baton:hands" as const;
 /** The desktop app's own session takes the remote calls and answers them; no client holds it. */
 export const AuthBatonHandsHostScope = "baton:hands-host" as const;
 /**
- * Tessaya memory sync with another of the Director's servers, walls included. A credential holding it holds nothing
- * else (`AuthGrantScopes`), so it can sync and do nothing more; it is minted on the server it reads.
+ * Tessaya memory sync with another of the Director's servers, walls included, and a search of that server's history
+ * index (secrets marked, walled hits left out). A credential holding it holds nothing else (`AuthGrantScopes`), so it
+ * can do only these; it is minted on the server it reads.
  */
 export const AuthBatonMemorySyncScope = "baton:memory-sync" as const;
 export const AuthEnvironmentScope = Schema.Literals([

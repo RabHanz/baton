@@ -471,6 +471,7 @@ export const startBatonDesktop = Effect.gen(function* () {
         onNote: noteTurn,
         platform: environment.platform,
         env: hostEnvironment,
+        direct,
         speak: (text) => {
           spokenThisTurn.push(text);
           return speaker.speak(text);

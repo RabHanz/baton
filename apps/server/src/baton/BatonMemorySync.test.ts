@@ -13,6 +13,7 @@ import { BatonMemoryService } from "./BatonMemoryService.ts";
 import {
   BatonMemorySync,
   layer,
+  SYNC_OFF,
   peerUrl,
   syncRound,
   type SyncEndpoint,
@@ -187,4 +188,60 @@ it.live("drops only the credential a peer refused, not one paired again during t
     assert.deepStrictEqual(Object.keys(left), ["box"]);
     assert.strictEqual(left["box"]?.token, "new-token");
   }).pipe(Effect.provide(serviceLayer)),
+);
+
+it.live(
+  "searches past work on every paired peer at once and takes the first found, past one that hangs; off asks none",
+  () =>
+    Effect.gen(function* () {
+      const sync = yield* BatonMemorySync;
+      stored.delete("tessaya-memory-sync-peers");
+      const seen: Array<string> = [];
+      const server = NodeHttp.createServer((request, response) => {
+        const token = request.headers.authorization ?? "";
+        seen.push(`${request.url} ${token}`);
+        if (token === "Bearer hangs") return;
+        const found = token === "Bearer with-index";
+        response
+          .writeHead(200, { "content-type": "application/json" })
+          .end(JSON.stringify({ value: { found, text: found ? "the hits" : "its index failed" } }));
+      });
+      yield* Effect.callback<void>(
+        (resume) => void server.listen(0, "127.0.0.1", () => resume(Effect.void)),
+      );
+      const origin = `http://127.0.0.1:${(server.address() as NodeNet.AddressInfo).port}`;
+      yield* sync.setEnabled(true);
+      assert.isTrue(Option.isNone(yield* sync.history({ query: "pricing" })));
+      yield* sync.addPeer({ environmentId: "slow", ...peer(origin, "hangs") });
+      yield* sync.addPeer({ environmentId: "a", ...peer(origin, "no-index") });
+      yield* sync.addPeer({ environmentId: "b", ...peer(origin, "with-index") });
+      assert.deepStrictEqual(
+        yield* sync.history({ query: "pricing" }),
+        Option.some({ found: true, text: "the hits" }),
+      );
+      assert.sameMembers(
+        seen,
+        ["hangs", "no-index", "with-index"].map(
+          (t) => `/tessaya/desk/baton.memory.historySearch Bearer ${t}`,
+        ),
+      );
+      // None found: a reached peer's own reason comes back.
+      yield* sync.forget("slow");
+      yield* sync.forget("b");
+      assert.deepStrictEqual(
+        yield* sync.history({ query: "pricing" }),
+        Option.some({ found: false, text: "its index failed" }),
+      );
+      // Off means off: no peer is asked, and the answer says why.
+      seen.length = 0;
+      yield* sync.setEnabled(false);
+      assert.deepStrictEqual(
+        yield* sync.history({ query: "pricing" }),
+        Option.some({ found: false, text: SYNC_OFF }),
+      );
+      assert.deepStrictEqual(seen, []);
+      server.closeAllConnections();
+      server.close();
+      stored.delete("tessaya-memory-sync-peers");
+    }).pipe(Effect.provide(serviceLayer)),
 );

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { REDACTED, redactForHistory } from "./redact.ts";
+import { REDACTED } from "@t3tools/baton-shared/memory";
+
+import { redactForHistory } from "./redact.ts";
 
 describe("redactForHistory", () => {
   it("marks a dictated password in both the heard and the cleaned text", () => {

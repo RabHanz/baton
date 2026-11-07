@@ -10,6 +10,23 @@ export const HISTORY_ENV = "BATON_HISTORY_SEARCH";
 const OUTPUT_MAX = 6_000;
 const SESSION = /^[0-9a-fA-F][0-9a-fA-F-]{5,63}$/;
 const TIMEOUT_MS = 15_000;
+/** For another server's ask: under that server's wait for this one's answer. */
+export const PEER_ASK_TIMEOUT_MS = 8_000;
+
+type Runner = (file: string, args: ReadonlyArray<string>) => Promise<string>;
+
+/** The script run with no shell, a time limit and a size limit. */
+export const historyRunner =
+  (timeoutMs = TIMEOUT_MS): Runner =>
+  (file, args) =>
+    new Promise((resolve, reject) =>
+      NodeChildProcess.execFile(
+        "bash",
+        [file, ...args],
+        { timeout: timeoutMs, maxBuffer: OUTPUT_MAX * 8, windowsHide: true },
+        (error, stdout) => (error === null ? resolve(stdout) : reject(error)),
+      ),
+    );
 
 export type HistoryAnswer =
   | { readonly ok: true; readonly text: string }
@@ -18,23 +35,12 @@ export type HistoryAnswer =
 export const NOT_HERE =
   "The history index is not set up on this computer, so there is nothing to search. (Set BATON_HISTORY_SEARCH to the history search script.)";
 
-/** Runs `script words...` or `script show <session>` with no shell, a time limit and a size limit. */
+/** Runs `script words...` or `script show <session>`. */
 export const askHistory = (
   env: Readonly<Record<string, string | undefined>>,
   ask: { readonly query?: string; readonly session?: string },
-  run: (file: string, args: ReadonlyArray<string>) => Promise<string> = (file, args) =>
-    new Promise((resolve, reject) =>
-      NodeChildProcess.execFile(
-        "bash",
-        [file, ...args],
-        { timeout: TIMEOUT_MS, maxBuffer: OUTPUT_MAX * 8, windowsHide: true },
-        (error, stdout) => (error === null ? resolve(stdout) : reject(error)),
-      ),
-    ),
+  run: Runner = historyRunner(),
 ): Promise<HistoryAnswer> => {
-  const script = env[HISTORY_ENV];
-  if (script === undefined || script.trim() === "")
-    return Promise.resolve({ ok: false, why: NOT_HERE });
   let args: string[];
   if (ask.session !== undefined) {
     if (!SESSION.test(ask.session))
@@ -48,6 +54,10 @@ export const askHistory = (
     if (words.length === 0) return Promise.resolve({ ok: false, why: "Say what to search for." });
     args = words;
   }
+  // Checked after the words, so a bad ask is refused here rather than passed to another server.
+  const script = env[HISTORY_ENV];
+  if (script === undefined || script.trim() === "")
+    return Promise.resolve({ ok: false, why: NOT_HERE });
   return run(script, args).then(
     (out) => ({ ok: true as const, text: out.slice(0, OUTPUT_MAX) }),
     () => ({ ok: false as const, why: "The history search did not answer." }),
@@ -70,14 +80,22 @@ const HEADER =
 // Tool output and thinking are file dumps, not lessons.
 const NOISE_ROLES = new Set(["tool_result", "tool_use", "thinking", "system", "meta"]);
 
-/** `-home-user-shop` is the project the session ran in; the tail after the machine's path prefix is the venture. */
-const ventureOf = (project: string): string | null => {
-  const name = project
+/** The folder a session ran in, after the machine's path prefix and before any shape check: what a wall is judged on. */
+const folderOf = (project: string): string =>
+  project
+    // A scratchpad folder (`-tmp-claude-<uid>-`) names the path it was made for next.
+    .replace(/^-tmp-claude-\d+-/, "")
     .replace(/^-home-[^-]+-/, "")
     // A mounted volume's path, up to its code folder (`-mnt-<volume>-dev-<project>`).
     .replace(/^-mnt-.*?-(?:dev|src|code|projects|work)-/, "")
+    // A code folder in his home (`-home-<user>-dev-<project>`).
+    .replace(/^(?:dev|src|code|projects|work)-/, "")
     .replace(/^-+/, "")
     .toLowerCase();
+
+/** `-home-user-shop` is the project the session ran in; the tail after the machine's path prefix is the venture. */
+const ventureOf = (project: string): string | null => {
+  const name = folderOf(project);
   return /^[a-z0-9][a-z0-9_-]{1,39}$/.test(name) && name !== "prompts" ? name : null;
 };
 
@@ -88,6 +106,30 @@ const tidy = (text: string): string =>
     .replace(/^[\s:|\-–]+/, "")
     .trim()
     .slice(0, QUOTE_MAX);
+
+/** The output without the hits `drop` refuses, each header-led block judged whole by its folder and its text. */
+export const keepHistory = (
+  output: string,
+  drop: (folder: string | null, text: string) => boolean,
+): string => {
+  const out: string[] = [];
+  let block: string[] = [];
+  let folder: string | null = null;
+  const flush = () => {
+    if (block.length > 0 && !drop(folder, block.join("\n"))) out.push(...block);
+    block = [];
+  };
+  for (const line of output.split(/\r?\n/)) {
+    const head = HEADER.exec(line);
+    if (head !== null) {
+      flush();
+      folder = folderOf(head[2]!);
+    }
+    block.push(line);
+  }
+  flush();
+  return out.join("\n");
+};
 
 /** One finding per hit. Reads the index's header-then-snippet blocks; any other line that names a session is taken whole. */
 export const parseLearnings = (output: string, max = 20): ReadonlyArray<FoundLearning> => {
