@@ -138,6 +138,7 @@ import {
 } from "@t3tools/baton-shared/skillReview";
 import { fetchSkillText, installSkill, nameFromUrl, skillExists } from "../harness/skillInstall.ts";
 import { createVolumeDuck } from "./volumeDuck.ts";
+import { createOutputWatch, speakerModeOf, type OutputDevice } from "./outputDevice.ts";
 import { PLACES, type PlaceId } from "./pillPlacement.ts";
 import { createSilenceWatch, DEFAULT_SILENCE_SECONDS } from "@t3tools/baton-shared/silenceWatch";
 import {
@@ -514,8 +515,11 @@ interface VoiceSettings {
   readonly learnWords: boolean;
   /** For whispering or a far mic: audio is lifted and wake thresholds lowered. Off by default. */
   readonly quietSpeech: boolean;
-  /** Headphones: the mic cannot hear Tessaya, so it listens all the time and speech over her voice cuts in. */
-  readonly headphones: boolean;
+  /**
+   * Headphones: the mic cannot hear Tessaya, so it listens all the time and speech over her voice cuts in.
+   * Automatic reads the playback device; the other two are his override.
+   */
+  readonly outputDevice: OutputDevice;
   /** Over speakers: hear him through her voice (the echo guard). Measured, not yet reliable enough to be the default. */
   readonly voiceBargeIn: boolean;
   /** Two quick taps of the dictation key keep the microphone open until the next press. */
@@ -623,7 +627,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   verifyWake: true,
   learnWords: true,
   quietSpeech: false,
-  headphones: false,
+  outputDevice: "auto",
   voiceBargeIn: false,
   doubleTap: true,
   keepVoice: false,
@@ -716,7 +720,13 @@ export const readSettings = (path: string): VoiceSettings => {
       bindings: parseBindings(saved["bindings"]),
       learnWords: saved["learnWords"] !== false,
       quietSpeech: saved["quietSpeech"] === true,
-      headphones: saved["headphones"] === true,
+      // Before Automatic this was a switch: on meant headphones, and off is now Automatic.
+      outputDevice:
+        saved["outputDevice"] === "headphones" || saved["outputDevice"] === "speakers"
+          ? saved["outputDevice"]
+          : saved["outputDevice"] === undefined && saved["headphones"] === true
+            ? "headphones"
+            : "auto",
       voiceBargeIn: saved["voiceBargeIn"] === true,
       doubleTap: saved["doubleTap"] !== false,
       appearance: parseAppearance(saved["appearance"]),
@@ -2866,6 +2876,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     }
     return `Memory is erased (${forgotten} items and your notes folder).`;
   };
+  const output = createOutputWatch({ platform: input.platform });
+  void output.refresh();
   const duck = createVolumeDuck({
     file: NodePath.join(input.stateDir, "voice", "volume-before-dictation.json"),
     platform: input.platform,
@@ -3230,6 +3242,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const turn = ((): TurnEvent | null => {
       switch (event.type) {
         case "wake":
+          // Before she answers: he may have put headphones on since the last look.
+          void output.refresh();
           // Read before anything of ours shows: what he had in front of him when he said the name.
           if (!dictatingByVoice && sidecar !== null)
             dictationHold.setTarget(sidecar.foreground().catch(() => null));
@@ -3422,7 +3436,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           : 30_000,
       }),
       echo: settings.voiceBargeIn ? echoGuard : undefined,
-      speakerMode: () => (settings.headphones ? "headphones" : "speakers"),
+      speakerMode: () => speakerModeOf(settings.outputDevice, output.kind()),
       trustWake: (word, score) => wakeTrusted(settings.wakeWords, word, score),
       verifyWake: async (pcm, word, score) => {
         // Unsure is a wake: the check only ever removes wakes it is sure were not the name.
@@ -5273,10 +5287,18 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       {
         id: "v.headphones",
         section: "Wake and listening",
-        label: "I am wearing headphones",
-        hint: "With headphones the microphone cannot hear Tessaya, so it keeps listening while she speaks and you can cut in just by talking. With speakers it does not take talking over her as a cut-in unless you turn on the setting below, and the wake word, a stop phrase, Esc and the pill's stop button always work.",
-        kind: "toggle",
-        on: settings.headphones,
+        label: "Headphones or speakers",
+        hint: "With headphones the microphone cannot hear Tessaya, so it keeps listening while she speaks and you can cut in just by talking. With speakers it does not take talking over her as a cut-in unless you turn on the setting below, and the wake word, a stop phrase, Esc and the pill's stop button always work. Automatic reads your playback device; Bluetooth counts as headphones.",
+        kind: "choice",
+        value: settings.outputDevice,
+        options: [
+          {
+            value: "auto",
+            label: output.kind() === null ? "Automatic" : `Automatic (${output.kind()} now)`,
+          },
+          { value: "headphones", label: "Headphones" },
+          { value: "speakers", label: "Speakers" },
+        ],
       },
       {
         id: "v.voiceBargeIn",
@@ -6225,7 +6247,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     else if (id === "v.cues") save({ cues: parseCueLevel(value) });
     else if (id === "v.holdKeyCues") save({ holdKeyCues: on });
     else if (id === "v.verifyWake") save({ verifyWake: on });
-    else if (id === "v.headphones") save({ headphones: on });
+    else if (
+      id === "v.headphones" &&
+      (value === "auto" || value === "headphones" || value === "speakers")
+    )
+      save({ outputDevice: value });
     else if (id === "v.voiceBargeIn") {
       save({ voiceBargeIn: on });
       void relisten();
