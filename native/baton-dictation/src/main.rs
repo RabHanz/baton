@@ -119,6 +119,8 @@ struct Done {
     pieces: u64,
     /// The recording as a WAV for the desktop to recognise (cloud); the text is then empty.
     wav: Option<String>,
+    /// The model file a whole clip was recognised with, for the turn log.
+    model: Option<String>,
 }
 
 struct Job {
@@ -348,6 +350,7 @@ impl Live {
                 release_ms: Some(released.elapsed().as_millis() as u64),
                 pieces: 0,
                 wav: Some(wav),
+                model: None,
             });
         }
         let session = session.ok_or_else(|| self.failed.clone().unwrap_or_else(|| "no model".to_string()))?;
@@ -369,6 +372,7 @@ impl Live {
             release_ms: Some(released.elapsed().as_millis() as u64),
             pieces: self.pieces,
             wav: None,
+            model: None,
         })
     }
 }
@@ -437,6 +441,7 @@ fn ensure_loaded(loaded: &mut Option<(PathBuf, Session)>, model: &Path) -> Resul
 /// 16 GB is shared with everything else on the laptop.
 fn engine_thread(work: Receiver<Work>, out: Sender<Msg>) {
     let mut loaded: Option<(PathBuf, Session)> = None;
+    let mut other: Option<(PathBuf, Session)> = None;
     let mut live: Option<Live> = None;
     loop {
         match work.recv_timeout(IDLE_UNLOAD) {
@@ -444,11 +449,16 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>) {
                 if live.is_none() {
                     loaded = None;
                 }
+                other = None;
             }
             Err(RecvTimeoutError::Disconnected) => return,
             Ok(Work::Clip(mut job)) => {
-                let result = ensure_loaded(&mut loaded, &job.model).and_then(|load_ms| {
-                    let session = &mut loaded.as_mut().expect("loaded above").1;
+                // A clip asking for another model than the one loaded (the wake path's fast one while dictation keeps
+                // v3) uses a second slot, so neither reloads the other's model on every turn.
+                let slot = if loaded.as_ref().is_some_and(|(path, _)| path != &job.model) { &mut other } else { &mut loaded };
+                let model = job.model.file_name().map(|name| name.to_string_lossy().into_owned());
+                let result = ensure_loaded(slot, &job.model).and_then(|load_ms| {
+                    let session = &mut slot.as_mut().expect("loaded above").1;
                     infer(session, &mut job.pcm, job.language.take()).map(|(text, audio_ms, infer_ms)| Done {
                         text,
                         audio_ms,
@@ -457,6 +467,7 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>) {
                         release_ms: None,
                         pieces: 1,
                         wav: None,
+                        model,
                     })
                 });
                 let _ = out.send(Msg::Finished { id: job.id, dictated: job.dictated, target: job.target, result });
@@ -1115,14 +1126,16 @@ fn serve() {
                     "transcribe" => {
                         let id = value["id"].as_u64();
                         let wav = value["wav"].as_str().unwrap_or("");
-                        match (read_wav(Path::new(wav)), &config.model) {
+                        // The wake path may ask for its own model; dictation's is the default.
+                        let asked = value["model"].as_str().filter(|m| !m.is_empty()).map(PathBuf::from);
+                        match (read_wav(Path::new(wav)), asked.or_else(|| config.model.clone())) {
                             (Ok(pcm), Some(model)) => {
                                 let _ = job_tx.send(Work::Clip(Job {
                                     id,
                                     dictated: false,
                                     target: None,
                                     pcm,
-                                    model: model.clone(),
+                                    model,
                                     language: config.language.clone(),
                                 }));
                             }
@@ -1199,7 +1212,7 @@ fn serve() {
                         "ev": "text", "id": id, "text": done.text, "audioMs": done.audio_ms,
                         "inferMs": done.infer_ms, "loadMs": done.load_ms, "pasteError": pasted_error,
                         "dictated": dictated, "pasted": paste, "target": target,
-                        "releaseMs": done.release_ms, "pieces": done.pieces, "wav": done.wav,
+                        "releaseMs": done.release_ms, "pieces": done.pieces, "wav": done.wav, "model": done.model,
                     }));
                 }
                 Err(message) => emit(json!({"ev": "text", "id": id, "error": message, "dictated": dictated})),

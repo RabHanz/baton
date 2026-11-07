@@ -30,6 +30,15 @@ export const PARAKEET_FAST_MODEL = {
   sha256: "965cc3f8e171286ecb4d4e6646b407a1782a97da9aed22f88d1e0ec6c96b2358",
 } as const;
 
+/**
+ * What recognises what he says to Tessaya (the wake path, not dictation, which keeps his choice): the fast English
+ * model when every language he speaks is English, since it is 3.4 times faster at the same accuracy; v3 otherwise.
+ */
+export const wakeModelFor = (languages: ReadonlyArray<string>): DownloadableModel =>
+  languages.length > 0 && languages.every((code) => code.toLowerCase().split("-")[0] === "en")
+    ? PARAKEET_FAST_MODEL
+    : PARAKEET_MODEL;
+
 export interface DownloadableModel {
   readonly file: string;
   readonly url: string;

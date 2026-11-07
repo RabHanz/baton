@@ -368,7 +368,13 @@ import {
 } from "./dictationRewriter.ts";
 import { mouseHookConfig } from "../bindings/inputConfig.ts";
 import { VOICE_HOTKEYS } from "./voiceActivation.ts";
-import { ensureModel, modelPresent, PARAKEET_FAST_MODEL, PARAKEET_MODEL } from "./voiceModels.ts";
+import {
+  ensureModel,
+  modelPresent,
+  PARAKEET_FAST_MODEL,
+  PARAKEET_MODEL,
+  wakeModelFor,
+} from "./voiceModels.ts";
 import { hudView, utteranceCaption } from "./voiceHud.ts";
 import { createCpuLoad, loadBefore } from "./cpuLoad.ts";
 import { createRecogniserPriority, type RecogniserPriority } from "./recogniserPriority.ts";
@@ -3343,6 +3349,23 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const speechModel = () =>
     settings.speechModel === "fast" ? PARAKEET_FAST_MODEL : PARAKEET_MODEL;
 
+  /** Fetched once a session, quietly, the first time the wake path wants a model dictation does not use. */
+  let wakeModelFetched = false;
+  /**
+   * The model file the wake path recognises with (LAT-1): the fast English one when he speaks only English, while
+   * dictation keeps his choice. Null means dictation's, as it is until that model is on disk.
+   */
+  const wakeModelPath = (): string | null => {
+    const model = wakeModelFor(settings.languages);
+    if (model === speechModel()) return null;
+    if (modelPresent(modelsDir, model)) return NodePath.join(modelsDir, model.file);
+    if (!wakeModelFetched) {
+      wakeModelFetched = true;
+      void ensureModel({ dir: modelsDir, model, onProgress: () => {} }).catch(() => undefined);
+    }
+    return null;
+  };
+
   /** One at a time; if the choice changed while it ran, the one now chosen is fetched next. */
   const loadSpeechModel = (): Promise<string> => {
     modelJob ??= (async () => {
@@ -3429,9 +3452,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           });
         },
         recognise,
+        wakeModelPath,
       ),
       // The stop listener hears the room while she talks over speakers: it never leaves this computer.
-      stopStt: makeSidecarStt(sidecar),
+      stopStt: makeSidecarStt(sidecar, undefined, undefined, undefined, wakeModelPath),
       onEvent: onCoreEvent,
       waitMs: () => clampWait(settings.waitMs),
       listening: () => ({

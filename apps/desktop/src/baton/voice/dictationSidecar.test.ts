@@ -100,7 +100,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
       out({ ev: "loading", elapsedMs: ++n * 100 });
       if (n === 4) { clearInterval(t); loaded = true; out({ ev: "model_ready", id: m.id, loadMs: 400 }); for (const q of queue) out({ ev: "text", id: q, text: "heard it" }); queue = []; }
     }, 100);
-  } else if (m.cmd === "transcribe") { if (loaded) out({ ev: "text", id: m.id, text: "heard it" }); else queue.push(m.id); }
+  } else if (m.cmd === "transcribe") { if (loaded) out({ ev: "text", id: m.id, text: "heard it", model: m.model ?? "dictation.gguf" }); else queue.push(m.id); }
 });
 `,
       { mode: 0o755 },
@@ -110,7 +110,12 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
 
   it("tells loading from a hang, loads on request, and answers a phrase that arrived mid-load", async () => {
     const events: DictationEvent[] = [];
-    const sidecar = startDictationSidecar({ binary: fake(), onEvent: (e) => void events.push(e) });
+    const models: Array<string | null> = [];
+    const sidecar = startDictationSidecar({
+      binary: fake(),
+      onEvent: (e) => void events.push(e),
+      onRecognised: (timing) => void models.push(timing.model),
+    });
     try {
       const early = sidecar.transcribe("x.wav");
       const ready = sidecar.preload();
@@ -118,6 +123,9 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
       expect(await early).toBe("heard it");
       expect(events.filter((e) => e.ev === "loading").length).toBeGreaterThanOrEqual(3);
       expect(await sidecar.transcribe("y.wav")).toBe("heard it");
+      // The wake path asks for its own model, and the log names the one that recognised each clip.
+      expect(await sidecar.transcribe("z.wav", "/m/fast.gguf")).toBe("heard it");
+      expect(models.slice(-2)).toEqual(["dictation.gguf", "/m/fast.gguf"]);
     } finally {
       sidecar.dispose();
     }
