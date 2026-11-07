@@ -6,13 +6,7 @@ import * as NodePath from "node:path";
 
 import { describe, expect, it } from "vite-plus/test";
 
-import {
-  ensureModel,
-  modelPresent,
-  PARAKEET_FAST_MODEL,
-  PARAKEET_MODEL,
-  wakeModelFor,
-} from "./voiceModels.ts";
+import { ensureModel, modelPresent, PARAKEET_FAST_MODEL, wakeModelFor } from "./voiceModels.ts";
 
 const bytes = Buffer.from("parakeet");
 const model = (sha256: string) => ({
@@ -123,15 +117,19 @@ describe("ensureModel", () => {
 
 describe("the wake path's model", () => {
   it.each([
-    // [his languages, the model that hears what he says to Tessaya]
-    [["en"], PARAKEET_FAST_MODEL],
-    [["en-GB"], PARAKEET_FAST_MODEL],
-    [["EN", "en-US"], PARAKEET_FAST_MODEL],
-    [["en", "de"], PARAKEET_MODEL],
-    [["fr"], PARAKEET_MODEL],
+    // [his languages, his dictation model, the model the wake path asks for (null: dictation's)]
+    [["en"], "v3", PARAKEET_FAST_MODEL],
+    [["en-GB"], "v3", PARAKEET_FAST_MODEL],
+    [["EN", "en-US"], "v3", PARAKEET_FAST_MODEL],
+    [["en", "de"], "v3", null],
+    [["fr"], "v3", null],
     // None set: nothing says it is only English.
-    [[], PARAKEET_MODEL],
-  ] as const)("%j hears with %o", (languages, model) => {
-    expect(wakeModelFor(languages)).toBe(model);
+    [[], "v3", null],
+    // Dictation already on the fast model: the wake path shares it, and is never moved back to v3.
+    [["en"], "fast", null],
+    [[], "fast", null],
+    [["de"], "fast", null],
+  ] as const)("%j with %s dictation asks for %o", (languages, speechModel, model) => {
+    expect(wakeModelFor(languages, speechModel)).toBe(model);
   });
 });

@@ -508,6 +508,8 @@ export const makeSidecarStt = (
   recognise?: (wav: Uint8Array, audioMs: number, local: () => Promise<string>) => Promise<string>,
   /** The model file to recognise with, read for each clip; dictation's when it gives null. */
   model?: () => string | null,
+  /** That model failed (it would not load): told once per failure, and the clip is heard by dictation's instead. */
+  onModelFailed?: (file: string, error: unknown) => void,
 ): SttProvider => ({
   name: "parakeet",
   transcribe: async (pcm) => {
@@ -516,7 +518,14 @@ export const makeSidecarStt = (
     try {
       const wav = encodeWav(pcm);
       await NodeFSP.writeFile(file, wav);
-      const local = () => sidecar.transcribe(file, model?.() ?? null);
+      const own = model?.() ?? null;
+      const local = () =>
+        own === null
+          ? sidecar.transcribe(file)
+          : sidecar.transcribe(file, own).catch((error: unknown) => {
+              onModelFailed?.(own, error);
+              return sidecar.transcribe(file);
+            });
       const text = await (recognise === undefined
         ? local()
         : recognise(wav, pcm.length / 16, local));

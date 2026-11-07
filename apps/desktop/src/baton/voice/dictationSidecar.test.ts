@@ -12,6 +12,8 @@ import {
   restartDelayMs,
   startDictationSidecar,
   type DictationEvent,
+  type DictationSidecar,
+  makeSidecarStt,
 } from "./dictationSidecar.ts";
 
 describe("recordingAfter", () => {
@@ -129,5 +131,30 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     } finally {
       sidecar.dispose();
     }
+  });
+});
+
+describe("the wake path's own model", () => {
+  it("falls back to dictation's model for a clip its own would not load, and says so", async () => {
+    const asked: Array<string | null> = [];
+    const failed: string[] = [];
+    const sidecar = {
+      transcribe: async (_wav: string, model?: string | null) => {
+        asked.push(model ?? null);
+        if (model != null) throw new Error("load: bad model");
+        return "what time is it";
+      },
+    } as unknown as DictationSidecar;
+    const stt = makeSidecarStt(
+      sidecar,
+      undefined,
+      undefined,
+      undefined,
+      () => "/m/fast.gguf",
+      (file) => void failed.push(file),
+    );
+    expect(await stt.transcribe(new Int16Array(1_600))).toBe("what time is it");
+    expect(asked).toEqual(["/m/fast.gguf", null]);
+    expect(failed).toEqual(["/m/fast.gguf"]);
   });
 });

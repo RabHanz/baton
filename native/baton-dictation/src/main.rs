@@ -44,6 +44,8 @@ use transcribe_cpp::{
 };
 
 const IDLE_UNLOAD: Duration = Duration::from_secs(600);
+/// How often an idle engine looks for a model slot it can let go.
+const IDLE_TICK: Duration = Duration::from_secs(60);
 const MIN_SAMPLES: usize = 16_000 / 4;
 /// A tap of the remote's button must not listen forever. What was said is kept, never pasted.
 const MAX_RECORDING: Duration = Duration::from_secs(3600);
@@ -119,7 +121,7 @@ struct Done {
     pieces: u64,
     /// The recording as a WAV for the desktop to recognise (cloud); the text is then empty.
     wav: Option<String>,
-    /// The model file a whole clip was recognised with, for the turn log.
+    /// The model file a clip sent to `transcribe` was recognised with, for the turn log; None for a live recording.
     model: Option<String>,
 }
 
@@ -131,6 +133,8 @@ struct Job {
     pcm: Vec<f32>,
     model: PathBuf,
     language: Option<String>,
+    /// Sent by the wake path with a model of its own: it lives in the engine's second slot.
+    wake: bool,
 }
 
 // The timings and the table are docs/baton/fixtures/double-tap.json; the sidecar is the only implementation.
@@ -437,25 +441,65 @@ fn ensure_loaded(loaded: &mut Option<(PathBuf, Session)>, model: &Path) -> Resul
     Ok(ms)
 }
 
-/// One thread owns the model. It loads on first use and leaves after ten idle minutes, because
+/// Which engine slot serves a request. `Main` is dictation's; the wake path's own model lives in `Wake`, so neither
+/// reloads the other's on every turn. A model already in a slot is never loaded into the other.
+#[derive(Debug, PartialEq)]
+enum Slot {
+    Main,
+    Wake,
+    /// Dictation's model is in the wake slot (he switched models): swap the slots, then use `Main`.
+    SwapThenMain,
+}
+
+fn plan_slot(wake: bool, main: Option<&Path>, other: Option<&Path>, wanted: &Path) -> Slot {
+    if main == Some(wanted) {
+        Slot::Main
+    } else if wake {
+        Slot::Wake
+    } else if other == Some(wanted) {
+        Slot::SwapThenMain
+    } else {
+        Slot::Main
+    }
+}
+
+type Loaded = Option<(PathBuf, Session)>;
+
+fn path_of(slot: &Loaded) -> Option<&Path> {
+    slot.as_ref().map(|(path, _)| path.as_path())
+}
+
+/// One thread owns the models. Each slot loads on first use and leaves after ten idle minutes of its own, because
 /// 16 GB is shared with everything else on the laptop.
 fn engine_thread(work: Receiver<Work>, out: Sender<Msg>) {
-    let mut loaded: Option<(PathBuf, Session)> = None;
-    let mut other: Option<(PathBuf, Session)> = None;
+    let mut loaded: Loaded = None;
+    let mut other: Loaded = None;
+    let mut loaded_at = Instant::now();
+    let mut other_at = Instant::now();
     let mut live: Option<Live> = None;
     loop {
-        match work.recv_timeout(IDLE_UNLOAD) {
-            Err(RecvTimeoutError::Timeout) => {
-                if live.is_none() {
-                    loaded = None;
-                }
-                other = None;
-            }
+        let message = work.recv_timeout(IDLE_TICK);
+        if live.is_none() && loaded_at.elapsed() >= IDLE_UNLOAD {
+            loaded = None;
+        }
+        if other_at.elapsed() >= IDLE_UNLOAD {
+            other = None;
+        }
+        match message {
+            Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => return,
             Ok(Work::Clip(mut job)) => {
-                // A clip asking for another model than the one loaded (the wake path's fast one while dictation keeps
-                // v3) uses a second slot, so neither reloads the other's model on every turn.
-                let slot = if loaded.as_ref().is_some_and(|(path, _)| path != &job.model) { &mut other } else { &mut loaded };
+                let plan = plan_slot(job.wake, path_of(&loaded), path_of(&other), &job.model);
+                if plan == Slot::SwapThenMain {
+                    std::mem::swap(&mut loaded, &mut other);
+                }
+                let slot = if plan == Slot::Wake {
+                    other_at = Instant::now();
+                    &mut other
+                } else {
+                    loaded_at = Instant::now();
+                    &mut loaded
+                };
                 let model = job.model.file_name().map(|name| name.to_string_lossy().into_owned());
                 let result = ensure_loaded(slot, &job.model).and_then(|load_ms| {
                     let session = &mut slot.as_mut().expect("loaded above").1;
@@ -473,6 +517,10 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>) {
                 let _ = out.send(Msg::Finished { id: job.id, dictated: job.dictated, target: job.target, result });
             }
             Ok(Work::Load { id, model }) => {
+                if plan_slot(false, path_of(&loaded), path_of(&other), &model) == Slot::SwapThenMain {
+                    std::mem::swap(&mut loaded, &mut other);
+                }
+                loaded_at = Instant::now();
                 let line = match ensure_loaded(&mut loaded, &model) {
                     Ok(load_ms) => json!({"ev": "model_ready", "id": id, "loadMs": load_ms}),
                     Err(error) => json!({"ev": "model_ready", "id": id, "error": error}),
@@ -483,6 +531,10 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>) {
                 live = Some(Live { external: Some(dir), ..Live::new(language, 0, None) });
             }
             Ok(Work::Begin { model, language, external: None }) => {
+                if plan_slot(false, path_of(&loaded), path_of(&other), &model) == Slot::SwapThenMain {
+                    std::mem::swap(&mut loaded, &mut other);
+                }
+                loaded_at = Instant::now();
                 live = Some(match ensure_loaded(&mut loaded, &model) {
                     Ok(load_ms) => Live::new(language, load_ms, None),
                     Err(e) => {
@@ -492,6 +544,7 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>) {
                 });
             }
             Ok(Work::Audio(pcm)) => {
+                loaded_at = Instant::now();
                 let Some(current) = live.as_mut() else { continue };
                 current.heard.extend_from_slice(&pcm);
                 if current.failed.is_none() && current.external.is_none() {
@@ -1128,6 +1181,7 @@ fn serve() {
                         let wav = value["wav"].as_str().unwrap_or("");
                         // The wake path may ask for its own model; dictation's is the default.
                         let asked = value["model"].as_str().filter(|m| !m.is_empty()).map(PathBuf::from);
+                        let asked_own = asked.is_some();
                         match (read_wav(Path::new(wav)), asked.or_else(|| config.model.clone())) {
                             (Ok(pcm), Some(model)) => {
                                 let _ = job_tx.send(Work::Clip(Job {
@@ -1137,6 +1191,7 @@ fn serve() {
                                     pcm,
                                     model,
                                     language: config.language.clone(),
+                                    wake: asked_own,
                                 }));
                             }
                             (Err(message), _) => emit(json!({"ev": "text", "id": id, "error": message})),
@@ -1383,6 +1438,25 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_wake_path_and_dictation_keep_their_own_models_and_never_load_one_twice() {
+        let (v3, fast) = (Path::new("v3.gguf"), Path::new("fast.gguf"));
+        // [the wake path asked, what Main holds, what Wake holds, the model wanted, the slot]
+        let rows = [
+            (true, None, None, fast, Slot::Wake),
+            (true, Some(v3), None, fast, Slot::Wake),
+            (true, Some(v3), Some(fast), fast, Slot::Wake),
+            (false, Some(v3), Some(fast), v3, Slot::Main),
+            (false, None, None, v3, Slot::Main),
+            // Already loaded in the other slot: used where it is, never loaded a second time.
+            (true, Some(fast), None, fast, Slot::Main),
+            (false, Some(v3), Some(fast), fast, Slot::SwapThenMain),
+        ];
+        for (wake, main, other, wanted, slot) in rows {
+            assert_eq!(plan_slot(wake, main, other, wanted), slot, "{wake} {main:?} {other:?} {wanted:?}");
+        }
+    }
 
     #[test]
     fn a_cloud_recording_comes_back_as_a_wav_with_no_text() {

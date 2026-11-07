@@ -31,13 +31,19 @@ export const PARAKEET_FAST_MODEL = {
 } as const;
 
 /**
- * What recognises what he says to Tessaya (the wake path, not dictation, which keeps his choice): the fast English
- * model when every language he speaks is English, since it is 3.4 times faster at the same accuracy; v3 otherwise.
+ * The model of its own the wake path asks for (what he says to Tessaya; dictation keeps his choice), or null for
+ * dictation's. Only ever the fast English one, when every language he speaks is English and dictation is not already
+ * on it: 3.4 times faster at the same accuracy. Never the other way: a fast dictation choice is kept for Tessaya too.
  */
-export const wakeModelFor = (languages: ReadonlyArray<string>): DownloadableModel =>
-  languages.length > 0 && languages.every((code) => code.toLowerCase().split("-")[0] === "en")
+export const wakeModelFor = (
+  languages: ReadonlyArray<string>,
+  speechModel: "v3" | "fast",
+): DownloadableModel | null =>
+  speechModel !== "fast" &&
+  languages.length > 0 &&
+  languages.every((code) => code.toLowerCase().split("-")[0] === "en")
     ? PARAKEET_FAST_MODEL
-    : PARAKEET_MODEL;
+    : null;
 
 export interface DownloadableModel {
   readonly file: string;
