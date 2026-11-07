@@ -30,6 +30,9 @@ const sourceOf = (id: number, name: string): string => {
   return NodeFS.readFileSync(NodePath.join(MIGRATIONS_DIR, file), "utf8");
 };
 
+const withoutTriggerBodies = (source: string): string =>
+  source.replace(/\bCREATE\s+TRIGGER\b[\s\S]*?\bEND\b/gi, "");
+
 /** Statements that would make a Baton migration unsafe to roll back past. */
 const FORBIDDEN: ReadonlyArray<{ readonly pattern: RegExp; readonly what: string }> = [
   { pattern: /\bDROP\s+TABLE\b/i, what: "drops a table" },
@@ -47,9 +50,16 @@ describe("every Tessaya migration is additive", () => {
     expect(BATON_MIGRATIONS.length).toBeGreaterThan(0);
   });
 
+  it("reads past a trigger's body, and nothing after it", () => {
+    const sql =
+      "CREATE TRIGGER t AFTER DELETE ON a BEGIN DELETE FROM b WHERE id = old.id; END; DELETE FROM c";
+    expect(withoutTriggerBodies(sql)).toBe("; DELETE FROM c");
+  });
+
   it("never drops, renames or rewrites anything", () => {
     for (const [id, name] of BATON_MIGRATIONS) {
-      const source = sourceOf(id, name);
+      // A trigger's body runs on later writes, not at migration time, so its DELETE or UPDATE changes nothing here.
+      const source = withoutTriggerBodies(sourceOf(id, name));
       for (const rule of FORBIDDEN) {
         expect(
           rule.pattern.test(source),
