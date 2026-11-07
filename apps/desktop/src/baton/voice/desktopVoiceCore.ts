@@ -24,6 +24,7 @@ import {
   type EchoGuard,
   type OpenWakeWordPaths,
   type OpenWakeWordScorer,
+  type RouteOutcome,
   type SileroScorer,
   type SttProvider,
   type TtsProvider,
@@ -224,15 +225,36 @@ export const withBrainRoutes = (inner: VoiceRouter, brain: BrainVoiceHook): Voic
 export const withPreempt = (
   inner: VoiceRouter,
   preempt: (text: string) => Promise<string | null>,
-): VoiceRouter => ({
-  route: async (effect, context) => {
-    if (effect.kind === "command") {
-      const reply = await preempt(effect.text);
-      if (reply !== null) return { kind: "ran", reply, workSessionId: null, source: "intent" };
-    }
-    return inner.route(effect, context);
-  },
-});
+): VoiceRouter => {
+  const answered = (reply: string): RouteOutcome => ({
+    kind: "ran",
+    reply,
+    workSessionId: null,
+    source: "intent",
+  });
+  const prepare = inner.prepare;
+  return {
+    route: async (effect, context) => {
+      if (effect.kind === "command") {
+        const reply = await preempt(effect.text);
+        if (reply !== null) return answered(reply);
+      }
+      return inner.route(effect, context);
+    },
+    // The preempt writes his dictionary, so it waits for `go` like everything else that acts.
+    ...(prepare === undefined
+      ? {}
+      : {
+          prepare: async (effect, context) => {
+            const go = await prepare(effect, context);
+            return async () => {
+              const reply = await preempt(effect.text);
+              return reply === null ? go() : answered(reply);
+            };
+          },
+        }),
+  };
+};
 
 /** Timings read at each use, so a change in Settings counts at the next wake without restarting the voice. */
 type Timings = typeof DEFAULT_TIMINGS & { readonly wakeWords?: ReadonlyArray<string> };
