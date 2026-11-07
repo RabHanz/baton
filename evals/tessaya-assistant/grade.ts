@@ -27,6 +27,8 @@ export const passes = (c: AssistantCase, sample: Sample): boolean => {
     (c.model === undefined || sample.model === c.model) &&
     !(c.not ?? []).includes(first) &&
     (c.says === undefined || sample.reply.toLowerCase().includes(c.says.toLowerCase())) &&
+    // A persona never opens with "<name> here": the card and the voice already say who answers.
+    (c.wake === undefined || !/^\W*\w+ here\b/i.test(sample.reply)) &&
     (c.goal === undefined ||
       pathPasses({ goal: c.goal, maxCalls: c.maxCalls ?? 99 }, sample.calls)) &&
     (c.goalArgs ?? []).every((word) => goalInput(c, sample).includes(word.toLowerCase()))

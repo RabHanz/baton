@@ -34,6 +34,15 @@ describe("the shared conversation", () => {
     );
     expect(withConversation("hello", "")).toBe("hello");
   });
+
+  it("shows old replies without the persona intro the model would copy", () => {
+    const block = conversationBlock({
+      recent: [turn(1, "what time is it", "Freya here. It's ten past four.")],
+      earlier: [],
+    });
+    expect(block).toContain("you replied (answer): It's ten past four.");
+    expect(block).not.toContain("Freya here");
+  });
   it("finds an older turn by its words, and not one already in the recent window", () => {
     const turns = [
       turn(

@@ -31,9 +31,15 @@ describe("the assistant eval's grader", () => {
   });
 
   it("fails a reply that leaves out the words the case needs", () => {
-    const named = { ...c, first: ["none"], says: "Freya" };
-    expect(passes(named, { calls: [], reply: "Freya here. It's ten." })).toBe(true);
-    expect(passes(named, { calls: [], reply: "It's ten." })).toBe(false);
+    const named = { ...c, first: ["none"], says: "ten" };
+    expect(passes(named, { calls: [], reply: "It's ten." })).toBe(true);
+    expect(passes(named, { calls: [], reply: "It's four." })).toBe(false);
+  });
+
+  it("fails a persona's reply that opens with its name", () => {
+    const freya = { ...c, first: ["none"], wake: "Freya" };
+    expect(passes(freya, { calls: [], reply: "Freya here. It's ten." })).toBe(false);
+    expect(passes(freya, { calls: [], reply: "It's ten, Freya says." })).toBe(true);
   });
 
   it("passes a recorded turn only when it reaches its goal tool within its calls", () => {

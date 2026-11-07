@@ -52,6 +52,8 @@ export interface TurnPersona {
 const personaLine = (p: TurnPersona) =>
   [
     `you answer this turn as ${p.name}${p.role === "" ? "." : `: ${p.role}`}`,
+    // The card and the voice say who answers; a spoken name also sounds like his next wake word.
+    `never open with your name ("${p.name} here") or a greeting: go straight to the answer.`,
     p.lead === undefined
       ? ""
       : `only ${p.lead} hands out work: if he asks you to start, split, hand over or schedule a job, or send work to the cloud, do not try; say ${p.lead} does that and he can ask ${p.lead}.`,
