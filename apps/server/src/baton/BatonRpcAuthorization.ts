@@ -185,7 +185,7 @@ const SYNC_METHODS: ReadonlySet<string> = new Set([
   BATON_MEMORY_WS_METHODS.syncPush,
 ]);
 
-/** What the desktop may call while T3's window is closed: jobs it does not have to place, the watch, the Record, rules (standing jobs) and memory. */
+/** What the desktop may call while T3's window is closed: jobs it does not have to place, the watch, the Record, rules (standing jobs), memory, commitments and weave. */
 export const DESK_METHODS: ReadonlySet<string> = new Set([
   BATON_ACCOUNT_WS_METHODS.weekly,
   BATON_ORCHESTRATION_WS_METHODS.ruleList,
@@ -202,6 +202,10 @@ export const DESK_METHODS: ReadonlySet<string> = new Set([
   BATON_WATCH_WS_METHODS.watchGet,
   BATON_RECORD_WS_METHODS.list,
   BATON_RECORD_WS_METHODS.append,
+  BATON_COMMITMENT_WS_METHODS.list,
+  BATON_COMMITMENT_WS_METHODS.upsert,
+  BATON_WEAVE_WS_METHODS.send,
+  BATON_WEAVE_WS_METHODS.list,
   // Another server's sync over plain HTTPS, with its sync-only credential.
   ...SYNC_METHODS,
   ...(

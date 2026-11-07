@@ -1,5 +1,5 @@
 /**
- * A job, watch or memory request as one call to this machine's own server, for while T3's window is closed
+ * A job, watch, memory, commitments or weave request as one call to this machine's own server, for while T3's window is closed
  * (GEN-6). The arguments are shaped as the sidebar shapes them; the server decodes and checks them. Null for a
  * request only the window can answer: starting a job (it picks the project and worker), handoff, sync, import.
  */
@@ -21,6 +21,8 @@ const MEMORY_OPS = new Set([
   "learn",
 ]);
 
+const COMMITMENT_OPS = new Set(["list", "upsert"]);
+const WEAVE_OPS = new Set(["send", "list"]);
 export const deskCall = (body: {
   readonly kind: string;
   readonly op?: unknown;
@@ -30,6 +32,13 @@ export const deskCall = (body: {
   if (body.kind === "memory") {
     return typeof body.op === "string" && MEMORY_OPS.has(body.op)
       ? { method: `baton.memory.${body.op}`, input: args }
+      : null;
+  }
+  // The shared ledger and weave's record are the server's own; the weave tick is the server's drainer, not a client's.
+  if (body.kind === "commitments" || body.kind === "weave") {
+    const ops = body.kind === "commitments" ? COMMITMENT_OPS : WEAVE_OPS;
+    return typeof body.op === "string" && ops.has(body.op)
+      ? { method: `baton.${body.kind}.${body.op}`, input: args }
       : null;
   }
   if (body.kind !== "job") return null;
