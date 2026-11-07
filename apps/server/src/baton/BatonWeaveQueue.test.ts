@@ -10,6 +10,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import * as TestClock from "effect/testing/TestClock";
 
 import { layerMemory } from "./BatonDatabase.ts";
+import { holdServerLock, SERVER_LOCK_STALE_MS } from "./BatonLiveQueue.ts";
 import { agentsOf, BatonWeaveBoxes, type SessionPane } from "./BatonWeaveBoxes.ts";
 import { make as makeWeave, queueDirFor, WeaveStores } from "./BatonWeaveService.ts";
 // @ts-expect-error -- plain JS shared with the live agent, which runs without a build
@@ -425,4 +426,121 @@ it.effect("a weave Herdr may have typed is reported lost and never typed again",
       }),
     );
   }),
+);
+
+it("the folder lock: kept by its heartbeat, taken when stale or its process is gone, held only with its token", () => {
+  const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "weave-lock-"));
+  const lock = NodePath.join(dir, ".server.lock");
+  const at = Date.parse("2026-11-07T08:00:00.000Z");
+  assert.deepStrictEqual(holdServerLock(dir, "a", at), { owned: true, holder: process.pid });
+  // A live owner that keeps touching the lock keeps it.
+  assert.deepStrictEqual(holdServerLock(dir, "b", at + 1_000), {
+    owned: false,
+    holder: process.pid,
+  });
+  assert.isTrue(holdServerLock(dir, "a", at + 20_000).owned);
+  assert.isFalse(holdServerLock(dir, "b", at + 20_000 + SERVER_LOCK_STALE_MS).owned);
+  // Untouched for over 30 s: stale even though its pid (a reused one, say) is alive.
+  NodeFS.utimesSync(lock, new Date(at), new Date(at));
+  assert.isTrue(holdServerLock(dir, "b", at + SERVER_LOCK_STALE_MS + 1).owned);
+  assert.isFalse(holdServerLock(dir, "a", at + SERVER_LOCK_STALE_MS + 2).owned);
+  // Fresh, but its process is gone.
+  const later = at + 2 * SERVER_LOCK_STALE_MS;
+  NodeFS.writeFileSync(lock, JSON.stringify({ pid: 2 ** 22 + 1, token: "dead" }));
+  NodeFS.utimesSync(lock, new Date(later), new Date(later));
+  assert.isTrue(holdServerLock(dir, "c", later + 1_000).owned);
+  assert.deepStrictEqual(
+    NodeFS.readdirSync(dir).filter((n) => n.startsWith(".server.lock")),
+    [".server.lock"],
+  );
+});
+
+it.effect("a server that does not own the folder types nothing, not even its own send", () =>
+  Effect.suspend(() => {
+    const t = setup();
+    const typed: Array<string> = [];
+    const pane = {
+      name: "here",
+      adapter: {
+        discover: Effect.succeed({
+          available: true,
+          reason: "",
+          candidates: [
+            {
+              runtime: "herdr",
+              label: "build",
+              location: { workspace: "w", pane: "p1", host: null },
+              agentKind: "claude",
+              runtimeState: "idle",
+            },
+          ],
+        }),
+        readOutput: () => Effect.succeed({ available: true, detail: "", output: "│ > │" }),
+        sendInput: (input: { text: string }) =>
+          Effect.sync(() => (typed.push(input.text), { delivered: true, detail: "" })),
+      },
+    };
+    const other = Effect.flatMap(makeWeave, (w) =>
+      w.send({ to: "build", text: "hold on please" }),
+    ).pipe(
+      Effect.scoped,
+      Effect.provide(Layer.mergeAll(layerMemory, Layer.succeed(BatonWeaveBoxes, [pane] as never))),
+      Effect.provideService(WeaveStores, {
+        liveQueueDir: () => t.dir,
+        catalogFile: t.file("none.json"),
+      }),
+    );
+    return Effect.gen(function* () {
+      yield* makeWeave;
+      const sent = yield* other;
+      assert.strictEqual(sent.status, "queued");
+      assert.deepStrictEqual(typed, []);
+    }).pipe(Effect.provide(t.layer));
+  }),
+);
+
+it.effect(
+  "an unbound file an older bridge writes again is taken in, without taking anything twice",
+  () =>
+    Effect.suspend(() => {
+      const t = setup();
+      const kept = (id: string, text: string) =>
+        `${JSON.stringify({ id, at: "2026-11-07T08:00:00.000Z", text, threadId: "baton-live4:x" })}\n`;
+      t.write("unbound-messages.ndjson", kept("u1", "first"));
+      return Effect.gen(function* () {
+        const weave = yield* makeWeave;
+        t.write("unbound-messages.ndjson", kept("u1", "first") + kept("u2", "second"));
+        yield* weave.deliver;
+        assert.deepStrictEqual(
+          (yield* weave.unbound).map((r) => r.text),
+          ["first", "second"],
+        );
+      }).pipe(Effect.provide(t.layer));
+    }),
+);
+
+it.effect(
+  "a session waiting on a resume is looked at at least every 10 s, and at once when a new message comes",
+  () =>
+    Effect.suspend(() => {
+      const t = setup();
+      t.inbound(line("a", "s7", "carry on"));
+      return Effect.gen(function* () {
+        const weave = yield* makeWeave;
+        // 3 s, 6 s, then 10 s rather than 12 s.
+        for (const step of ["0 seconds", "3 seconds", "6 seconds"] as const) {
+          yield* TestClock.adjust(step);
+          yield* weave.deliver;
+        }
+        assert.strictEqual(t.herdr.listings, 3);
+        yield* TestClock.adjust("10 seconds");
+        yield* weave.deliver;
+        assert.strictEqual(t.herdr.listings, 4);
+        // A new message for it: looked at in this pass, not after the wait.
+        t.inbound(line("b", "s7", "and this"));
+        t.herdr.where.set("s7", { pane: "w1:p2", status: "idle" });
+        assert.strictEqual(yield* weave.deliver, 2);
+        assert.deepStrictEqual(t.herdr.typed, ["w1:p2: carry on", "w1:p2: and this"]);
+      }).pipe(Effect.provide(t.layer));
+    }),
 );

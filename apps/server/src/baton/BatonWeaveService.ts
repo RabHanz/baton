@@ -39,11 +39,13 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as ServerConfig from "../config.ts";
 import {
   appendLiveQueue,
+  holdServerLock,
   listOwned,
   liveQueueDir,
   moveAside,
   readInbound,
   readQueueFiles,
+  releaseServerLock,
   takeOverQueueFile,
   takeQueueLock,
   writeOwned,
@@ -96,9 +98,11 @@ const DRAIN_EVERY = "3 seconds";
 /** Settings key: how far into `inbound.ndjson` the server has imported. */
 const INBOUND_OFFSET = "weave.inbound.offset";
 const CATALOG_DONE = "weave.migrated.catalog";
-const UNBOUND_DONE = "weave.migrated.unbound";
 const BACKOFF_FIRST_MS = 3_000;
 const BACKOFF_MAX_MS = 60_000;
+/** A session the bridge just promised to send to ("Resumed… Sending now") is looked at at least this often. */
+const BACKOFF_SESSION_MAX_MS = 10_000;
+const NOT_OWNER_WARN_MS = 60_000;
 /** A stable id for a row taken from an old store, so taking it again (a crash before the move) changes nothing. */
 const takenId = (...parts: ReadonlyArray<string>): string =>
   `m-${NodeCrypto.createHash("sha1").update(parts.join("\u0000")).digest("hex").slice(0, 16)}`;
@@ -195,22 +199,37 @@ export const make = Effect.gen(function* () {
   /** One drain at a time: the drainer, a send and a client's tick must never type the same row twice. */
   const draining = yield* Semaphore.make(1);
   /**
-   * One server owns a live-queue folder (`.server.lock`, the bridge's stale-pid rule): only it imports from the
-   * folder and drains, so two servers on one machine never both type a message. Held for the service's lifetime.
+   * One server owns a live-queue folder (`holdServerLock`, kept by a heartbeat on every pass): only it imports from
+   * the folder and types, so two servers on one machine never both type a message.
    */
-  let folder: { readonly dir: string; readonly release: () => void } | null = null;
+  const token = NodeCrypto.randomUUID();
+  let folder: { readonly dir: string } | null = null;
+  let holder: number | null = null;
   const ownFolder = Effect.sync((): string | null => {
     if (Option.isNone(stores)) return null;
     const dir = stores.value.liveQueueDir();
-    if (folder?.dir === dir) return dir;
-    folder?.release();
-    folder = null;
-    const release = takeQueueLock(dir, ".server.lock");
-    if (release === null) return null;
-    folder = { dir, release };
-    return dir;
+    if (folder !== null && folder.dir !== dir) releaseServerLock(folder.dir, token);
+    const held = holdServerLock(dir, token);
+    folder = held.owned ? { dir } : null;
+    holder = held.holder;
+    return folder?.dir ?? null;
   });
-  yield* Effect.addFinalizer(() => Effect.sync(() => folder?.release()));
+  /** A server that does not own the folder could otherwise sit silent forever: it says so once a minute. */
+  let warnedAt = Number.NEGATIVE_INFINITY;
+  const notOwner = Effect.gen(function* () {
+    const now = yield* nowMs;
+    if (now - warnedAt < NOT_OWNER_WARN_MS) return;
+    warnedAt = now;
+    yield* Effect.logWarning(
+      "Tessaya: another server owns this machine's live-queue folder, so this one does not import or type its messages",
+      { dir: Option.isSome(stores) ? stores.value.liveQueueDir() : null, holderPid: holder },
+    );
+  });
+  yield* Effect.addFinalizer(() =>
+    Effect.sync(() => {
+      if (folder !== null) releaseServerLock(folder.dir, token);
+    }),
+  );
   /** Targets not there now are looked at less often, up to once a minute, so a gone session costs little. */
   const backoff = new Map<string, { readonly until: number; readonly delay: number }>();
 
@@ -462,6 +481,8 @@ export const make = Effect.gen(function* () {
       `.pipe(Effect.orDie);
     let delivered = 0;
     for (const row of rows) {
+      // Touched before each row: a long pass must not let the lock go stale and a second server type too.
+      if (Option.isSome(stores) && (yield* ownFolder) === null) return { delivered, absent: false };
       const r = yield* attempt(row, pass);
       if (r === "delivered") {
         delivered += 1;
@@ -558,31 +579,25 @@ export const make = Effect.gen(function* () {
       }
     }
     const keptFile = dir === null ? null : NodePath.join(dir, "unbound-messages.ndjson");
-    if (
-      dir !== null &&
-      keptFile !== null &&
-      NodeFS.existsSync(keptFile) &&
-      !(yield* isDone(UNBOUND_DONE))
-    ) {
+    // No done marker here: rows keep their stable `u-<id>` and are never deleted, so a file an older bridge writes
+    // again is taken in without sending anything twice.
+    if (dir !== null && keptFile !== null && NodeFS.existsSync(keptFile)) {
       const pending = pendingKept(readKept(dir), readLedger(dir));
       yield* sql.withTransaction(
-        Effect.gen(function* () {
-          yield* insertRows(
-            pending.map((e) => ({
-              id: `u-${e.id}`,
-              from: "thread",
-              toLabel: "its thread",
-              toPane:
-                e.thread !== null
-                  ? paneKey("thread", e.thread)
-                  : paneKey("unbound", e.sessionId ?? e.id),
-              text: e.text,
-              createdAt: Date.parse(e.at) || now,
-              source: "unbound" as const,
-            })),
-          );
-          yield* setSetting(UNBOUND_DONE, String(now));
-        }),
+        insertRows(
+          pending.map((e) => ({
+            id: `u-${e.id}`,
+            from: "thread",
+            toLabel: "its thread",
+            toPane:
+              e.thread !== null
+                ? paneKey("thread", e.thread)
+                : paneKey("unbound", e.sessionId ?? e.id),
+            text: e.text,
+            createdAt: Date.parse(e.at) || now,
+            source: "unbound" as const,
+          })),
+        ),
       );
       moveAside(keptFile, now);
       moveAside(NodePath.join(dir, "unbound-ledger.ndjson"), now);
@@ -633,6 +648,7 @@ export const make = Effect.gen(function* () {
           })),
         );
         yield* setSetting(INBOUND_OFFSET, String(next));
+        for (const l of lines) if (!l.unbound) backoff.delete(paneKey("session", l.sessionId));
       }),
     );
     // Marked at once, so a message the bridge gets next joins the end instead of going first.
@@ -642,13 +658,18 @@ export const make = Effect.gen(function* () {
   const deliverUnlocked = Effect.gen(function* () {
     yield* takeOver().pipe(Effect.orDie);
     // Another server owns this machine's folder: it drains, this one does not.
-    if (Option.isSome(stores) && folder === null) return 0;
+    if (Option.isSome(stores) && folder === null) {
+      yield* notOwner;
+      return 0;
+    }
     const panes = yield* sql<{ to_pane: string }>`
       SELECT DISTINCT to_pane FROM fabric_weaves
       WHERE status = 'queued' AND (source IS NULL OR source = 'thread')
     `.pipe(Effect.orDie);
     const now = yield* nowMs;
     const pass = newPass();
+    const queued = new Set(panes.map((p) => p.to_pane));
+    for (const target of backoff.keys()) if (!queued.has(target)) backoff.delete(target);
     let delivered = 0;
     for (const { to_pane } of panes) {
       const wait = backoff.get(to_pane);
@@ -657,7 +678,8 @@ export const make = Effect.gen(function* () {
       delivered += r.delivered;
       if (!r.absent) backoff.delete(to_pane);
       else {
-        const delay = Math.min(BACKOFF_MAX_MS, (wait?.delay ?? BACKOFF_FIRST_MS / 2) * 2);
+        const cap = bySession(splitKey(to_pane).box) ? BACKOFF_SESSION_MAX_MS : BACKOFF_MAX_MS;
+        const delay = Math.min(cap, (wait?.delay ?? BACKOFF_FIRST_MS / 2) * 2);
         backoff.set(to_pane, { until: now + delay, delay });
       }
     }
@@ -715,7 +737,10 @@ export const make = Effect.gen(function* () {
     `.pipe(Effect.orDie);
     // Earlier messages to the same pane go first, so the order he sent them in is kept. A pass already running is not
     // waited for: the row is queued, and the drainer takes it in a few seconds.
-    yield* draining.withPermitsIfAvailable(1)(drainPane(target.target.pane, newPass()));
+    backoff.delete(target.target.pane);
+    // Only the folder's owner types; on another server the row waits for it.
+    if (Option.isNone(stores) || (yield* ownFolder) !== null)
+      yield* draining.withPermitsIfAvailable(1)(drainPane(target.target.pane, newPass()));
     const sent = (yield* get(id))!;
     const line =
       sent.status === "delivered"

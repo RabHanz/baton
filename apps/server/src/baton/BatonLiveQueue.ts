@@ -114,11 +114,10 @@ export const readInbound = (
 
 /**
  * The bridge's `.drain.lock` (`takeDrainLock` in baton-live-acp.mjs), so no bridge is mid-send while the server takes
- * a queue file over, or another lock by the same rule. One whose process is gone is taken over. Returns the release,
- * or null when a live process holds it.
+ * a queue file over. One whose process is gone is taken over. Returns the release, or null when a drain is running.
  */
-export const takeQueueLock = (dir: string, name = ".drain.lock"): (() => void) | null => {
-  const lock = NodePath.join(dir, name);
+export const takeQueueLock = (dir: string): (() => void) | null => {
+  const lock = NodePath.join(dir, ".drain.lock");
   const take = () => {
     try {
       NodeFS.mkdirSync(dir, { recursive: true });
@@ -230,4 +229,94 @@ export const writeOwned = (
     NodeFS.writeFileSync(`${file}.tmp`, JSON.stringify({ waiting: count }), { mode: 0o600 });
     NodeFS.renameSync(`${file}.tmp`, file);
   }
+};
+
+const SERVER_LOCK = ".server.lock";
+/** A server lock not touched for this long belongs to a server that stopped, whatever its pid says now. */
+export const SERVER_LOCK_STALE_MS = 30_000;
+
+const readLock = (file: string): { pid: number; token: string; mtimeMs: number } | null => {
+  try {
+    const raw = JSON.parse(NodeFS.readFileSync(file, "utf8")) as { pid?: unknown; token?: unknown };
+    return {
+      pid: typeof raw.pid === "number" ? raw.pid : 0,
+      token: typeof raw.token === "string" ? raw.token : "",
+      mtimeMs: NodeFS.statSync(file).mtimeMs,
+    };
+  } catch {
+    return null;
+  }
+};
+
+/** Only a pid the system says does not exist is dead: EPERM (someone else's process) counts as alive. */
+const pidGone = (pid: number): boolean => {
+  if (!Number.isInteger(pid) || pid <= 0) return true;
+  try {
+    process.kill(pid, 0);
+    return false;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "ESRCH";
+  }
+};
+
+/**
+ * The live-queue folder's owner, by heartbeat: the owner touches `<dir>/.server.lock` (its pid and a random token) on
+ * every pass, and a lock untouched for 30 s, or whose pid is gone, is stale. A stale lock is renamed to a name only
+ * this caller uses (one rename wins), then the lock is created with O_EXCL; a fresh lock taken by mistake is linked
+ * back. Ownership lasts only while the file holds this token. Works the same on Windows (no /proc).
+ */
+export const holdServerLock = (
+  dir: string,
+  token: string,
+  now: number = Date.now(),
+): { readonly owned: boolean; readonly holder: number | null } => {
+  const file = NodePath.join(dir, SERVER_LOCK);
+  const create = (): boolean => {
+    try {
+      NodeFS.mkdirSync(dir, { recursive: true });
+      NodeFS.writeFileSync(file, JSON.stringify({ pid: process.pid, token }), { flag: "wx" });
+      NodeFS.utimesSync(file, new Date(now), new Date(now));
+      return readLock(file)?.token === token;
+    } catch {
+      return false;
+    }
+  };
+  const held = readLock(file);
+  if (held?.token === token) {
+    try {
+      NodeFS.utimesSync(file, new Date(now), new Date(now));
+    } catch {}
+    return { owned: true, holder: process.pid };
+  }
+  if (held === null)
+    return create()
+      ? { owned: true, holder: process.pid }
+      : { owned: false, holder: readLock(file)?.pid ?? null };
+  if (now - held.mtimeMs <= SERVER_LOCK_STALE_MS && !pidGone(held.pid))
+    return { owned: false, holder: held.pid };
+  const aside = `${file}.stale-${token}`;
+  try {
+    NodeFS.renameSync(file, aside);
+  } catch {
+    return { owned: false, holder: readLock(file)?.pid ?? null };
+  }
+  const taken = readLock(aside);
+  if (taken?.token !== held.token) {
+    // Another server took the stale lock first and this rename moved its fresh one: give it back.
+    try {
+      NodeFS.linkSync(aside, file);
+    } catch {}
+    NodeFS.rmSync(aside, { force: true });
+    return { owned: false, holder: taken?.pid ?? null };
+  }
+  NodeFS.rmSync(aside, { force: true });
+  return create()
+    ? { owned: true, holder: process.pid }
+    : { owned: false, holder: readLock(file)?.pid ?? null };
+};
+
+/** Lets the lock go, only when it is still this token's. */
+export const releaseServerLock = (dir: string, token: string): void => {
+  const file = NodePath.join(dir, SERVER_LOCK);
+  if (readLock(file)?.token === token) NodeFS.rmSync(file, { force: true });
 };
