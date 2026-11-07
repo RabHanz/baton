@@ -462,11 +462,16 @@ export function BatonSidebarSection(props: {
         (request.args["peers"] ?? {}) as Readonly<Record<string, SyncPeerCredential>>,
       );
     if (request.op === "syncPeers")
-      return fleet.environmentIds.map((environmentId) => ({
-        environmentId,
-        label: fleet.resolveEnvironmentLabel(environmentId) ?? environmentId,
-        local: environmentId === primaryEnvironmentId,
-      }));
+      return fleet.environmentIds.map((environmentId) => {
+        const baseUrl = readPreparedConnection(environmentId)?.httpBaseUrl;
+        return {
+          environmentId,
+          label: fleet.resolveEnvironmentLabel(environmentId) ?? environmentId,
+          local: environmentId === primaryEnvironmentId,
+          // Where its credential goes, with any relay path; the server syncs to it there.
+          ...(baseUrl === undefined ? {} : { baseUrl }),
+        };
+      });
     if (request.op === "syncPair") {
       if (memoryHome === undefined) throw new Error("This app's own server is not connected.");
       // A one-time code that another machine trades for a credential which can only sync this server's memory.
@@ -509,6 +514,7 @@ export function BatonSidebarSection(props: {
         throw new Error(syncFailureLine(response.status));
       return {
         origin: url.origin,
+        baseUrl: base,
         token: json.access_token,
         expiresAt: Date.now() + (json.expires_in ?? 0) * 1000,
       };

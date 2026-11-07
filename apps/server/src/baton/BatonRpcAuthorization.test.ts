@@ -107,13 +107,21 @@ describe("who may import memory from a folder", () => {
 });
 
 describe("the desktop's direct door while T3's window is closed", () => {
-  it("serves only methods with a declared scope, places jobs rather than starting them raw, and never reads a folder", () => {
+  it("serves only methods with a declared scope, places jobs rather than starting them raw, and lets only the desktop's own session read a folder", () => {
     for (const method of DESK_METHODS)
       expect(Object.hasOwn(BATON_RPC_REQUIRED_SCOPES, method)).toBe(true);
     // A job starts only by placement, which picks the project and worker on this server.
     expect(DESK_METHODS.has(BATON_JOB_WS_METHODS.jobStart)).toBe(false);
     expect(DESK_METHODS.has(BATON_JOB_WS_METHODS.jobPlace)).toBe(true);
-    expect(DESK_METHODS.has(BATON_MEMORY_WS_METHODS.import)).toBe(false);
+    // The folder is on this machine, and only the desktop app's own session holds the scope to read it.
+    expect(DESK_METHODS.has(BATON_MEMORY_WS_METHODS.import)).toBe(true);
+    expect(missingBatonScope(BATON_MEMORY_WS_METHODS.import, AuthStandardClientScopes)).toBe(
+      AuthBatonHandsHostScope,
+    );
+    // This server's own sync, with the credentials it keeps, is the desktop app's alone too.
+    expect(missingBatonScope(BATON_MEMORY_WS_METHODS.syncAddPeer, AuthStandardClientScopes)).toBe(
+      AuthBatonHandsHostScope,
+    );
     expect(missingBatonScope(BATON_JOB_WS_METHODS.jobAgree, [AuthOrchestrationReadScope])).toBe(
       AuthOrchestrationOperateScope,
     );

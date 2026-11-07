@@ -189,7 +189,13 @@ import {
   BatonMemoryRecallResult,
   BatonMemoryRefInput,
   BatonMemoryRefusedError,
+  BatonMemorySyncAddPeerInput,
+  BatonMemorySyncError,
+  BatonMemorySyncForgetInput,
   BatonMemorySyncHelloResult,
+  BatonMemorySyncRunResult,
+  BatonMemorySyncSetEnabledInput,
+  BatonMemorySyncStateResult,
   BatonMemorySyncPullInput,
   BatonMemorySyncPullResult,
   BatonMemorySyncPushInput,
@@ -566,6 +572,39 @@ const WsBatonMemoryLearnRpc = Rpc.make(BATON_MEMORY_WS_METHODS.learn, {
   success: BatonMemoryLearnResult,
   error: MemoryErrors,
 });
+const WsBatonMemorySyncStateRpc = Rpc.make(BATON_MEMORY_WS_METHODS.syncState, {
+  payload: Schema.Struct({}),
+  success: BatonMemorySyncStateResult,
+  error: MemoryErrors,
+});
+const WsBatonMemorySyncSetEnabledRpc = Rpc.make(BATON_MEMORY_WS_METHODS.syncSetEnabled, {
+  payload: BatonMemorySyncSetEnabledInput,
+  success: Schema.Struct({}),
+  error: MemoryErrors,
+});
+const WsBatonMemorySyncAddPeerRpc = Rpc.make(BATON_MEMORY_WS_METHODS.syncAddPeer, {
+  payload: BatonMemorySyncAddPeerInput,
+  success: Schema.Struct({}),
+  error: Schema.Union([
+    BatonMemorySyncError,
+    BatonMemoryRefusedError,
+    EnvironmentAuthorizationError,
+  ]),
+});
+const WsBatonMemorySyncForgetRpc = Rpc.make(BATON_MEMORY_WS_METHODS.syncForget, {
+  payload: BatonMemorySyncForgetInput,
+  success: Schema.Struct({}),
+  error: Schema.Union([
+    BatonMemorySyncError,
+    BatonMemoryRefusedError,
+    EnvironmentAuthorizationError,
+  ]),
+});
+const WsBatonMemorySyncRunRpc = Rpc.make(BATON_MEMORY_WS_METHODS.syncRun, {
+  payload: Schema.Struct({}),
+  success: BatonMemorySyncRunResult,
+  error: MemoryErrors,
+});
 const WsBatonMemorySyncHelloRpc = Rpc.make(BATON_MEMORY_WS_METHODS.syncHello, {
   payload: Schema.Struct({}),
   success: BatonMemorySyncHelloResult,
@@ -828,6 +867,11 @@ export const BatonRpcGroup = RpcGroup.make(
   WsBatonMemoryImportRpc,
   WsBatonMemoryPullRpc,
   WsBatonMemorySyncHelloRpc,
+  WsBatonMemorySyncStateRpc,
+  WsBatonMemorySyncSetEnabledRpc,
+  WsBatonMemorySyncAddPeerRpc,
+  WsBatonMemorySyncForgetRpc,
+  WsBatonMemorySyncRunRpc,
   WsBatonMemorySyncPullRpc,
   WsBatonMemorySyncPushRpc,
   WsBatonOrchestrationRuleCreateRpc,

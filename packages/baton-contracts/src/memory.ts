@@ -25,6 +25,12 @@ export const BATON_MEMORY_WS_METHODS = {
   syncHello: "baton.memory.syncHello",
   syncPull: "baton.memory.syncPull",
   syncPush: "baton.memory.syncPush",
+  /** This server's own sync with its paired peers (GEN-6): the desktop app's session only. */
+  syncState: "baton.memory.syncState",
+  syncSetEnabled: "baton.memory.syncSetEnabled",
+  syncAddPeer: "baton.memory.syncAddPeer",
+  syncForget: "baton.memory.syncForget",
+  syncRun: "baton.memory.syncRun",
 } as const;
 
 export const BatonMemoryKind = Schema.Literals([
@@ -204,6 +210,44 @@ export const BatonMemorySyncPushInput = Schema.Struct({
   upTo: Schema.String,
 });
 export const BatonMemorySyncPushResult = Schema.Struct({ applied: Schema.Number });
+
+/** A paired peer as the server keeps it, without its credential. */
+export const BatonMemorySyncPeer = Schema.Struct({
+  environmentId: Schema.String,
+  label: Schema.String,
+  expiresAt: Schema.Number,
+});
+export type BatonMemorySyncPeer = typeof BatonMemorySyncPeer.Type;
+export const BatonMemorySyncStateResult = Schema.Struct({
+  enabled: Schema.Boolean,
+  peers: Schema.Array(BatonMemorySyncPeer),
+});
+export const BatonMemorySyncSetEnabledInput = Schema.Struct({ on: Schema.Boolean });
+/** A credential a pairing returned; it only ever goes back to `origin`. */
+export const BatonMemorySyncAddPeerInput = Schema.Struct({
+  environmentId: TrimmedNonEmptyString,
+  label: Schema.String,
+  origin: TrimmedNonEmptyString,
+  /** The URL the window reaches it at, with any relay path; absent, the origin itself. */
+  baseUrl: Schema.optionalKey(TrimmedNonEmptyString),
+  token: TrimmedNonEmptyString,
+  expiresAt: Schema.Number,
+});
+/** A change to this server's sync peers that was refused or could not be made; nothing was written. */
+export class BatonMemorySyncError extends Schema.TaggedError<BatonMemorySyncError>()(
+  "BatonMemorySyncError",
+  { detail: Schema.String },
+) {
+  override get message(): string {
+    return this.detail;
+  }
+}
+export const BatonMemorySyncForgetInput = Schema.Struct({ environmentId: TrimmedNonEmptyString });
+export const BatonMemorySyncRunResult = Schema.Struct({
+  servers: Schema.Number,
+  applied: Schema.Number,
+  refused: Schema.Array(Schema.Struct({ environmentId: Schema.String, label: Schema.String })),
+});
 
 /** A folder of markdown learnings on the server's machine, read and never written (MEMORY.md section 7). */
 export const BatonMemoryImportInput = Schema.Struct({ folder: TrimmedNonEmptyString });

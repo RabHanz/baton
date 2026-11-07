@@ -64,6 +64,7 @@ import { BatonPhoneInbox, phoneCall } from "./BatonPhoneInbox.ts";
 import { BatonCommitmentService } from "./BatonCommitmentService.ts";
 import { BatonRecordService } from "./BatonRecordService.ts";
 import { BatonMemoryService } from "./BatonMemoryService.ts";
+import { BatonMemorySync } from "./BatonMemorySync.ts";
 import * as JobFlow from "./BatonJobFlow.ts";
 import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts";
 import * as FleetQuery from "./FleetQuery.ts";
@@ -92,6 +93,7 @@ export type BatonServices =
   | BatonEngine
   | BatonJobService
   | BatonMemoryService
+  | BatonMemorySync
   | BatonCommitmentService
   | BatonRecordService
   | BatonPhoneInbox
@@ -542,6 +544,18 @@ export const makeHandlers = Effect.gen(function* () {
       ),
     [BATON_MEMORY_WS_METHODS.import]: (input) => run(importFolder(input.folder)),
     [BATON_MEMORY_WS_METHODS.pull]: (input) => run(pullAction(input.action)),
+    [BATON_MEMORY_WS_METHODS.syncState]: () =>
+      run(Effect.flatMap(BatonMemorySync, (sync) => sync.state)),
+    [BATON_MEMORY_WS_METHODS.syncSetEnabled]: (input) =>
+      run(Effect.flatMap(BatonMemorySync, (sync) => Effect.as(sync.setEnabled(input.on), {}))),
+    [BATON_MEMORY_WS_METHODS.syncAddPeer]: (input) =>
+      run(Effect.flatMap(BatonMemorySync, (sync) => Effect.as(sync.addPeer(input), {}))),
+    [BATON_MEMORY_WS_METHODS.syncForget]: (input) =>
+      run(
+        Effect.flatMap(BatonMemorySync, (sync) => Effect.as(sync.forget(input.environmentId), {})),
+      ),
+    [BATON_MEMORY_WS_METHODS.syncRun]: () =>
+      run(Effect.flatMap(BatonMemorySync, (sync) => sync.run)),
     [BATON_MEMORY_WS_METHODS.syncHello]: () =>
       run(Effect.flatMap(BatonMemoryService, (memory) => memory.syncHello)),
     [BATON_MEMORY_WS_METHODS.syncPull]: (input) =>

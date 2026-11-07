@@ -19,11 +19,28 @@ const MEMORY_OPS = new Set([
   "used",
   "export",
   "learn",
+  "import",
+  "syncState",
+  "syncSetEnabled",
+  "syncAddPeer",
+  "syncForget",
+  "syncRun",
 ]);
 
 const COMMITMENT_OPS = new Set(["list", "upsert"]);
 const WEAVE_OPS = new Set(["send", "list"]);
 const CLOUD_OPS = new Set(["read", "act", "approve"]);
+/** This server's own memory sync: only its door answers, whether or not the window is open. */
+const SERVER_ONLY = new Set([
+  "syncState",
+  "syncSetEnabled",
+  "syncAddPeer",
+  "syncForget",
+  "syncRun",
+]);
+export const serverOnly = (body: { readonly kind: string; readonly op?: unknown }): boolean =>
+  body.kind === "memory" && typeof body.op === "string" && SERVER_ONLY.has(body.op);
+
 export const deskCall = (body: {
   readonly kind: string;
   readonly op?: unknown;
