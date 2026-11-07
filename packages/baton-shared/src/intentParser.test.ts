@@ -71,21 +71,22 @@ describe("resolveBatonIntent — switching the Claude account", () => {
       "use the optima account",
       "Baton, rotate accounts to optima",
     ]) {
-      const result = resolve(text);
+      const result = resolve(text, { focusedWorkSessionId: "ws-search" });
       expect(result.outcome, text).toBe("resolved");
       if (result.outcome !== "resolved") continue;
-      expect(result.command).toMatchObject({ kind: "switch_account", accountLabel: "optima" });
+      expect(result.command).toEqual({
+        kind: "switch_account",
+        accountLabel: "optima",
+        workSessionId: "ws-search",
+      });
       expect(result.risk).toBe("medium");
     }
   });
 
-  it("moves the focused work, else the one that moved last", () => {
-    const focused = resolve("use the optima account", { focusedWorkSessionId: "ws-search" });
-    const fallback = resolve("use the optima account");
-    expect(focused.outcome === "resolved" && focused.command).toMatchObject({
-      workSessionId: "ws-search",
-    });
-    expect(fallback.outcome === "resolved" && fallback.workSessionId).not.toBeNull();
+  it("moves only the work he is looking at, never the one that moved last", () => {
+    const unfocused = resolve("use the optima account");
+    expect(unfocused.outcome).toBe("refused");
+    if (unfocused.outcome === "refused") expect(unfocused.refusal.reason).toBe("ambiguous_target");
   });
 
   it("does not take a session handoff or a focus request for one", () => {

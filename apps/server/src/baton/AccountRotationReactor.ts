@@ -14,7 +14,7 @@
  * shortcut: a poll, not a subscription to the limit event. Upgrade when provider runtime events
  * carry the limit to a reactor.
  */
-import { ProviderDriverKind } from "@t3tools/baton-contracts";
+import { BATON_DEFAULT_CLAUDE_INSTANCE, ProviderDriverKind } from "@t3tools/baton-contracts";
 import {
   activeAccount,
   decideRotation,
@@ -23,6 +23,7 @@ import {
 } from "@t3tools/baton-shared/accountRotation";
 import type { BatonAccount, BatonAccountPool } from "@t3tools/baton-contracts";
 import {
+  isListedThreadLineage,
   isLiveSubagentShell,
   type OrchestrationV2ThreadShell,
   type ServerProvider,
@@ -95,11 +96,22 @@ export const instanceAccount = (provider: ServerProvider, active: boolean): Bato
   } as BatonAccount;
 };
 
+// An automatic pick needs a fresh reading: a target read longer ago than this counts as unknown.
+const TARGET_FRESH_MS = 30 * 60_000;
+
+const freshOrUnknown = (account: BatonAccount, nowMs: number): BatonAccount =>
+  account.active ||
+  account.usageCheckedAt === null ||
+  nowMs - Date.parse(account.usageCheckedAt) <= TARGET_FRESH_MS
+    ? account
+    : { ...account, usable: false, unusableReason: "limits-unknown", headroomPercent: null };
+
 /** The accounts a thread on `instanceId` can resume on: Claude instances sharing its transcripts. */
 export const instancePool = (
   providers: ReadonlyArray<ServerProvider>,
   instanceId: string,
   now: string,
+  exclude: ReadonlySet<string> = new Set(),
 ): BatonAccountPool | null => {
   const source = providers.find((provider) => provider.instanceId === instanceId);
   if (source === undefined || source.driver !== DRIVER) return null;
@@ -110,15 +122,17 @@ export const instancePool = (
       (provider.driver === DRIVER &&
         provider.enabled &&
         provider.installed &&
+        !exclude.has(provider.instanceId) &&
         group !== undefined &&
         provider.continuation?.groupKey === group),
   );
+  const nowMs = Date.parse(now);
   return {
     driver: DRIVER,
     source: "instances",
     configDir: group ?? instanceId,
     accounts: peers.map((provider) =>
-      instanceAccount(provider, provider.instanceId === instanceId),
+      freshOrUnknown(instanceAccount(provider, provider.instanceId === instanceId), nowMs),
     ),
     checkedAt: now,
   } as BatonAccountPool;
@@ -128,40 +142,62 @@ export const instancePool = (
 export const threadIsWorking = (shell: OrchestrationV2ThreadShell): boolean =>
   shell.archivedAt === null &&
   shell.deletedAt === null &&
+  isListedThreadLineage(shell.lineage) &&
   (isLiveSubagentShell(shell) || (shell.limitRecovery ?? null) !== null);
 
-export interface ThreadMovePlan {
+export interface ThreadMove {
+  readonly threadId: OrchestrationV2ThreadShell["id"];
   readonly from: BatonAccount | null;
   readonly target: BatonAccount;
   readonly reason: "limit" | "policy";
-  readonly threadIds: ReadonlyArray<OrchestrationV2ThreadShell["id"]>;
 }
 
-/** Pure: which working threads move where, one decision per instance they run on. */
+/**
+ * Pure: which working threads move where. The cooldown and the once-per-window rule are per thread, so
+ * one thread's move never holds back new work on the same account. A thread is left alone when he has
+ * already chosen another instance for it, a move is waiting, or he keeps it where it is (`held`).
+ */
 export const planThreadMoves = (input: {
   readonly providers: ReadonlyArray<ServerProvider>;
   readonly shells: ReadonlyArray<OrchestrationV2ThreadShell>;
   readonly lastAutoRotationAt: ReadonlyMap<string, string>;
+  readonly held: ReadonlySet<string>;
+  /** Instances that are neither a source nor a target here (the default one while cswap rotates it). */
+  readonly exclude: ReadonlySet<string>;
   readonly now: string;
-}): ReadonlyArray<ThreadMovePlan> => {
-  const working = new Map<string, Array<OrchestrationV2ThreadShell["id"]>>();
-  for (const shell of input.shells) {
-    if (!threadIsWorking(shell)) continue;
-    const ids = working.get(shell.providerInstanceId) ?? [];
-    ids.push(shell.id);
-    working.set(shell.providerInstanceId, ids);
-  }
-  return [...working].flatMap(([instanceId, threadIds]) => {
-    const pool = instancePool(input.providers, instanceId, input.now);
+}): ReadonlyArray<ThreadMove> => {
+  const pools = new Map<string, BatonAccountPool | null>();
+  const poolFor = (instanceId: string) => {
+    if (!pools.has(instanceId))
+      pools.set(instanceId, instancePool(input.providers, instanceId, input.now, input.exclude));
+    return pools.get(instanceId) ?? null;
+  };
+  return input.shells.flatMap((shell): ReadonlyArray<ThreadMove> => {
+    const instanceId = shell.providerInstanceId;
+    if (
+      !threadIsWorking(shell) ||
+      input.held.has(shell.id) ||
+      shell.modelSelection.instanceId !== instanceId ||
+      input.exclude.has(instanceId)
+    )
+      return [];
+    const pool = poolFor(instanceId);
     if (pool === null) return [];
     const decision = rotationTick({
       pool,
       policy: "auto",
-      lastAutoRotationAt: input.lastAutoRotationAt.get(instanceId) ?? null,
+      lastAutoRotationAt: input.lastAutoRotationAt.get(shell.id) ?? null,
       now: input.now,
     });
     return decision.outcome === "rotate"
-      ? [{ from: decision.from, target: decision.target, reason: decision.reason, threadIds }]
+      ? [
+          {
+            threadId: shell.id,
+            from: decision.from,
+            target: decision.target,
+            reason: decision.reason,
+          },
+        ]
       : [];
   });
 };
@@ -175,25 +211,30 @@ export const make = Effect.gen(function* () {
   const threadRotatedAt = new Map<string, string>();
   let lastAutoRotationAt: string | null = null;
 
-  const moveThreads = Effect.fn("AccountRotationReactor.moveThreads")(function* (now: string) {
-    const plans = planThreadMoves({
+  const moveThreads = Effect.fn("AccountRotationReactor.moveThreads")(function* (
+    now: string,
+    exclude: ReadonlySet<string>,
+  ) {
+    const planned = planThreadMoves({
       providers: yield* registry.getProviders,
       shells: yield* engine.threadShells,
       lastAutoRotationAt: threadRotatedAt,
+      held: yield* moves.held,
+      exclude,
       now,
     });
-    for (const plan of plans) {
-      if (plan.from !== null) threadRotatedAt.set(plan.from.key, now);
-      for (const threadId of plan.threadIds) {
-        yield* moves
-          .request({ threadId, instanceId: plan.target.key })
-          .pipe(Effect.ignoreCause({ log: true }));
-      }
-      yield* Effect.logInfo("Tessaya moved threads to another account on a limit", {
-        from: plan.from?.label ?? null,
-        to: plan.target.label,
-        reason: plan.reason,
-        threads: plan.threadIds.length,
+    for (const move of planned) {
+      const result = yield* moves
+        .request({ threadId: move.threadId, instanceId: move.target.key })
+        .pipe(Effect.option);
+      if (result._tag === "None") continue;
+      // Recorded only once the move took, so a failed one is tried again on the next tick.
+      threadRotatedAt.set(move.threadId, now);
+      yield* Effect.logInfo("Tessaya moved a thread to another account on a limit", {
+        threadId: move.threadId,
+        from: move.from?.label ?? null,
+        to: move.target.label,
+        reason: move.reason,
       });
     }
   });
@@ -201,12 +242,10 @@ export const make = Effect.gen(function* () {
   // The machine login his terminal sessions run on (cswap).
   const rotateTerminalLogin = Effect.fn("AccountRotationReactor.rotateTerminalLogin")(function* (
     now: string,
+    current: BatonAccountPool,
   ) {
-    // A machine without cswap has no terminal login to rotate, which is not worth a log line.
-    const current = yield* pool.read(DRIVER).pipe(Effect.option);
-    if (current._tag === "None") return;
     const decision = rotationTick({
-      pool: current.value,
+      pool: current,
       policy: "auto",
       lastAutoRotationAt,
       now,
@@ -241,8 +280,13 @@ export const make = Effect.gen(function* () {
   const tick = Effect.gen(function* () {
     if ((yield* policy.read) !== "auto") return;
     const now = DateTime.formatIso(yield* DateTime.now);
-    yield* moveThreads(now).pipe(Effect.ignoreCause({ log: true }));
-    yield* rotateTerminalLogin(now).pipe(Effect.ignoreCause({ log: true }));
+    // A machine without cswap has no terminal login to rotate, which is not worth a log line.
+    const terminal = yield* pool.read(DRIVER).pipe(Effect.option);
+    // While cswap rotates the default instance's login, native moves leave that instance out.
+    const exclude = new Set(terminal._tag === "Some" ? [BATON_DEFAULT_CLAUDE_INSTANCE] : []);
+    yield* moveThreads(now, exclude).pipe(Effect.ignoreCause({ log: true }));
+    if (terminal._tag === "Some")
+      yield* rotateTerminalLogin(now, terminal.value).pipe(Effect.ignoreCause({ log: true }));
   });
 
   yield* tick.pipe(Effect.repeat(Schedule.spaced(TICK)), Effect.forkScoped);

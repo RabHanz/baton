@@ -627,20 +627,26 @@ export function resolveBatonIntent(
   for (const pattern of SWITCH_ACCOUNT) {
     const accountLabel = pattern.exec(text)?.[1]?.trim();
     if (accountLabel) {
-      const target = resolveTarget(null, vocabulary);
-      const work = target.kind === "one" ? target.workSession : null;
+      // Only work he is looking at: moving the work that changed last would be a guess about billing.
+      const work =
+        vocabulary.workSessions.find((entry) => entry.id === vocabulary.focusedWorkSessionId) ??
+        null;
+      if (work === null) {
+        return refuse(
+          "ambiguous_target",
+          source,
+          "Open the work to move first, then say it again.",
+        );
+      }
       return resolved({
         command: {
           kind: "switch_account",
           accountLabel: accountLabel as never,
-          workSessionId: (work?.id ?? null) as never,
+          workSessionId: work.id as never,
         },
-        description:
-          work === null
-            ? `Move work to ${accountLabel}.`
-            : `Move ${label(work)} to ${accountLabel}.`,
+        description: `Move ${label(work)} to ${accountLabel}.`,
         risk: "medium",
-        workSessionId: work?.id ?? null,
+        workSessionId: work.id,
       });
     }
   }

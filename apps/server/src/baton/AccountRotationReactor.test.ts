@@ -114,49 +114,109 @@ const instance = (
     ...extra,
   }) as unknown as ServerProvider;
 
-const thread = (id: string, instanceId: string, status: "running" | "idle") =>
+const thread = (
+  id: string,
+  instanceId: string,
+  status: "running" | "idle",
+  extra: Partial<Record<string, unknown>> = {},
+) =>
   v2Shell({
     id: ThreadId.make(id),
     status,
     providerInstanceId: ProviderInstanceId.make(instanceId),
+    modelSelection: { instanceId: ProviderInstanceId.make(instanceId), model: "sonnet" },
     createdAt: at(now),
-  });
+    ...extra,
+  } as never);
 
 describe("native rotation of T3 threads (L-76)", () => {
-  const plan = (providers: ReadonlyArray<ServerProvider>, last = new Map<string, string>()) =>
+  const shells = [
+    thread("busy", "a", "running"),
+    thread("idle", "a", "idle"),
+    thread("ok", "b", "running"),
+  ];
+  const plan = (
+    providers: ReadonlyArray<ServerProvider>,
+    more: Partial<Parameters<typeof planThreadMoves>[0]> = {},
+  ) =>
     planThreadMoves({
       providers,
-      shells: [
-        thread("busy", "a", "running"),
-        thread("idle", "a", "idle"),
-        thread("ok", "b", "running"),
-      ],
-      lastAutoRotationAt: last,
+      shells,
+      lastAutoRotationAt: new Map(),
+      held: new Set(),
+      exclude: new Set(),
       now,
-    });
+      ...more,
+    }).map((move) => [move.threadId, move.from?.key, move.target.key]);
 
   it("moves the working threads of a spent instance to the one with most room, and leaves idle ones", () => {
-    const moves = plan([instance("a", 97), instance("b", 40), instance("c", 10)]);
-    expect(moves.map((move) => [move.from?.key, move.target.key, move.threadIds])).toEqual([
-      ["a", "c", ["busy"]],
+    expect(plan([instance("a", 97), instance("b", 40), instance("c", 10)])).toEqual([
+      ["busy", "a", "c"],
     ]);
   });
 
-  it("never moves onto an instance with unread limits, signed out, or with other transcripts", () => {
+  it("never moves onto an instance with unread, stale or spent limits, signed out, or with other transcripts", () => {
     expect(
       plan([
         instance("a", 100),
-        instance("b", 40, { usageLimits: undefined, displayName: "b" }),
+        instance("b", 40, { usageLimits: undefined }),
         instance("c", null),
         instance("d", 0, { auth: { status: "unauthenticated" } }),
         instance("e", 0, { continuation: { groupKey: "claude:home:/elsewhere" } }),
-      ]).filter((move) => move.from?.key === "a"),
+        instance("f", 0, {
+          usageLimits: {
+            checkedAt: "2026-10-26T11:00:00.000Z",
+            windows: [{ id: "five_hour", kind: "session", label: "Session", usedPercent: 0 }],
+          },
+        }),
+      ]),
     ).toEqual([]);
   });
 
-  it("holds a second move inside the same limit window", () => {
-    const last = new Map([["a", "2026-10-26T11:00:00.000Z"]]);
-    expect(plan([instance("a", 100), instance("c", 10)], last)).toEqual([]);
+  it("holds a thread's second move inside the same window, and never holds another thread for it", () => {
+    const providers = [instance("a", 100), instance("c", 10)];
+    const more = {
+      shells: [thread("busy", "a", "running"), thread("new", "a", "running")],
+      lastAutoRotationAt: new Map([["busy", "2026-10-26T11:00:00.000Z"]]),
+    };
+    expect(plan(providers, more)).toEqual([["new", "a", "c"]]);
+  });
+
+  it("leaves his choices alone: a waiting move, a kept thread, another instance already picked, a subagent", () => {
+    const providers = [instance("a", 100), instance("c", 10)];
+    expect(
+      plan(providers, {
+        shells: [
+          thread("kept", "a", "running"),
+          thread("picked", "a", "running", {
+            modelSelection: { instanceId: ProviderInstanceId.make("c"), model: "sonnet" },
+          }),
+          thread("child", "a", "running", {
+            lineage: {
+              rootThreadId: ThreadId.make("root"),
+              parentThreadId: ThreadId.make("root"),
+              relationshipToParent: "subagent",
+            },
+          }),
+        ],
+        held: new Set(["kept"]),
+      }),
+    ).toEqual([]);
+  });
+
+  it("leaves the default instance to cswap while cswap rotates it", () => {
+    const providers = [instance("claudeAgent", 100), instance("a", 100), instance("c", 10)];
+    const more = {
+      shells: [thread("on-default", "claudeAgent", "running"), thread("busy", "a", "running")],
+      exclude: new Set(["claudeAgent"]),
+    };
+    expect(plan(providers, more)).toEqual([["busy", "a", "c"]]);
+    expect(
+      plan([instance("a", 100), instance("claudeAgent", 10)], {
+        ...more,
+        shells: [thread("busy", "a", "running")],
+      }),
+    ).toEqual([]);
   });
 });
 

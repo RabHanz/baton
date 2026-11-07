@@ -19,6 +19,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import * as ServerConfig from "../config.ts";
+import { ServerSettingsService } from "../serverSettings.ts";
 import { claudeAccountInstances } from "./ClaudeAccountInstances.ts";
 import * as AccountPoolService from "./AccountPoolService.ts";
 import * as AccountRotationPolicy from "./AccountRotationPolicy.ts";
@@ -57,9 +58,19 @@ import * as WorkSessionService from "./WorkSessionService.ts";
 import { adoptTessayaEnv } from "@t3tools/baton-shared/tessayaEnv";
 
 const readClaudeAccountInstances = Layer.effectDiscard(
-  Effect.map(HostProcess.Environment, (env) =>
-    setClaudeAccountInstances(claudeAccountInstances(env.BATON_CLAUDE_ACCOUNT_INSTANCES)),
-  ),
+  Effect.gen(function* () {
+    const map = claudeAccountInstances(
+      (yield* HostProcess.Environment).BATON_CLAUDE_ACCOUNT_INSTANCES,
+    );
+    setClaudeAccountInstances(map);
+    const ids = Object.keys((yield* (yield* ServerSettingsService).getSettings).providerInstances);
+    if (Object.keys(map).length === 0 && ids.some((id) => id.startsWith("claudeAgent_"))) {
+      yield* Effect.logWarning(
+        "Claude token instances exist but BATON_CLAUDE_ACCOUNT_INSTANCES is not set: their limits are unknown and none is a rotation target",
+        { instances: ids.filter((id) => id.startsWith("claudeAgent_")) },
+      );
+    }
+  }),
 );
 
 // His private pack's text is refused by memory's door (D148); read fresh, so an edit counts at once.

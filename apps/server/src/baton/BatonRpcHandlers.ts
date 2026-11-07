@@ -147,7 +147,12 @@ const threadAccountUse = Effect.fn("fabric.account.useForThread")(function* (
       ? BATON_DEFAULT_CLAUDE_INSTANCE
       : instanceForAccount(account, (id) => available.has(id));
   if (instanceId === null) {
-    return yield* refuse("unusable", `${account.label} has no provider instance on this machine`);
+    return yield* refuse(
+      "unusable",
+      pinned.length === 0
+        ? `${account.label} has no provider instance: BATON_CLAUDE_ACCOUNT_INSTANCES is not set on this machine`
+        : `${account.label} has no provider instance on this machine`,
+    );
   }
   return yield* Effect.flatMap(ThreadAccountMoves, (moves) =>
     moves.request({ threadId: input.threadId, instanceId }),
@@ -240,6 +245,14 @@ export const makeHandlers = Effect.gen(function* () {
     [BATON_ACCOUNT_WS_METHODS.onLimit]: () =>
       run(Effect.flatMap(AccountRotationPolicy, (policy) => policy.read)).pipe(
         Effect.map((policy) => ({ policy })),
+      ),
+    [BATON_ACCOUNT_WS_METHODS.threadKept]: (input) =>
+      run(Effect.flatMap(ThreadAccountMoves, (moves) => moves.kept(input.threadId))).pipe(
+        Effect.map((keep) => ({ keep })),
+      ),
+    [BATON_ACCOUNT_WS_METHODS.threadKeep]: (input) =>
+      run(Effect.flatMap(ThreadAccountMoves, (moves) => moves.keep(input))).pipe(
+        Effect.map((keep) => ({ keep })),
       ),
     [BATON_ACCOUNT_WS_METHODS.setOnLimit]: (input) =>
       run(Effect.flatMap(AccountRotationPolicy, (policy) => policy.set(input.policy))).pipe(

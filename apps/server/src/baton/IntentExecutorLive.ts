@@ -42,6 +42,7 @@ import { BatonOrchestrationReactor, OrchestrationEffectsService } from "./Orches
 import { OrchestrationRuleService } from "./OrchestrationRuleService.ts";
 import type { ServerProvider } from "@t3tools/contracts";
 import { instanceAccount } from "./AccountRotationReactor.ts";
+import { AskSource } from "./BatonPhoneInbox.ts";
 import { ThreadAccountMoves } from "./ThreadAccountMoves.ts";
 import { BatonEngine } from "./BatonEngine.ts";
 import { WorkSessionService } from "./WorkSessionService.ts";
@@ -326,7 +327,15 @@ export const make = Effect.gen(function* () {
 
         case "switch_account": {
           const workSessionId = command.workSessionId ?? null;
-          if (workSessionId === null) return failed("Say which work to move to that account.");
+          if (workSessionId === null)
+            return failed("Open the work to move first, then say it again.");
+          // Which account bills his work is his call: a token's device (maybe an agent) asks him instead.
+          if ((yield* AskSource) !== "phone") {
+            return failed(
+              "Moving this work to another account needs him. Ask him to say it, or to pick the account in the model picker.",
+              workSessionId,
+            );
+          }
           const workSession = yield* workSessions
             .get(workSessionId)
             .pipe(Effect.catchCause(() => Effect.succeed(null)));

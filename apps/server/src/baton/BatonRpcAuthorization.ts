@@ -34,6 +34,7 @@ import {
   type AuthEnvironmentScope,
   type BatonRpcGroup,
 } from "@t3tools/baton-contracts";
+import { authScopeRequiredResponse, EnvironmentAuthorizationError } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type * as RpcGroup from "effect/rpc/RpcGroup";
@@ -57,6 +58,8 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_ACCOUNT_WS_METHODS.threadAccountUse]: AuthOrchestrationOperateScope,
   [BATON_ACCOUNT_WS_METHODS.onLimit]: AuthOrchestrationReadScope,
   [BATON_ACCOUNT_WS_METHODS.setOnLimit]: AuthOrchestrationOperateScope,
+  [BATON_ACCOUNT_WS_METHODS.threadKept]: AuthOrchestrationReadScope,
+  [BATON_ACCOUNT_WS_METHODS.threadKeep]: AuthOrchestrationOperateScope,
   [BATON_WS_METHODS.workSessionList]: AuthOrchestrationReadScope,
   [BATON_WS_METHODS.workSessionCreate]: AuthOrchestrationOperateScope,
   [BATON_WS_METHODS.workSessionUpdate]: AuthOrchestrationOperateScope,
@@ -275,10 +278,30 @@ export const askSourceOf = (
     ? ("phone" as const)
     : ("device" as const);
 
+/** Which account bills his work is his call: his desktop or a browser he paired, never a token's device. */
+export const HIS_OWN_METHODS: ReadonlySet<string> = new Set([
+  BATON_ACCOUNT_WS_METHODS.setOnLimit,
+  BATON_ACCOUNT_WS_METHODS.threadKeep,
+]);
+
+export const refusedAsDevice = (
+  tag: string,
+  session: Pick<AuthenticatedSession, "method" | "scopes" | "subject">,
+): boolean => HIS_OWN_METHODS.has(tag) && askSourceOf(session) !== "phone";
+
 export const layer = (
   session: Pick<AuthenticatedSession, "method" | "scopes" | "subject" | "sessionId">,
 ) =>
   Layer.succeed(BatonRpcScopeAuthorization)((effect, { rpc, payload }) => {
+    if (refusedAsDevice(rpc._tag, session)) {
+      return Effect.fail(
+        new EnvironmentAuthorizationError({
+          message:
+            "Only his own desktop or a browser he paired can change which account runs his work.",
+          ...authScopeRequiredResponse(AuthBatonHandsHostScope),
+        }),
+      );
+    }
     const missing = missingBatonScope(rpc._tag, session.scopes, payload);
     return missing === null
       ? effect.pipe(

@@ -1,7 +1,14 @@
-import { describe, expect, it } from "vite-plus/test";
+import { it as effectIt } from "@effect/vitest";
 import { setClaudeAccountInstances } from "@t3tools/baton-contracts";
+import { ThreadId } from "@t3tools/contracts";
+import * as Effect from "effect/Effect";
+import * as SqlClient from "effect/sql/SqlClient";
+import { describe, expect, it } from "vite-plus/test";
 
+import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
+import type { BatonEngineShape } from "./BatonEngine.ts";
 import {
+  makeMoves,
   selectionOnInstance,
   threadHasQueuedRun,
   threadHasRunningTurn,
@@ -37,3 +44,17 @@ describe("selectionOnInstance", () => {
     });
   });
 });
+
+effectIt.effect("keeps a thread on its account across a restart, and lets it go again", () =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const engine = { threadShell: () => Effect.succeed(null) } as unknown as BatonEngineShape;
+    const thread = ThreadId.make("kept-thread");
+    yield* (yield* makeMoves(engine, sql)).keep({ threadId: thread, keep: true });
+    const restarted = yield* makeMoves(engine, sql);
+    expect(yield* restarted.kept(thread)).toBe(true);
+    expect((yield* restarted.held).has(thread)).toBe(true);
+    yield* restarted.keep({ threadId: thread, keep: false });
+    expect((yield* (yield* makeMoves(engine, sql)).held).has(thread)).toBe(false);
+  }).pipe(Effect.provide(SqlitePersistenceMemory)),
+);
