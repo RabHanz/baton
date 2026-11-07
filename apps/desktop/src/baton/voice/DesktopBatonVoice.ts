@@ -1792,11 +1792,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       | BatonCloudBridgeRequest
       | BatonPhoneBridgeRequest,
   ): Promise<unknown> => {
-    // With T3's window closed, jobs, the watch and memory are answered by this machine's server instead of
-    // opening the window; other connected servers are reached only through the window.
+    // With T3's window closed, this machine's server answers instead of opening the window; acting on another
+    // computer is refused in a sentence, since only T3's own session to it may do that.
     const direct = input.direct;
     if (direct !== undefined && (serverOnly(body) || (await input.mainWindowUp?.()) === false)) {
-      const call = deskCall(body, input.sessions?.here() ?? null);
+      const here = (await input.sessions?.ready()) ?? null;
+      const call = deskCall(body, here, (id) => input.sessions?.labelOf(id) ?? "that computer");
       if (call !== null && "refuse" in call) throw new Error(call.refuse);
       if (call !== null) return direct(call.method, call.input);
     }

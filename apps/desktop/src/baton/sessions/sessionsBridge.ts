@@ -37,6 +37,10 @@ export interface SessionsBridge {
   readonly act: (id: string, text: string | null) => Promise<string>;
   /** This machine's server as its session list names it; null until the list was read through the door. */
   readonly here: () => { readonly environmentId: string; readonly label: string } | null;
+  /** The same, reading the list first if it was not read yet, and never opening the window. */
+  readonly ready: () => Promise<{ readonly environmentId: string; readonly label: string } | null>;
+  /** A computer's name as the session list shows it. */
+  readonly labelOf: (environmentId: string) => string;
   /** Any request to the sidebar, or with T3's window closed to this machine's server; null when nothing answered in time. */
   readonly request: (
     request: BatonSessionRequest,
@@ -170,8 +174,15 @@ export const createSessionsBridge = (input: {
     usage: () => usage,
     notes: () => notes,
     here: () => here,
+    ready: async () => {
+      if (here === null && (await windowClosed())) await readDoor();
+      return here;
+    },
+    labelOf,
     request: async (request, waitMs) => {
-      if (!(await windowClosed())) return ask(request, waitMs);
+      // Opening a thread and typing over T3's own session keep the window's path, which brings the window up.
+      if (request.kind === "open" || request.kind === "send" || !(await windowClosed()))
+        return ask(request, waitMs);
       if (here === null) await readDoor();
       return here === null ? null : answerOnDoor(request, { here, labelOf, direct: direct! });
     },

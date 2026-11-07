@@ -6,7 +6,7 @@ vi.mock("electron", () => ({
   ipcMain: { on: (channel: string, handler: never) => void ipc.set(channel, handler) },
 }));
 
-import { BATON_SESSIONS_SNAPSHOT_CHANNEL } from "../channels.ts";
+import { BATON_SESSION_RESPONSE_CHANNEL, BATON_SESSIONS_SNAPSHOT_CHANNEL } from "../channels.ts";
 import { createSessionsBridge } from "./sessionsBridge.ts";
 
 const summary = (key: string, over: Partial<BatonSessionSummary>): BatonSessionSummary => ({
@@ -90,4 +90,30 @@ it("drops the window's rows as soon as the window closes and says the list is ol
   expect(bridge.notes()).toEqual([
     "This computer's server did not answer, so these sessions may be out of date.",
   ]);
+});
+
+it("with T3's window closed, opening a thread still goes to the window, which it brings up", async () => {
+  const sent: Array<unknown> = [];
+  const window = {
+    webContents: {
+      send: (_channel: string, message: { id: number; request: unknown }) => {
+        sent.push(message.request);
+        ipc.get(BATON_SESSION_RESPONSE_CHANNEL)?.(null, {
+          id: message.id,
+          ok: true,
+          detail: "Opened.",
+        });
+      },
+    },
+  };
+  const bridge = createSessionsBridge({
+    ensureMainWindow: async () => window as never,
+    openMainWindow: () => undefined,
+    onChange: () => undefined,
+    mainWindowUp: async () => false,
+    direct: () => Promise.reject(new Error("not for opening")),
+  });
+  const open = { kind: "open", environmentId: "env-box", threadId: "t1" } as const;
+  expect(await bridge.request(open)).toEqual({ ok: true, detail: "Opened." });
+  expect(sent).toEqual([open]);
 });

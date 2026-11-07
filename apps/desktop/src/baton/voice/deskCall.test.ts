@@ -37,7 +37,12 @@ describe("a request answered by this machine's server while T3 is closed", () =>
       refuse: "Open T3 to start a job on box.",
     });
     const here = { environmentId: "env-laptop", label: "Laptop" };
-    expect(deskCall({ kind: "job", op: "start", args: { runOn: "laptop" } }, here)).toMatchObject({
+    for (const runOn of ["laptop", "lap", "this computer"])
+      expect(deskCall({ kind: "job", op: "start", args: { runOn } }, here)).toMatchObject({
+        method: "baton.job.place",
+      });
+    // Before the list is read, only the words for here are known to be this computer.
+    expect(deskCall({ kind: "job", op: "start", args: { runOn: "here" } })).toMatchObject({
       method: "baton.job.place",
     });
     expect(deskCall({ kind: "cloud", op: "read", args: { op: "list" } })).toEqual({
@@ -45,9 +50,9 @@ describe("a request answered by this machine's server while T3 is closed", () =>
       input: { op: "list" },
     });
     // A hub on another machine, and the list of machines, are the window's.
-    expect(deskCall({ kind: "cloud", op: "act", args: {}, environmentId: "box" }, here)).toEqual({
-      refuse: "Open T3 to use cloud tasks on that computer.",
-    });
+    expect(
+      deskCall({ kind: "cloud", op: "act", args: {}, environmentId: "box" }, here, () => "Box"),
+    ).toEqual({ refuse: "Open T3 to use cloud tasks on Box." });
     expect(
       deskCall({ kind: "cloud", op: "act", args: { id: "c1" }, environmentId: "env-laptop" }, here),
     ).toEqual({ method: "baton.cloud.act", input: { id: "c1" } });

@@ -26,6 +26,12 @@ const ACTS: Partial<Record<BatonSessionRequest["kind"], string>> = {
   catalogWaiting: "read that session's kept messages",
 };
 
+const UNANSWERED: ReadonlySet<BatonSessionRequest["kind"]> = new Set([
+  "catalogList",
+  "catalogFolders",
+  "catalogAutoResume",
+]);
+
 export const answerOnDoor = (
   request: BatonSessionRequest,
   input: {
@@ -44,13 +50,17 @@ export const answerOnDoor = (
       ok: false,
       detail: `Open T3 to ${act} on ${input.labelOf(request.environmentId)}.`,
     });
+  let failed = false;
   const commands = Object.fromEntries(
     Object.entries(METHODS).map(([name, method]) => [
       name,
       (call: { readonly input: unknown }) =>
         input.direct(method, call.input).then(
           (value) => ({ _tag: "Success", value }),
-          (cause: unknown) => ({ _tag: "Failure", cause }),
+          (cause: unknown) => {
+            failed = true;
+            return { _tag: "Failure", cause };
+          },
         ),
     ]),
   ) as unknown as CatalogCommands;
@@ -59,5 +69,10 @@ export const answerOnDoor = (
     environmentIds: [input.here.environmentId],
     label: () => input.here.label,
     localEnvironmentId: input.here.environmentId,
-  });
+  }).then((reply) =>
+    // The sidebar reads a failed list as empty across many servers; with one server, a failure is not "nothing there".
+    failed && UNANSWERED.has(request.kind)
+      ? { ok: false, detail: "This computer's server did not answer. Nothing changed." }
+      : reply,
+  );
 };

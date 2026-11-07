@@ -4,6 +4,7 @@
  * request only the window can answer; a refusal for acting on another machine, which only T3's own session to it does.
  */
 import type { BatonJobBridgeRequest } from "@t3tools/baton-contracts";
+import { resolveRunOn } from "@t3tools/baton-shared/runOn";
 
 const MEMORY_OPS = new Set([
   "list",
@@ -50,6 +51,7 @@ export const deskCall = (
   },
   /** This machine's server as its session list names it, once read. */
   here: { readonly environmentId: string; readonly label: string } | null = null,
+  labelOf: (environmentId: string) => string = () => "that computer",
 ): { readonly method: string; readonly input: unknown } | { readonly refuse: string } | null => {
   const args = (body.args ?? {}) as Readonly<Record<string, unknown>>;
   // Cloud tasks on this machine's own hub; acting on another machine stays on T3's own session to it.
@@ -59,7 +61,7 @@ export const deskCall = (
       body.environmentId === "" ||
       body.environmentId === here?.environmentId
       ? { method: `baton.cloud.${body.op}`, input: args }
-      : { refuse: "Open T3 to use cloud tasks on that computer." };
+      : { refuse: `Open T3 to use cloud tasks on ${labelOf(String(body.environmentId))}.` };
   }
   if (body.kind === "memory") {
     return typeof body.op === "string" && MEMORY_OPS.has(body.op)
@@ -82,7 +84,15 @@ export const deskCall = (
     // The server places a job here; one he asked to run on another machine stays on T3's own session to it.
     case "start": {
       const runOn = text("runOn").trim();
-      if (runOn !== "" && runOn.toLowerCase() !== here?.label.trim().toLowerCase())
+      // "this computer", its name or the start of it; with the list not read yet only the words for here match.
+      if (
+        runOn !== "" &&
+        !resolveRunOn(
+          runOn,
+          here === null ? [] : [{ id: here.environmentId, label: here.label }],
+          here?.environmentId ?? "",
+        ).ok
+      )
         return { refuse: `Open T3 to start a job on ${runOn}.` };
       const strings = (key: string) =>
         Array.isArray(args[key]) ? args[key].filter((v) => typeof v === "string") : [];

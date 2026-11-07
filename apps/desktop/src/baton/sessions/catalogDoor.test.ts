@@ -43,3 +43,20 @@ it("with T3's window closed, acts on this machine's catalog through its server a
   ).toEqual({ ok: false, detail: "Open T3 to reattach that session on Box." });
   expect(calls).toEqual([]);
 });
+
+it("says the server did not answer, rather than listing nothing or reporting auto-resume as off", async () => {
+  const down = {
+    here: { environmentId: "env-laptop", label: "Laptop" },
+    labelOf: () => "that computer",
+    direct: () => Promise.reject(new Error("down")),
+  };
+  for (const request of [
+    { kind: "catalogList", query: "" },
+    { kind: "catalogFolders", environmentId: "env-laptop" },
+    { kind: "catalogAutoResume", action: "on" },
+  ] as const)
+    expect(await answerOnDoor(request, down)).toEqual({
+      ok: false,
+      detail: "This computer's server did not answer. Nothing changed.",
+    });
+});
