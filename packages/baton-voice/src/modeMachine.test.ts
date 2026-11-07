@@ -4,6 +4,7 @@ import {
   DEFAULT_TIMINGS,
   initialVoiceState,
   reduceVoice,
+  namedWake,
   stripWake,
   type VoiceEvent,
   type VoiceMachineState,
@@ -306,6 +307,15 @@ describe("stop while dictating", () => {
       timings,
     );
     expect(named.effects).toContainEqual({ kind: "dictate", text: "see you Friday" });
+  });
+});
+
+describe("the name a sentence starts with", () => {
+  it("is found exactly or as recognition writes it, and is none without a name", () => {
+    const names = ["Freya", "Tessaya", "Alfred"];
+    expect(namedWake("Alfred, open it", names)).toBe("Alfred");
+    expect(namedWake("To say yeah, what time is it", names)).toBe("Tessaya");
+    expect(namedWake("what time is it", names)).toBe(null);
   });
 });
 
