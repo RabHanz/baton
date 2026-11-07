@@ -101,6 +101,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Memory recall's model (MEM-13): not in git; fetched from its pinned revision and checked against its sha256.
+      - name: Fetch the memory model
+        run: node scripts/tessaya/fetch-memory-model.mjs
+
       - name: Build Linux AppImage
         shell: bash
         env:
@@ -161,6 +165,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Memory recall's model (MEM-13): not in git; fetched from its pinned revision and checked against its sha256.
+      - name: Fetch the memory model
+        run: node scripts/tessaya/fetch-memory-model.mjs
+
       - name: Build Windows installer
         shell: bash
         env:
@@ -210,6 +218,10 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # Memory recall's model (MEM-13): not in git; fetched from its pinned revision and checked against its sha256.
+      - name: Fetch the memory model
+        run: node scripts/tessaya/fetch-memory-model.mjs
 
       - name: Build macOS DMG (arm64)
         shell: bash

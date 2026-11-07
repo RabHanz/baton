@@ -50,6 +50,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Memory recall's model (MEM-13), checked against its pinned sha256.
+
+      - name: Fetch the memory model
+
+        run: node scripts/tessaya/fetch-memory-model.mjs
+
       - name: Download the previous release's installer
         shell: bash
         env:

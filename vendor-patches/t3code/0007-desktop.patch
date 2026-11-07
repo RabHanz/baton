@@ -51,6 +51,26 @@ index 0b5039bd623df3288a5f0ac6a29a4e273661ed24..b866a460a018b73982fab16a5c090dc4
              yield* app.quit;
            }
          }).pipe(Effect.withSpan("desktop.lifecycle.windowAllClosed")),
+diff --git a/apps/desktop/src/backend/DesktopBackendConfiguration.ts b/apps/desktop/src/backend/DesktopBackendConfiguration.ts
+index abadf58f3f02f0a76134c686ef11ccb00e04dd7c..e5400f60c263aa47476fe3fb183418ec2dca6bdc 100644
+--- a/apps/desktop/src/backend/DesktopBackendConfiguration.ts
++++ b/apps/desktop/src/backend/DesktopBackendConfiguration.ts
+@@ -535,6 +535,15 @@ const resolvePrimaryStartConfig = Effect.fn("desktop.backendConfiguration.resolv
+         ...backendChildEnvPatch(),
+         ELECTRON_RUN_AS_NODE: "1",
+         T3CODE_DESKTOP_SHELL_DISCOVERY_PENDING: "1",
++        // Memory recall by meaning (MEM-13): the model ships in the app's resources, not beside Electron's executable.
++        ...(environment.isPackaged
++          ? {
++              TESSAYA_MEMORY_MODEL_DIR: environment.path.join(
++                environment.resourcesPath,
++                "memory-model",
++              ),
++            }
++          : {}),
+         T3CODE_CLI_PATH: Option.getOrUndefined(input.cliPath),
+       },
+       extendEnv: true,
 diff --git a/apps/desktop/src/electron/ElectronWindow.test.ts b/apps/desktop/src/electron/ElectronWindow.test.ts
 index 478d49012901454076dd97348e159f76c7ee1113..ee705da8a37c612b89ba56c7c05f10c695e7ddd4 100644
 --- a/apps/desktop/src/electron/ElectronWindow.test.ts

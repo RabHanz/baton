@@ -535,6 +535,15 @@ const resolvePrimaryStartConfig = Effect.fn("desktop.backendConfiguration.resolv
         ...backendChildEnvPatch(),
         ELECTRON_RUN_AS_NODE: "1",
         T3CODE_DESKTOP_SHELL_DISCOVERY_PENDING: "1",
+        // Memory recall by meaning (MEM-13): the model ships in the app's resources, not beside Electron's executable.
+        ...(environment.isPackaged
+          ? {
+              TESSAYA_MEMORY_MODEL_DIR: environment.path.join(
+                environment.resourcesPath,
+                "memory-model",
+              ),
+            }
+          : {}),
         T3CODE_CLI_PATH: Option.getOrUndefined(input.cliPath),
       },
       extendEnv: true,

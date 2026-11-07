@@ -28,6 +28,7 @@ import {
 } from "./build-desktop-artifact.ts";
 import { assertLinuxArm64PageCompatibility } from "./lib/linux-arm64-sea.ts";
 import { selectCliRuntimeExternalDependencies } from "./lib/cli-external-packages.ts";
+import { ONNXRUNTIME_BIN_DIR, foreignOnnxRuntimeDirs } from "./lib/onnxruntime-binaries.ts";
 import { signWithJsign } from "./lib/windows-jsign.ts";
 import { windowsSystemTar } from "./lib/windows-tar.ts";
 import { resolveCatalogDependencies } from "./lib/resolve-catalog.ts";
@@ -212,18 +213,17 @@ const stageRuntimeExternals = Effect.fn("stageRuntimeExternals")(function* (inpu
   );
   // onnxruntime-node (memory recall, MEM-13) bundles every OS's binaries (~290 MB); the archive keeps only its own target.
   // Its install script, which would fetch CUDA files, never runs: the workspace's allowBuilds has it false.
-  const ortBin = "node_modules/onnxruntime-node/bin/napi-v6";
-  const ortTarget = `${input.platform === "mac" ? "darwin" : input.platform === "win" ? "win32" : input.platform}/${input.arch}`;
-  const foreignOrt: string[] = [];
+  const installedOrt: string[] = [];
   for (const os of yield* fs
-    .readDirectory(path.join(input.stageDir, ortBin))
+    .readDirectory(path.join(input.stageDir, ONNXRUNTIME_BIN_DIR))
     .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []))) {
     for (const arch of yield* fs
-      .readDirectory(path.join(input.stageDir, ortBin, os))
+      .readDirectory(path.join(input.stageDir, ONNXRUNTIME_BIN_DIR, os))
       .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []))) {
-      if (`${os}/${arch}` !== ortTarget) foreignOrt.push(`${ortBin}/${os}/${arch}`);
+      installedOrt.push(`${os}/${arch}`);
     }
   }
+  const foreignOrt = foreignOnnxRuntimeDirs(installedOrt, input.platform, input.arch);
   for (const entry of [
     ...foreignOrt,
     "package.json",
@@ -536,6 +536,12 @@ const buildCliArchive = Effect.fn("buildCliArchive")(function* (input: {
     resourceMonitorDir,
     "Build the resource monitor or pass --resource-monitor-dir.",
   );
+  // Memory recall by meaning (MEM-13): the model sits beside the executable, where the server looks for it.
+  const memoryModelDir = path.join(repoRoot, "apps/server/resources/memory-model");
+  yield* requireInput(
+    path.join(memoryModelDir, "model_quantized.onnx"),
+    "Run `node scripts/tessaya/fetch-memory-model.mjs` first.",
+  );
 
   const stem = cliArchiveStem(input.version, input.platform, input.arch);
   const stageRoot = yield* fs.makeTempDirectoryScoped({ prefix: "t3-cli-archive-" });
@@ -546,6 +552,7 @@ const buildCliArchive = Effect.fn("buildCliArchive")(function* (input: {
   yield* fs.copyFile(builtExecutable, path.join(contentDir, executableName));
   yield* stageWebClient(webClient, path.join(contentDir, "client"));
   yield* fs.copy(resourceMonitorDir, path.join(contentDir, "resource-monitor"));
+  yield* fs.copy(memoryModelDir, path.join(contentDir, "memory-model"));
   yield* stageRuntimeExternals({
     repoRoot,
     stageDir: contentDir,

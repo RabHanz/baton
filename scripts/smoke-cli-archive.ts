@@ -65,6 +65,7 @@ const smokeCliArchive = Effect.fn("smokeCliArchive")(function* (input: {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const platform = yield* HostProcess.Platform;
+  const arch = yield* HostProcess.Architecture;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const scratch = yield* fs.makeTempDirectory({ prefix: "t3-cli-smoke-" });
   // Windows can briefly retain executable locks; cleanup retries but must not fail a successful smoke check.
@@ -102,6 +103,10 @@ const smokeCliArchive = Effect.fn("smokeCliArchive")(function* (input: {
     executable,
     path.join(contentDir, "client/index.html"),
     ...(platform === "linux" ? [bundledLibatomic, `${bundledLibatomic}.LICENSE`] : []),
+    // Memory recall by meaning (MEM-13): the model beside the executable, and onnxruntime's binding for this target.
+    path.join(contentDir, "memory-model/model_quantized.onnx"),
+    path.join(contentDir, "memory-model/vocab.txt"),
+    path.join(contentDir, "node_modules/onnxruntime-node/bin/napi-v6", platform, arch),
   ]) {
     if (!(yield* fs.exists(required))) {
       return yield* new CliArchiveSmokeError({

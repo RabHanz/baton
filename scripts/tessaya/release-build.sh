@@ -35,6 +35,8 @@ fi
 restore() { git diff --name-only -- '*package.json' | xargs -r git checkout -q --; }
 trap restore EXIT
 
+# Memory recall's model (MEM-13): fetched and checked against its pinned sha256, then copied beside the executable.
+node scripts/tessaya/fetch-memory-model.mjs
 node scripts/update-release-package-versions.ts "$version"
 nice -n 10 pnpm exec vp run --filter t3 build
 PATH="$(dirname "$sea_node"):$PATH" nice -n 10 node apps/server/scripts/cli.ts build-exe

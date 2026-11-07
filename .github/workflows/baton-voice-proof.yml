@@ -131,6 +131,11 @@ jobs:
         if: inputs.tag == ''
         run: pnpm install --frozen-lockfile
 
+      # Memory recall's model (MEM-13), checked against its pinned sha256.
+      - name: Fetch the memory model
+        if: inputs.tag == ''
+        run: node scripts/tessaya/fetch-memory-model.mjs
+
       - name: Build the installer
         if: inputs.tag == ''
         shell: bash
@@ -266,6 +271,7 @@ jobs:
         run: |
           corepack enable
           pnpm install --frozen-lockfile
+          node scripts/tessaya/fetch-memory-model.mjs
           export PATH="$PWD/node_modules/.bin:$PATH"
           if [ "${{ matrix.platform }}" = linux ]; then target="--platform linux --target AppImage"; else target="--platform mac --target dmg"; fi
           node scripts/build-desktop-artifact.ts $target --arch ${{ matrix.platform == 'linux' && 'x64' || 'arm64' }} \

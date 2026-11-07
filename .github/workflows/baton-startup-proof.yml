@@ -48,6 +48,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Memory recall's model (MEM-13), checked against its pinned sha256.
+
+      - name: Fetch the memory model
+
+        run: node scripts/tessaya/fetch-memory-model.mjs
+
       - name: Build the Tessaya installer
         shell: bash
         env:
@@ -62,6 +68,8 @@ jobs:
         shell: pwsh
         run: |
           $new = (Get-ChildItem release -Filter 'Tessaya-99.0.0-x64.exe').FullName
+          # The installer's size on every run, so a jump like 0.1.64's (217 to 297 MB) shows up in review.
+          Write-Host ("installer size: {0:N1} MB ({1} bytes)" -f ((Get-Item $new).Length / 1MB), (Get-Item $new).Length)
           ./scripts/tessaya/startup-proof.ps1 -Installer $new
       - uses: actions/upload-artifact@v4
         if: always()
