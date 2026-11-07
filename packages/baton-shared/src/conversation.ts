@@ -120,8 +120,11 @@ export const searchTurns = (
     .map((x) => x.turn);
 };
 
+/** Replies stored before 0.1.63 open with "Freya here."; shown as they were, the model copies it. */
+const INTRO = /^\s*(?:it's |this is )?[A-Z][a-z]+ here[.,!]\s*/;
+
 const turnText = (t: ConversationTurn, max: number): string =>
-  `he said: ${clip(t.said, max)}\nyou replied${t.route === "dictation" ? "" : ` (${t.route})`}: ${clip(t.reply, max)}${t.note === undefined ? "" : `\n(${t.note})`}`;
+  `he said: ${clip(t.said, max)}\nyou replied${t.route === "dictation" ? "" : ` (${t.route})`}: ${clip(t.reply.replace(INTRO, ""), max)}${t.note === undefined ? "" : `\n(${t.note})`}`;
 
 /**
  * The block put before a planner's or an operator's request. Data, not instructions: the model is
