@@ -3509,8 +3509,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       });
     }
     step(warmed ? "warm-done" : "warm-timeout");
-    // Turned off while loading or warming: stop before the mic opens.
-    if (!settings.enabled) return render();
+    // Turned off while warming: the core and its context timer are built, so they are taken down before the mic opens.
+    if (!settings.enabled) return stopNow();
     // What Baton costs while nobody speaks, from the first minute (startup still settling) to five minutes in.
     for (const afterMs of [0, 4 * 60_000]) {
       setTimeout(() => {
