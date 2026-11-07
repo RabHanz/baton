@@ -1,0 +1,248 @@
+// @effect-diagnostics globalFetch:off globalFetchInEffect:off preferSchemaOverJson:off globalJsonInEffect:off effectFnOpportunity:off
+/**
+ * Memory between servers (MEMORY.md section 6), carried by this server on its own clock (GEN-6), not by T3's window.
+ * Each paired peer's sync-only credential is kept in the server's secret store, files of mode 0600 like the provider
+ * API keys (not encrypted), and goes only to the origin that issued it, never along a redirect.
+ */
+import {
+  BatonMemorySyncHelloResult,
+  BatonMemorySyncPullResult,
+  BatonMemorySyncPushResult,
+  type BatonMemorySyncPeer,
+} from "@t3tools/baton-contracts";
+import type { MemoryChange } from "@t3tools/baton-shared/memory";
+import * as Context from "effect/Context";
+import * as DateTime from "effect/DateTime";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as Schedule from "effect/Schedule";
+import * as Schema from "effect/Schema";
+import * as SqlClient from "effect/sql/SqlClient";
+
+import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
+import { BatonMemoryService } from "./BatonMemoryService.ts";
+
+const SECRET = "tessaya-memory-sync-peers";
+const ENABLED_KEY = "memory_sync";
+const EVERY = "10 minutes";
+
+const StoredPeer = Schema.Struct({
+  label: Schema.String,
+  origin: Schema.String,
+  token: Schema.String,
+  expiresAt: Schema.Number,
+});
+const StoredPeers = Schema.Record(Schema.String, StoredPeer);
+const decodePeers = Schema.decodeUnknownOption(Schema.fromJsonString(StoredPeers));
+type StoredPeers = typeof StoredPeers.Type;
+
+/** One server in a sync round: this one through its own service, a peer over HTTPS. None when it did not answer. */
+export interface SyncEndpoint {
+  readonly id: string;
+  readonly hello: Effect.Effect<Option.Option<typeof BatonMemorySyncHelloResult.Type>>;
+  readonly pull: (
+    since: string | null,
+  ) => Effect.Effect<Option.Option<typeof BatonMemorySyncPullResult.Type>>;
+  readonly push: (input: {
+    readonly from: string;
+    readonly changes: ReadonlyArray<MemoryChange>;
+    readonly upTo: string;
+  }) => Effect.Effect<Option.Option<number>>;
+}
+
+/** Every server pulls from every other, once per origin, from the cursor it already holds for it. */
+export const syncRound = Effect.fn("BatonMemorySync.round")(function* (
+  endpoints: ReadonlyArray<SyncEndpoint>,
+) {
+  const hellos: Array<
+    { readonly endpoint: SyncEndpoint } & typeof BatonMemorySyncHelloResult.Type
+  > = [];
+  for (const endpoint of endpoints) {
+    const hello = yield* endpoint.hello;
+    // Two links to the same server count once.
+    if (Option.isSome(hello) && !hellos.some((h) => h.origin === hello.value.origin))
+      hellos.push({ endpoint, ...hello.value });
+  }
+  let applied = 0;
+  for (const to of hellos) {
+    for (const from of hellos) {
+      if (to.origin === from.origin) continue;
+      const pulled = yield* from.endpoint.pull(to.cursors[from.origin] ?? null);
+      if (Option.isNone(pulled)) continue;
+      const pushed = yield* to.endpoint.push({
+        from: pulled.value.origin,
+        changes: pulled.value.changes as ReadonlyArray<MemoryChange>,
+        upTo: pulled.value.upTo,
+      });
+      if (Option.isSome(pushed)) applied += pushed.value;
+    }
+  }
+  return { servers: hellos.length, applied };
+});
+
+/** The credential goes only back to the origin that issued it. */
+export const peerUrl = (origin: string, method: string): URL | null => {
+  try {
+    const url = new URL(`tessaya/desk/${method}`, origin.endsWith("/") ? origin : `${origin}/`);
+    return url.origin === new URL(origin).origin ? url : null;
+  } catch {
+    return null;
+  }
+};
+
+export class BatonMemorySync extends Context.Service<
+  BatonMemorySync,
+  {
+    readonly state: Effect.Effect<{
+      readonly enabled: boolean;
+      readonly peers: ReadonlyArray<BatonMemorySyncPeer>;
+    }>;
+    readonly setEnabled: (on: boolean) => Effect.Effect<void>;
+    readonly addPeer: (
+      input: { readonly environmentId: string } & typeof StoredPeer.Type,
+    ) => Effect.Effect<void>;
+    readonly forget: (environmentId: string) => Effect.Effect<void>;
+    readonly run: Effect.Effect<{
+      readonly servers: number;
+      readonly applied: number;
+      readonly refused: ReadonlyArray<{ readonly environmentId: string; readonly label: string }>;
+    }>;
+  }
+>()("t3/baton/BatonMemorySync") {}
+
+export const make = Effect.gen(function* () {
+  const secrets = yield* ServerSecretStore;
+  const sql = yield* SqlClient.SqlClient;
+  const memory = yield* BatonMemoryService;
+
+  const readPeers = secrets.get(SECRET).pipe(
+    Effect.map((bytes) =>
+      Option.isNone(bytes)
+        ? {}
+        : Option.getOrElse(decodePeers(new TextDecoder().decode(bytes.value)), () => ({})),
+    ),
+    Effect.orElseSucceed((): StoredPeers => ({})),
+  );
+  const writePeers = (peers: StoredPeers) =>
+    secrets.set(SECRET, new TextEncoder().encode(JSON.stringify(peers))).pipe(Effect.orDie);
+
+  const enabled = sql<{ readonly value: string }>`
+    SELECT value FROM fabric_settings WHERE key = ${ENABLED_KEY}
+  `.pipe(
+    Effect.map((rows) => rows[0]?.value === "on"),
+    Effect.orDie,
+  );
+
+  const live = (peers: StoredPeers, now: number) =>
+    Object.entries(peers).filter(([, peer]) => peer.expiresAt > now);
+
+  const remote = (
+    environmentId: string,
+    peer: typeof StoredPeer.Type,
+    refused: Set<string>,
+  ): SyncEndpoint => {
+    const call = Effect.fn("BatonMemorySync.peerCall")(function* <A>(
+      method: string,
+      input: unknown,
+      schema: Schema.Codec<A, unknown>,
+    ) {
+      const url = peerUrl(peer.origin, method);
+      if (url === null) return Option.none<A>();
+      const response = yield* Effect.tryPromise({
+        try: () =>
+          fetch(url, {
+            method: "POST",
+            redirect: "error",
+            headers: { authorization: `Bearer ${peer.token}`, "content-type": "application/json" },
+            body: JSON.stringify(input),
+          }),
+        catch: () => "unreachable" as const,
+      }).pipe(Effect.option);
+      if (Option.isNone(response)) return Option.none<A>();
+      if (response.value.status === 401 || response.value.status === 403)
+        refused.add(environmentId);
+      if (!response.value.ok) return Option.none<A>();
+      const json = yield* Effect.tryPromise({
+        try: () => response.value.json() as Promise<{ value?: unknown }>,
+        catch: () => "unreadable" as const,
+      }).pipe(Effect.option);
+      return Option.isNone(json)
+        ? Option.none<A>()
+        : Schema.decodeUnknownOption(schema)(json.value.value);
+    });
+    return {
+      id: environmentId,
+      hello: call("baton.memory.syncHello", {}, BatonMemorySyncHelloResult),
+      pull: (since) => call("baton.memory.syncPull", { since }, BatonMemorySyncPullResult),
+      push: (input) =>
+        call("baton.memory.syncPush", input, BatonMemorySyncPushResult).pipe(
+          Effect.map(Option.map((out) => out.applied)),
+        ),
+    };
+  };
+
+  const self: SyncEndpoint = {
+    id: "self",
+    hello: Effect.asSome(memory.syncHello),
+    pull: (since) => Effect.asSome(memory.changesSince(since)),
+    push: (input) => Effect.asSome(memory.applyChanges(input.from, input.changes, input.upTo)),
+  };
+
+  const run = Effect.gen(function* () {
+    const peers = yield* readPeers;
+    const now = DateTime.toEpochMillis(yield* DateTime.now);
+    const refused = new Set<string>();
+    const round = yield* syncRound([
+      self,
+      ...live(peers, now).map(([id, peer]) => remote(id, peer, refused)),
+    ]);
+    // Revoked, or its session ended there: keeping it would only fail again.
+    if (refused.size > 0) {
+      const kept = Object.fromEntries(Object.entries(peers).filter(([id]) => !refused.has(id)));
+      yield* writePeers(kept);
+    }
+    return {
+      ...round,
+      refused: [...refused].map((environmentId) => ({
+        environmentId,
+        label: peers[environmentId]?.label ?? environmentId,
+      })),
+    };
+  }).pipe(Effect.withSpan("BatonMemorySync.run"));
+
+  yield* Effect.gen(function* () {
+    if (yield* enabled) yield* run;
+  }).pipe(
+    Effect.ignoreCause({ log: true }),
+    Effect.repeat(Schedule.spaced(EVERY)),
+    Effect.forkScoped,
+  );
+
+  return BatonMemorySync.of({
+    state: Effect.gen(function* () {
+      const peers = yield* readPeers;
+      return {
+        enabled: yield* enabled,
+        peers: Object.entries(peers).map(([environmentId, peer]) => ({
+          environmentId,
+          label: peer.label,
+          expiresAt: peer.expiresAt,
+        })),
+      };
+    }),
+    setEnabled: (on) =>
+      sql`INSERT INTO fabric_settings (key, value) VALUES (${ENABLED_KEY}, ${on ? "on" : "off"})
+        ON CONFLICT (key) DO UPDATE SET value = excluded.value`.pipe(Effect.asVoid, Effect.orDie),
+    addPeer: ({ environmentId, ...peer }) =>
+      Effect.flatMap(readPeers, (peers) => writePeers({ ...peers, [environmentId]: peer })),
+    forget: (environmentId) =>
+      Effect.flatMap(readPeers, (peers) => {
+        const { [environmentId]: _gone, ...rest } = peers;
+        return writePeers(rest);
+      }),
+    run,
+  });
+});
+
+export const layer = Layer.effect(BatonMemorySync, make);

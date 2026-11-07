@@ -418,7 +418,7 @@ import { makeOpusEncoder } from "./opusEncoder.ts";
 import { computeInsights } from "./insights.ts";
 import { readCaretContext } from "./caretContext.ts";
 import { describeJobs } from "../agent/jobText.ts";
-import { deskCall } from "./deskCall.ts";
+import { deskCall, serverOnly } from "./deskCall.ts";
 import { buildAuditTrail, describeAuditTrail } from "@t3tools/baton-shared/audit";
 import { describeWatch } from "@t3tools/baton-shared/watch";
 import {
@@ -1792,7 +1792,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     // With T3's window closed, jobs, the watch and memory are answered by this machine's server instead of
     // opening the window; other connected servers are reached only through the window.
     const direct = input.direct;
-    if (direct !== undefined && (await input.mainWindowUp?.()) === false) {
+    if (direct !== undefined && (serverOnly(body) || (await input.mainWindowUp?.()) === false)) {
       const call = deskCall(body);
       if (call !== null) return direct(call.method, call.input);
     }

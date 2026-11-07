@@ -46,6 +46,7 @@ const make = (call: (op: string, args: Record<string, unknown>) => Promise<unkno
     link: vi.fn(async () => undefined),
     forget: vi.fn(),
     start: vi.fn(),
+    migrate: vi.fn(async () => undefined),
   };
   const tab = createMemoryTab({ call, sync, notes, stateDir: dir, refresh, reveal });
   return { tab, refresh, reveal, sync, dir };

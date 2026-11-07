@@ -135,6 +135,15 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   // Runs the history script on this machine and writes held proposals.
   [BATON_MEMORY_WS_METHODS.pull]: AuthOrchestrationOperateScope,
   // Sync carries every item, walled or not, and overwrites or deletes them: a sync-only credential or the desktop app.
+  // This server's own sync carries every item, walled or not, with credentials it keeps: the desktop app only.
+  [BATON_MEMORY_WS_METHODS.syncState]: [AuthOrchestrationReadScope, AuthBatonHandsHostScope],
+  [BATON_MEMORY_WS_METHODS.syncSetEnabled]: [
+    AuthOrchestrationOperateScope,
+    AuthBatonHandsHostScope,
+  ],
+  [BATON_MEMORY_WS_METHODS.syncAddPeer]: [AuthOrchestrationOperateScope, AuthBatonHandsHostScope],
+  [BATON_MEMORY_WS_METHODS.syncForget]: [AuthOrchestrationOperateScope, AuthBatonHandsHostScope],
+  [BATON_MEMORY_WS_METHODS.syncRun]: [AuthOrchestrationOperateScope, AuthBatonHandsHostScope],
   [BATON_MEMORY_WS_METHODS.syncHello]: AuthBatonMemorySyncScope,
   [BATON_MEMORY_WS_METHODS.syncPull]: AuthBatonMemorySyncScope,
   [BATON_MEMORY_WS_METHODS.syncPush]: AuthBatonMemorySyncScope,
@@ -230,6 +239,13 @@ export const DESK_METHODS: ReadonlySet<string> = new Set([
       "restore",
       "export",
       "learn",
+      // Reads a folder on this machine: its scope is the desktop app's own session only.
+      "import",
+      "syncState",
+      "syncSetEnabled",
+      "syncAddPeer",
+      "syncForget",
+      "syncRun",
     ] as const
   ).map((op) => BATON_MEMORY_WS_METHODS[op]),
 ]);

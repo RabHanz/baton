@@ -23,6 +23,7 @@ import { ServerSettingsService } from "../serverSettings.ts";
 import { claudeAccountInstances } from "./ClaudeAccountInstances.ts";
 import * as AccountPoolService from "./AccountPoolService.ts";
 import * as AccountRotationPolicy from "./AccountRotationPolicy.ts";
+import * as BatonMemorySync from "./BatonMemorySync.ts";
 import * as AccountRotationReactor from "./AccountRotationReactor.ts";
 import * as AdoptedSessionService from "./AdoptedSessionService.ts";
 import * as BatonDatabase from "./BatonDatabase.ts";
@@ -117,6 +118,8 @@ const servicesInner = IntentService.layer.pipe(
         Layer.provide(BatonWeaveBoxes.layer.pipe(Layer.provide(HerdrAdapter.layer))),
       ),
       BatonMemoryLearning.layer.pipe(Layer.provide(memoryLayer), Layer.provide(BatonOneShot.layer)),
+      // Memory sync with his other servers on this server's own clock, not T3's window (GEN-6).
+      BatonMemorySync.layer.pipe(Layer.provide(memoryLayer)),
       readClaudeAccountInstances,
       AccountPoolService.layer,
       AccountRotationPolicy.layer,
