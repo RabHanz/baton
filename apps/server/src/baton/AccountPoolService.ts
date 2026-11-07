@@ -26,6 +26,7 @@ import {
   BatonAccountPoolUnavailableError,
   BatonAccountRotationFailedError,
   BatonAccountRotationRefusedError,
+  headroomFromWindows,
   ProviderDriverKind,
   type BatonAccount,
   type BatonAccountPool,
@@ -107,18 +108,6 @@ export class AccountPoolService extends Context.Service<
 >()("t3/baton/AccountPoolService") {}
 
 const CSWAP_BINARY = process.env.T3CODE_CSWAP_BINARY ?? "cswap";
-
-/** Free in the tightest window. The tightest one is what runs out first. */
-export function headroomFromWindows(
-  windows: ReadonlyArray<{ readonly usedPercent: number }>,
-): number | null {
-  if (windows.length === 0) return null;
-  const worst = windows.reduce(
-    (highest, window) => (window.usedPercent > highest ? window.usedPercent : highest),
-    0,
-  );
-  return Math.max(0, 100 - worst);
-}
 
 const windowsOf = (account: typeof CswapAccount.Type) => {
   const usage = account.usage ?? null;

@@ -1,16 +1,41 @@
 /**
- * "Switch to this account" in a limits tile's popover (D94). cswap is per machine, so a tile merged
- * across environments gets a row for each, and a spent account shows why it cannot be clicked.
+ * "Use for terminal sessions" in a limits tile (D94). His terminal sessions run on cswap's machine
+ * login, which T3 threads do not need since L-76; this goes when terminal sessions resume natively.
+ * cswap is per machine, so a tile merged across environments gets a row for each.
  */
 import { useAtomValue } from "@effect/atom-react";
 import type { BatonAccount } from "@t3tools/baton-contracts";
+import type { EnvironmentId } from "@t3tools/contracts";
 import type { LimitAccount } from "@t3tools/shared/usageLimits";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
+import { useState } from "react";
 
 import { batonWorkSessions } from "../../state/batonWorkSessions";
+import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
-import { useAccountSwitch } from "./BatonThreadAccount";
+import { toastManager } from "../ui/toast";
+
+function useAccountSwitch(environmentId: EnvironmentId) {
+  const use = useAtomCommand(batonWorkSessions.accountUse, { reportFailure: false });
+  const [busy, setBusy] = useState(false);
+  const switchTo = (account: BatonAccount) => {
+    setBusy(true);
+    void use({ environmentId, input: { key: account.key, reason: "manual" } }).then((result) => {
+      setBusy(false);
+      toastManager.add(
+        result._tag === "Success"
+          ? {
+              type: "success",
+              title: `Terminal sessions now run as ${account.label}`,
+              description: "This machine's Claude login. They pick it up when they restart.",
+            }
+          : { type: "error", title: `Could not switch to ${account.label}` },
+      );
+    });
+  };
+  return { busy, switchTo };
+}
 
 function blockedReason(account: BatonAccount): string | null {
   if (account.active) return "In use";
@@ -50,7 +75,7 @@ function SwitchRow({
         data-testid="tile-switch-account"
         onClick={() => switchTo(target)}
       >
-        Switch to this account
+        Use for terminal sessions
       </Button>
     </span>
   );

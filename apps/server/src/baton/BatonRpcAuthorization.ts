@@ -55,7 +55,6 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   // orchestration command underneath, which is why it needs the operate scope.
   [BATON_ACCOUNT_WS_METHODS.accountPool]: AuthOrchestrationReadScope,
   [BATON_ACCOUNT_WS_METHODS.accountUse]: AuthOrchestrationOperateScope,
-  [BATON_ACCOUNT_WS_METHODS.threadAccountUse]: AuthOrchestrationOperateScope,
   [BATON_ACCOUNT_WS_METHODS.onLimit]: AuthOrchestrationReadScope,
   [BATON_ACCOUNT_WS_METHODS.setOnLimit]: AuthOrchestrationOperateScope,
   [BATON_ACCOUNT_WS_METHODS.threadKept]: AuthOrchestrationReadScope,

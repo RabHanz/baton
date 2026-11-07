@@ -104,7 +104,7 @@ index 1153b9cc74bc06ca2abc43b44beba7cba36c0157..326de815c0c2af9321a1ca6ac119d757
          const pace = paceOf(window, now);
          const resetsIn = formatResetsIn(window, now);
 diff --git a/apps/web/src/components/usage/UsageLimitsPooled.tsx b/apps/web/src/components/usage/UsageLimitsPooled.tsx
-index bc69ca4e3403a4059cd7c5f6557a1f3336db44d6..7434c7218d817bc38b9cf30d1114144a4c37cc9b 100644
+index bc69ca4e3403a4059cd7c5f6557a1f3336db44d6..453c94dde3b7977a5df76e8b62aed47a27ffcacb 100644
 --- a/apps/web/src/components/usage/UsageLimitsPooled.tsx
 +++ b/apps/web/src/components/usage/UsageLimitsPooled.tsx
 @@ -1,3 +1,4 @@
@@ -112,15 +112,16 @@ index bc69ca4e3403a4059cd7c5f6557a1f3336db44d6..7434c7218d817bc38b9cf30d1114144a
  import {
    CHATGPT_USAGE_URL,
    collectLimitAccounts,
-@@ -32,6 +33,7 @@ import { ensureLocalApi } from "../../localApi";
+@@ -32,6 +33,8 @@ import { ensureLocalApi } from "../../localApi";
  import { usePrimarySettings } from "../../hooks/useSettings";
  import { cn } from "../../lib/utils";
  import { formatUpcomingTimestamp } from "../../timestampFormat";
++import { BatonOnLimitRow } from "../chat/BatonOnLimitRow";
 +import { BatonTileSwitch } from "../chat/BatonTileSwitch";
  import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
  import { providerClients } from "../settings/providerDriverMeta";
  import { RedactedSensitiveText } from "../settings/RedactedSensitiveText";
-@@ -212,6 +214,7 @@ function SegmentPopover({
+@@ -212,6 +215,7 @@ function SegmentPopover({
            </span>
          </div>
        ) : null}
@@ -128,7 +129,7 @@ index bc69ca4e3403a4059cd7c5f6557a1f3336db44d6..7434c7218d817bc38b9cf30d1114144a
      </div>
    );
  }
-@@ -585,6 +588,9 @@ function PoolSection({ pool, now }: { readonly pool: LimitPool; readonly now: nu
+@@ -585,6 +589,9 @@ function PoolSection({ pool, now }: { readonly pool: LimitPool; readonly now: nu
          />
          {label}
        </h2>
@@ -138,6 +139,14 @@ index bc69ca4e3403a4059cd7c5f6557a1f3336db44d6..7434c7218d817bc38b9cf30d1114144a
        {windows.map((window) => {
          const details = pool.driver === "cursor" ? cursorUsageWindowDetails(window.id) : undefined;
          return (
+@@ -598,6 +605,7 @@ function PoolSection({ pool, now }: { readonly pool: LimitPool; readonly now: nu
+           />
+         );
+       })}
++      <BatonOnLimitRow pool={pool} />
+     </section>
+   );
+ }
 diff --git a/packages/provider-core/src/server/usageLimits.test.ts b/packages/provider-core/src/server/usageLimits.test.ts
 index 4b9c1b39c862b608e97493a599070ef014c14c9b..e351f035d4a60837cf69d34185e62e4fbb2619cf 100644
 --- a/packages/provider-core/src/server/usageLimits.test.ts

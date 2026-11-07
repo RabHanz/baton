@@ -18,6 +18,7 @@
  */
 import {
   accountRefusal,
+  instanceAccount,
   type BatonFleetEntry,
   type BatonIntentCommand,
   type OrchestrationRuleId,
@@ -41,7 +42,6 @@ import { BatonIntentExecutor, type IntentExecution } from "./IntentService.ts";
 import { BatonOrchestrationReactor, OrchestrationEffectsService } from "./OrchestrationReactor.ts";
 import { OrchestrationRuleService } from "./OrchestrationRuleService.ts";
 import type { ServerProvider } from "@t3tools/contracts";
-import { instanceAccount } from "./AccountRotationReactor.ts";
 import { AskSource } from "./BatonPhoneInbox.ts";
 import { ThreadAccountMoves } from "./ThreadAccountMoves.ts";
 import { BatonEngine } from "./BatonEngine.ts";

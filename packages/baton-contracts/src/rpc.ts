@@ -66,8 +66,6 @@ import {
   BatonThreadKeepInput,
   BatonThreadKeepResult,
   BatonThreadKeptInput,
-  BatonThreadAccountUseInput,
-  BatonThreadAccountUseResult,
 } from "./accountPool.ts";
 import {
   BATON_WS_METHODS,
@@ -217,17 +215,6 @@ const WsBatonAccountPoolRpc = Rpc.make(BATON_ACCOUNT_WS_METHODS.accountPool, {
 const WsBatonAccountUseRpc = Rpc.make(BATON_ACCOUNT_WS_METHODS.accountUse, {
   payload: BatonAccountUseInput,
   success: BatonAccountUseResult,
-  error: Schema.Union([
-    BatonAccountPoolUnavailableError,
-    BatonAccountRotationRefusedError,
-    BatonAccountRotationFailedError,
-    EnvironmentAuthorizationError,
-  ]),
-});
-
-const WsBatonThreadAccountUseRpc = Rpc.make(BATON_ACCOUNT_WS_METHODS.threadAccountUse, {
-  payload: BatonThreadAccountUseInput,
-  success: BatonThreadAccountUseResult,
   error: Schema.Union([
     BatonAccountPoolUnavailableError,
     BatonAccountRotationRefusedError,
@@ -743,7 +730,6 @@ export class BatonRpcScopeAuthorization extends RpcMiddleware.Service<BatonRpcSc
 export const BatonRpcGroup = RpcGroup.make(
   WsBatonAccountPoolRpc,
   WsBatonAccountUseRpc,
-  WsBatonThreadAccountUseRpc,
   WsBatonOnLimitRpc,
   WsBatonSetOnLimitRpc,
   WsBatonThreadKeptRpc,

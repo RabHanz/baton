@@ -5,7 +5,6 @@ import {
   accountForInstance,
   accountRefusal,
   accountReturnsAt,
-  instanceForAccount,
 } from "./accountPool.ts";
 
 const spent = {
@@ -43,12 +42,6 @@ describe("accountRefusal", () => {
 });
 
 describe("instance and account mapping", () => {
-  it("uses a token instance when it exists, else the default for the active account", () => {
-    expect(instanceForAccount({ key: "5", active: false }, () => true)).toBe("claudeAgent_optima");
-    expect(instanceForAccount({ key: "4", active: true }, () => false)).toBe("claudeAgent");
-    expect(instanceForAccount({ key: "5", active: false }, () => false)).toBeNull();
-  });
-
   it("reads a pinned instance's account, and the active one for the default", () => {
     const accounts = [
       { key: "4", active: true },
