@@ -14,7 +14,7 @@ voice is in the microphone.
 
 On a cut-in the voice **ducks to 25% at 40 ms** of his speech and **stops at 120 ms**, well inside 300 ms, and the core listens from the
 moment he started (the words since the onset are kept, as for a late wake). If it was only a blip the voice comes back up. Settings, on the
-Settings, Voice and wake words: "I am wearing headphones" and "Cut in by talking over her (speakers, experimental)".
+Settings, Voice and wake words: "Headphones or speakers" (on Windows, Automatic reads the playback device's form factor: headphones and headsets are headphones, anything else, a Bluetooth speaker too, is speakers; `outputDevice.ts`) and "Cut in by talking over her (speakers, experimental)".
 
 ## How the echo guard hears him (`packages/baton-voice/src/echoGuard.ts`)
 
