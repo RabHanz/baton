@@ -9,14 +9,9 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
 import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
-import { pullAction, pullLearnings, searchHistory } from "./BatonMemoryPull.ts";
+import { pullAction, pullLearnings, searchHistory, SESSION_OWN_VIEW } from "./BatonMemoryPull.ts";
 import * as ServerConfig from "../config.ts";
-import {
-  BatonMemoryService,
-  layer as memoryLayer,
-  MemoryPrivateTexts,
-  MemoryViewer,
-} from "./BatonMemoryService.ts";
+import { BatonMemoryService, layer as memoryLayer, MemoryViewer } from "./BatonMemoryService.ts";
 import { BatonMemorySync } from "./BatonMemorySync.ts";
 
 // What the paired peers answer, and what they were asked; `setup()` resets both at the top of each test.
@@ -115,15 +110,21 @@ it.effect(
     const userdata = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-history-walls-"));
     const pack = NodePath.join(userdata, "operating-system");
     NodeFS.mkdirSync(pack, { recursive: true });
-    NodeFS.writeFileSync(NodePath.join(pack, "executive.md"), "---\nwalled: Shop\n---\n");
+    const private_ = "the board meets in secret on the first monday of every month";
+    NodeFS.writeFileSync(
+      NodePath.join(pack, "executive.md"),
+      `---\nwalled: Shop, Kai Hair\n---\nRemember: ${private_}.\n`,
+    );
     const config = Layer.succeed(ServerConfig.ServerConfig, {
       dbPath: NodePath.join(userdata, "state.sqlite"),
     } as never);
-    const private_ = "the board meets in secret on the first monday of every month";
     const hit = (project: string, text: string) =>
       `2026-10-04T13:55  user  ${project}  11111111-2222-3333-4444-555555555555\n    ${text}`;
     const index = [
       hit("-home-ann-shop", "The shop margin is twelve percent"),
+      // "Kai Hair" in the pack is the kai-hair folder, also under a code folder in his home.
+      hit("-home-ann-kai-hair", "Kai pays the salon rent late"),
+      hit("-home-ann-dev-kai-hair", "Kai wants a second salon"),
       hit("-home-ann-books", `Note: ${private_}, so plan around it`),
       hit("-home-ann-books", `Use the key sk-${"b".repeat(24)} for the books export`),
       hit("-home-ann-books", "The books close on the fifth"),
@@ -134,6 +135,7 @@ it.effect(
       assert.isTrue(seen.ok);
       const text = seen.ok ? seen.text : "";
       assert.notInclude(text, "margin");
+      assert.notInclude(text, "salon");
       assert.notInclude(text, "board meets");
       assert.notInclude(text, "sk-b");
       assert.include(text, "[redacted: looks like a secret]");
@@ -148,8 +150,22 @@ it.effect(
         Effect.provideService(MemoryViewer, "server"),
       );
       assert.notInclude(peer.ok ? peer.text : "", "margin");
+      // A session's summary has no project header: only his own view reads it, still with secrets marked.
+      // Built from parts, so no key-shaped text sits in the repo.
+      const pem = (edge: string) => `-----${edge} OPENSSH ${["PRIVATE", "KEY"].join(" ")}-----`;
+      const summary = `Session summary\nWe set up the deploy key\n${pem("BEGIN")}\nb3BlbnNzaC1rZXk\n${pem("END")}\nDone.`;
+      const show = async () => summary;
+      const session = "11111111-2222-3333-4444-555555555555";
+      assert.deepEqual(yield* searchHistory({ session }, env, show), {
+        ok: false,
+        why: SESSION_OWN_VIEW,
+      });
+      const mine = yield* searchHistory({ session, admin: true }, env, show).pipe(
+        Effect.provideService(MemoryViewer, "desktop"),
+      );
+      assert.include(mine.ok ? mine.text : "", "We set up the deploy key");
+      assert.notInclude(mine.ok ? mine.text : "", "b3BlbnNzaC1rZXk");
     }).pipe(
-      Effect.provideService(MemoryPrivateTexts, () => [private_]),
       Effect.provide(
         Layer.mergeAll(memoryLayer, peers, config).pipe(
           Layer.provideMerge(SqlitePersistenceMemory),

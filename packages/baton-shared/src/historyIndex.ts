@@ -9,8 +9,24 @@ import * as NodeChildProcess from "node:child_process";
 export const HISTORY_ENV = "BATON_HISTORY_SEARCH";
 const OUTPUT_MAX = 6_000;
 const SESSION = /^[0-9a-fA-F][0-9a-fA-F-]{5,63}$/;
-// Under the server's deadline for a peer's answer, which is under the desktop's wait for its own server.
-const TIMEOUT_MS = 8_000;
+const TIMEOUT_MS = 15_000;
+/** For another server's ask: under that server's wait for this one's answer. */
+export const PEER_ASK_TIMEOUT_MS = 8_000;
+
+type Runner = (file: string, args: ReadonlyArray<string>) => Promise<string>;
+
+/** The script run with no shell, a time limit and a size limit. */
+export const historyRunner =
+  (timeoutMs = TIMEOUT_MS): Runner =>
+  (file, args) =>
+    new Promise((resolve, reject) =>
+      NodeChildProcess.execFile(
+        "bash",
+        [file, ...args],
+        { timeout: timeoutMs, maxBuffer: OUTPUT_MAX * 8, windowsHide: true },
+        (error, stdout) => (error === null ? resolve(stdout) : reject(error)),
+      ),
+    );
 
 export type HistoryAnswer =
   | { readonly ok: true; readonly text: string }
@@ -19,19 +35,11 @@ export type HistoryAnswer =
 export const NOT_HERE =
   "The history index is not set up on this computer, so there is nothing to search. (Set BATON_HISTORY_SEARCH to the history search script.)";
 
-/** Runs `script words...` or `script show <session>` with no shell, a time limit and a size limit. */
+/** Runs `script words...` or `script show <session>`. */
 export const askHistory = (
   env: Readonly<Record<string, string | undefined>>,
   ask: { readonly query?: string; readonly session?: string },
-  run: (file: string, args: ReadonlyArray<string>) => Promise<string> = (file, args) =>
-    new Promise((resolve, reject) =>
-      NodeChildProcess.execFile(
-        "bash",
-        [file, ...args],
-        { timeout: TIMEOUT_MS, maxBuffer: OUTPUT_MAX * 8, windowsHide: true },
-        (error, stdout) => (error === null ? resolve(stdout) : reject(error)),
-      ),
-    ),
+  run: Runner = historyRunner(),
 ): Promise<HistoryAnswer> => {
   let args: string[];
   if (ask.session !== undefined) {
@@ -78,6 +86,8 @@ const ventureOf = (project: string): string | null => {
     .replace(/^-home-[^-]+-/, "")
     // A mounted volume's path, up to its code folder (`-mnt-<volume>-dev-<project>`).
     .replace(/^-mnt-.*?-(?:dev|src|code|projects|work)-/, "")
+    // A code folder in his home (`-home-<user>-dev-<project>`).
+    .replace(/^(?:dev|src|code|projects|work)-/, "")
     .replace(/^-+/, "")
     .toLowerCase();
   return /^[a-z0-9][a-z0-9_-]{1,39}$/.test(name) && name !== "prompts" ? name : null;

@@ -290,6 +290,11 @@ export const REDACTED = "[redacted: looks like a secret]";
 /** Each line that looks like a secret replaced by a mark; every other line kept as it is. */
 export const redactSecretLines = (text: string): string =>
   text
+    // A private key spans lines, so its whole block goes first.
+    .replace(
+      /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g,
+      REDACTED,
+    )
     .split("\n")
     .map((line) => (detectSecret(line) === null ? line : REDACTED))
     .join("\n");

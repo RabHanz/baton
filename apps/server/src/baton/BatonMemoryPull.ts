@@ -10,20 +10,22 @@ import * as NodePath from "node:path";
 
 import {
   askHistory,
+  historyRunner,
   keepHistory,
   NOT_HERE,
+  PEER_ASK_TIMEOUT_MS,
   parseLearnings,
   type HistoryAnswer,
 } from "@t3tools/baton-shared/historyIndex";
 import { redactSecretLines, sharesPrivateText } from "@t3tools/baton-shared/memory";
-import { DEFAULT_OS_PACK, isWalled } from "@t3tools/baton-shared/osPack";
+import { DEFAULT_OS_PACK } from "@t3tools/baton-shared/osPack";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
 import * as ServerConfig from "../config.ts";
-import { BatonMemoryService, MemoryPrivateTexts, MemoryViewer } from "./BatonMemoryService.ts";
+import { BatonMemoryService, MemoryViewer } from "./BatonMemoryService.ts";
 import { BatonMemorySync } from "./BatonMemorySync.ts";
-import { readPack } from "./OperatingSystemPack.ts";
+import { packFileTexts, readPack } from "./OperatingSystemPack.ts";
 
 export const PULL_FLAG = "learnings-pull";
 /** What to ask the index for; the index's own tags decide what a venture is. */
@@ -37,8 +39,17 @@ export const NO_SERVER =
 
 export const TOO_SLOW =
   "The history search did not answer in time, so past work could not be searched.";
-/** Under the desktop's 20 s wait for its own server. */
-const DEADLINE = "12 seconds";
+/** Over this server's own 15 s script, under the desktop's 20 s wait for its own server. */
+const DEADLINE = "18 seconds";
+export const SESSION_OWN_VIEW =
+  "A whole session's summary is read only in his own view on the desktop, since it may be a walled project's work. Search with words instead.";
+
+/** "Kai Hair", "kai_hair" and "kai-hair" are one project. */
+const slug = (name: string) =>
+  name
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, "-");
 
 /** What this server's own index may give this caller: no walled project's hits or private pack text unless it is his own view, and never a secret. */
 const answerFromHere = Effect.fn("BatonMemoryPull.answerFromHere")(function* (
@@ -47,15 +58,16 @@ const answerFromHere = Effect.fn("BatonMemoryPull.answerFromHere")(function* (
 ) {
   if (admin) return redactSecretLines(text);
   const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
-  const pack = Option.isNone(config)
-    ? DEFAULT_OS_PACK
-    : readPack(NodePath.dirname(config.value.dbPath));
-  const privateTexts = (yield* MemoryPrivateTexts)();
+  const userdata = Option.isNone(config) ? null : NodePath.dirname(config.value.dbPath);
+  const walled = new Set(
+    (userdata === null ? DEFAULT_OS_PACK : readPack(userdata)).walled.map(slug),
+  );
+  const privateTexts = userdata === null ? [] : packFileTexts(userdata);
   return redactSecretLines(
     keepHistory(
       text,
       (venture, hit) =>
-        (venture !== null && isWalled(pack, venture)) || sharesPrivateText(hit, privateTexts),
+        (venture !== null && walled.has(slug(venture))) || sharesPrivateText(hit, privateTexts),
     ),
   );
 });
@@ -67,12 +79,18 @@ const findHistory = Effect.fn("BatonMemoryPull.find")(function* (
 ) {
   const { admin, ...words } = ask;
   const viewer = yield* MemoryViewer;
-  const here = yield* Effect.promise(() => askHistory(env, words, run));
+  const own = admin === true && viewer === "desktop";
+  // A summary carries no project to judge its wall by.
+  if (words.session !== undefined && !own) return { ok: false, why: SESSION_OWN_VIEW } as const;
+  const here = yield* Effect.promise(() =>
+    askHistory(
+      env,
+      words,
+      run ?? (viewer === "server" ? historyRunner(PEER_ASK_TIMEOUT_MS) : undefined),
+    ),
+  );
   if (here.ok)
-    return {
-      ok: true,
-      text: yield* answerFromHere(here.text, admin === true && viewer === "desktop"),
-    } satisfies HistoryAnswer;
+    return { ok: true, text: yield* answerFromHere(here.text, own) } satisfies HistoryAnswer;
   // A peer's ask is answered from this server's own index only, so two servers never ask each other in a loop.
   if (here.why !== NOT_HERE || viewer === "server") return here;
   const there = yield* (yield* BatonMemorySync).history(words);

@@ -201,11 +201,12 @@ export const make = Effect.gen(function* () {
       const url = peerUrl(peer, method);
       if (url === null) return Option.none<A>();
       const response = yield* Effect.tryPromise({
-        try: () =>
+        // Interrupted (a race lost, a deadline passed): the request is dropped, not left open.
+        try: (interrupted) =>
           fetch(url, {
             method: "POST",
             redirect: "error",
-            signal: AbortSignal.timeout(timeoutMs),
+            signal: AbortSignal.any([interrupted, AbortSignal.timeout(timeoutMs)]),
             headers: { authorization: `Bearer ${peer.token}`, "content-type": "application/json" },
             body: JSON.stringify(input),
           }),
