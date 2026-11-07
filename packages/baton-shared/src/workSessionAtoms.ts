@@ -429,9 +429,25 @@ export function createBatonWorkSessionAtoms<R, E>(
       scheduler,
       concurrency,
     }),
-    threadAccountUse: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:baton:thread-account-use",
-      tag: BATON_ACCOUNT_WS_METHODS.threadAccountUse,
+    onLimitQuery: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:baton:on-limit-query",
+      tag: BATON_ACCOUNT_WS_METHODS.onLimit,
+      staleTimeMs: 30_000,
+    }),
+    threadKeptQuery: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:baton:thread-kept-query",
+      tag: BATON_ACCOUNT_WS_METHODS.threadKept,
+      staleTimeMs: 30_000,
+    }),
+    threadKeep: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:thread-keep",
+      tag: BATON_ACCOUNT_WS_METHODS.threadKeep,
+      scheduler,
+      concurrency,
+    }),
+    setOnLimit: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:set-on-limit",
+      tag: BATON_ACCOUNT_WS_METHODS.setOnLimit,
       scheduler,
       concurrency,
     }),

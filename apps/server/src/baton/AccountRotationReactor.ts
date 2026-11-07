@@ -21,7 +21,11 @@ import {
   type BatonOnLimitPolicy,
   type RotationDecision,
 } from "@t3tools/baton-shared/accountRotation";
-import type { BatonAccount, BatonAccountPool } from "@t3tools/baton-contracts";
+import {
+  instanceAccount,
+  type BatonAccount,
+  type BatonAccountPool,
+} from "@t3tools/baton-contracts";
 import {
   isListedThreadLineage,
   isLiveSubagentShell,
@@ -34,7 +38,7 @@ import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
 
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
-import { AccountPoolService, headroomFromWindows } from "./AccountPoolService.ts";
+import { AccountPoolService } from "./AccountPoolService.ts";
 import { AccountRotationPolicy } from "./AccountRotationPolicy.ts";
 import { BatonEngine } from "./BatonEngine.ts";
 import { readClaudeLiveSessions } from "./ClaudeLiveSessions.ts";
@@ -71,30 +75,6 @@ export const rotationTick = (input: {
     limitReached: limitReached(input.pool),
     now: input.now,
   });
-
-/** One Claude instance as an account: its own reported windows, its key the instance id. */
-export const instanceAccount = (provider: ServerProvider, active: boolean): BatonAccount => {
-  const windows = (provider.usageLimits?.windows ?? []).map((window) => ({
-    id: window.id,
-    label: window.label,
-    usedPercent: window.usedPercent,
-    resetsAt: window.resetsAt ?? null,
-  }));
-  const headroom = headroomFromWindows(windows);
-  const signedOut = provider.auth.status === "unauthenticated";
-  return {
-    key: provider.instanceId,
-    label: provider.displayName ?? provider.instanceId,
-    email: provider.auth.email ?? null,
-    organizationName: null,
-    active,
-    usable: !signedOut && headroom !== null,
-    unusableReason: signedOut ? "signed-out" : headroom === null ? "limits-unknown" : null,
-    headroomPercent: headroom,
-    windows,
-    usageCheckedAt: provider.usageLimits?.checkedAt ?? null,
-  } as BatonAccount;
-};
 
 // An automatic pick needs a fresh reading: a target read longer ago than this counts as unknown.
 const TARGET_FRESH_MS = 30 * 60_000;

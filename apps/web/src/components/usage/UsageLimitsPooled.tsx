@@ -33,6 +33,7 @@ import { ensureLocalApi } from "../../localApi";
 import { usePrimarySettings } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
 import { formatUpcomingTimestamp } from "../../timestampFormat";
+import { BatonOnLimitRow } from "../chat/BatonOnLimitRow";
 import { BatonTileSwitch } from "../chat/BatonTileSwitch";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
 import { providerClients } from "../settings/providerDriverMeta";
@@ -604,6 +605,7 @@ function PoolSection({ pool, now }: { readonly pool: LimitPool; readonly now: nu
           />
         );
       })}
+      <BatonOnLimitRow pool={pool} />
     </section>
   );
 }

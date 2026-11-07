@@ -2,7 +2,7 @@
 import * as Schema from "effect/Schema";
 
 import { IsoDateTime, ThreadId, TrimmedNonEmptyString } from "@t3tools/contracts";
-import { ProviderDriverKind } from "@t3tools/contracts";
+import { ProviderDriverKind, type ServerProvider } from "@t3tools/contracts";
 import { WorkSessionId } from "./workSession.ts";
 
 /**
@@ -23,8 +23,6 @@ export const BATON_ACCOUNT_WS_METHODS = {
   accountPool: "fabric.account.pool",
   /** Swap the credential in the config directory, between turns. */
   accountUse: "fabric.account.use",
-  /** Move one thread to an account's provider instance (D95). Nothing else moves. */
-  threadAccountUse: "fabric.account.useForThread",
   /** Whether a thread moves to another account by itself when its account nears its limit. */
   onLimit: "fabric.account.onLimit",
   setOnLimit: "fabric.account.setOnLimit",
@@ -155,13 +153,6 @@ export const BatonAccountUseResult = Schema.Struct({
 });
 export type BatonAccountUseResult = typeof BatonAccountUseResult.Type;
 
-export const BatonThreadAccountUseInput = Schema.Struct({
-  threadId: ThreadId,
-  /** Null puts the thread back on whatever cswap has active on this machine. */
-  key: Schema.NullOr(BatonAccountKey),
-});
-export type BatonThreadAccountUseInput = typeof BatonThreadAccountUseInput.Type;
-
 export const BatonThreadAccountUseResult = Schema.Struct({
   instanceId: TrimmedNonEmptyString,
   /** `next-turn` when a turn is running: it is never cut, and the move waits for it to end. */
@@ -169,17 +160,41 @@ export const BatonThreadAccountUseResult = Schema.Struct({
 });
 export type BatonThreadAccountUseResult = typeof BatonThreadAccountUseResult.Type;
 
-/** The instance that runs as this account: its token instance, else the default if it is active. */
-export function instanceForAccount(
-  account: Pick<BatonAccount, "key" | "active">,
-  isAvailable: (instanceId: string) => boolean,
-): string | null {
-  const pinned = Object.keys(BATON_CLAUDE_ACCOUNT_INSTANCES).find(
-    (instanceId) => BATON_CLAUDE_ACCOUNT_INSTANCES[instanceId] === account.key,
+/** Free in the tightest window. The tightest one is what runs out first. */
+export function headroomFromWindows(
+  windows: ReadonlyArray<{ readonly usedPercent: number }>,
+): number | null {
+  if (windows.length === 0) return null;
+  const worst = windows.reduce(
+    (highest, window) => (window.usedPercent > highest ? window.usedPercent : highest),
+    0,
   );
-  if (pinned !== undefined && isAvailable(pinned)) return pinned;
-  return account.active ? BATON_DEFAULT_CLAUDE_INSTANCE : null;
+  return Math.max(0, 100 - worst);
 }
+
+/** One Claude instance as an account (L-76): its own reported windows, its key the instance id. */
+export const instanceAccount = (provider: ServerProvider, active: boolean): BatonAccount => {
+  const windows = (provider.usageLimits?.windows ?? []).map((window) => ({
+    id: window.id,
+    label: window.label,
+    usedPercent: window.usedPercent,
+    resetsAt: window.resetsAt ?? null,
+  }));
+  const headroom = headroomFromWindows(windows);
+  const signedOut = provider.auth.status === "unauthenticated";
+  return {
+    key: provider.instanceId,
+    label: provider.displayName ?? provider.instanceId,
+    email: provider.auth.email ?? null,
+    organizationName: null,
+    active,
+    usable: !signedOut && headroom !== null,
+    unusableReason: signedOut ? "signed-out" : headroom === null ? "limits-unknown" : null,
+    headroomPercent: headroom,
+    windows,
+    usageCheckedAt: provider.usageLimits?.checkedAt ?? null,
+  } as BatonAccount;
+};
 
 /**
  * The cswap account an instance runs as: its token's slot, or whatever cswap has active for the default
