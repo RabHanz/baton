@@ -113,7 +113,6 @@ export interface TrustData {
     readonly channel: string;
     readonly since: string;
   }>;
-  readonly weaveHosts: ReadonlyArray<string>;
   /** Every standing job: the built-in ones that run here, his rules, and jobs on a schedule. */
   readonly standing: ReadonlyArray<StandingRow>;
   readonly entries: ReadonlyArray<TrustEntry>;
@@ -343,10 +342,7 @@ export const trustControls = (data: TrustData, now: number): ReadonlyArray<HomeC
       label: "Messages to your other machines",
       kind: "check",
       status: "ok",
-      detail:
-        data.weaveHosts.length === 0
-          ? `Only this computer's sessions can be messaged (${ago(used.weave, now)}).`
-          : `May message sessions on ${data.weaveHosts.join(", ")} (${ago(used.weave, now)}). The list is set by BATON_WEAVE_HOSTS; remove a machine there to stop it.`,
+      detail: `May message sessions on every computer this app is connected to (${ago(used.weave, now)}). Remove a computer in Settings → Environments to stop it.`,
     },
   ];
   rows.push(
@@ -503,9 +499,7 @@ export const describeTrust = (data: TrustData, now: number): string => {
     line(data.act, "Routine steps without asking", "act"),
     line(data.remote, "Remote hands", "remote"),
     `Vault: ${data.vault === "unlocked" ? "open" : data.vault === "locked" ? "locked" : "none"}.`,
-    data.weaveHosts.length === 0
-      ? "Messages go to this computer's sessions only."
-      : `Messages may go to ${data.weaveHosts.join(", ")}.`,
+    "Messages may go to every computer this app is connected to.",
     data.grants.length === 0
       ? "No job holds a standing permission."
       : `Standing permissions: ${data.grants.map((g) => `${g.title} (${CHANNEL_WORDS[g.channel] ?? g.channel})`).join("; ")}.`,

@@ -230,18 +230,24 @@ export const make = Effect.gen(function* () {
     if (seen.every((x) => !x.found.available)) {
       return yield* new BatonWeaveError({
         reason: seen[0]?.found.reason ?? "no sessions are reachable",
+        missing: true,
       });
     }
     const all = seen.flatMap(({ box, found }) =>
       found.candidates.map((c) => ({
         label: box.name === "here" ? c.label : `${box.name}:${c.label}`,
+        ...(box.name === "here" ? {} : { alias: c.label }),
         pane: paneKey(box.name, c.location.pane),
         state: c.runtimeState,
         agentKind: c.agentKind,
       })),
     );
     const target = resolveTarget(input.to, all);
-    if (!target.ok) return yield* new BatonWeaveError({ reason: target.why });
+    if (!target.ok)
+      return yield* new BatonWeaveError({
+        reason: target.why,
+        ...(target.missing === true ? { missing: true } : {}),
+      });
     const now = yield* nowMs;
     const id = newId();
     yield* sql`

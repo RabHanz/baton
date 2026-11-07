@@ -16,6 +16,7 @@ Say or type what you want done as a job ("fix the failing build in the shop proj
 - **Stop** ends a running turn; the job and its notes stay. **Retry** is offered only for a job that failed and has retries left, and says why not otherwise.
 - A job that a restart interrupted shows a Continue button.
 - **Sessions** lists every live session on this computer and on each computer its server is linked to, with T3's window open or closed. With the window closed, Tessaya acts only on this computer: typing into, stopping, reattaching and cleaning up its sessions, starting jobs on it and its cloud tasks. Open T3 to act on another computer, so it goes over T3's own connection to it and never over a link, where your words would arrive as another agent's. A computer linked read-only never takes typing.
+- **Messages to sessions** (weave) reach every computer T3 is connected to. A name is looked for on all of them, and one that fits sessions on two computers is refused until you name the computer, as `office:build`. With T3's window closed they reach only this computer. To stop them reaching a computer, remove it in **Settings → Environments**.
 - **What needs me** (the Now page) ranks what to look at first: failures, questions, stalled work.
 
 ## Run on
