@@ -241,10 +241,3 @@ export const readKeptFile = (
     problem: `${file} ${raw === null ? "could not be read" : "was not a kept-messages file"}; moved to ${aside}`,
   };
 };
-
-/** Written whole to a temporary file and renamed over, so a crash mid-write never leaves half a file. */
-export const writeKeptFile = (file: string, all: Record<string, ReadonlyArray<string>>): void => {
-  const temp = `${file}.tmp`;
-  NodeFS.writeFileSync(temp, JSON.stringify(all), { mode: 0o600 });
-  NodeFS.renameSync(temp, file);
-};

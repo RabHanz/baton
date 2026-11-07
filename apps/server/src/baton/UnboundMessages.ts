@@ -1,9 +1,8 @@
 // @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off globalDate:off globalDateInEffect:off
 /**
- * Messages a live thread could not deliver (it had no session bound) are kept by the ACP agent in
- * `unbound-messages.ndjson`. The server never edits that file: what it learns and does is appended to
- * `unbound-ledger.ndjson` (the thread an entry belongs to; claimed before a resend, released if the resend fails), so a
- * message is neither dropped nor sent twice. shortcut: both files only grow, compact them if they ever matter.
+ * Messages a live thread could not deliver (it had no session bound). They wait in the weave table (`unbound` rows),
+ * claimed before a resend and released if it fails, so a message is neither dropped nor sent twice. The old store,
+ * `unbound-messages.ndjson` with its `unbound-ledger.ndjson`, is read once to take it in (BatonWeaveService).
  */
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
@@ -12,6 +11,7 @@ import * as NodePath from "node:path";
 import { Effect } from "effect";
 
 import type { BatonEngineShape } from "./BatonEngine.ts";
+import type { BatonWeaveService } from "./BatonWeaveService.ts";
 import { ThreadId } from "@t3tools/contracts";
 
 export interface KeptMessage {
@@ -82,11 +82,6 @@ export const readLedger = (dir: string): ReadonlyArray<LedgerLine> =>
     return [{ id, ...(threadId === null ? {} : { threadId }), ...(state ? { state } : {}) }];
   });
 
-export const appendLedger = (dir: string, line: LedgerLine): void => {
-  NodeFS.mkdirSync(dir, { recursive: true });
-  NodeFS.appendFileSync(NodePath.join(dir, LEDGER_FILE), `${JSON.stringify(line)}\n`);
-};
-
 /** The kept messages still waiting (not claimed), each with its thread when known. */
 export const pendingKept = (
   kept: ReadonlyArray<KeptMessage>,
@@ -109,28 +104,22 @@ const LIVE_PREFIX = "baton-live4:";
 export const sessionOfThread = (threadId: string): string | null =>
   threadId.startsWith(LIVE_PREFIX) ? threadId.slice(LIVE_PREFIX.length) : null;
 
-/** Writes the thread for entries that only know the thread's native session id. */
+/** Writes the thread for messages that only know the thread's native session id. */
 export const stampKept = Effect.fn("UnboundMessages.stampKept")(function* (
   engine: BatonEngineShape,
-  dir: string,
+  weave: BatonWeaveService["Service"],
 ) {
-  const open = pendingKept(readKept(dir), readLedger(dir)).filter(
-    (entry) => entry.thread === null && entry.sessionId !== null,
-  );
-  if (open.length === 0) return;
   const wanted = new Set(
-    open.flatMap((entry) => (entry.sessionId === null ? [] : [entry.sessionId])),
+    (yield* weave.unbound).flatMap((row) =>
+      row.thread === null && row.native !== null ? [row.native] : [],
+    ),
   );
-  const byNative = new Map<string, string>();
+  if (wanted.size === 0) return;
   for (const shell of yield* engine.threadShells) {
     if (!String(shell.id).startsWith(LIVE_PREFIX)) continue;
     const nativeId = (yield* engine.activeProviderThread(shell.id))?.nativeThreadRef?.nativeId;
     if (typeof nativeId === "string" && wanted.has(nativeId))
-      byNative.set(nativeId, String(shell.id));
-  }
-  for (const entry of open) {
-    const thread = byNative.get(entry.sessionId!);
-    if (thread !== undefined) appendLedger(dir, { id: entry.id, threadId: thread });
+      yield* weave.stampUnbound(nativeId, String(shell.id));
   }
 });
 
@@ -141,8 +130,8 @@ export const stampKept = Effect.fn("UnboundMessages.stampKept")(function* (
  */
 export const resendKept = Effect.fn("UnboundMessages.resendKept")(function* (
   engine: BatonEngineShape,
+  weave: BatonWeaveService["Service"],
   input: {
-    readonly dir: string;
     readonly threadId: string;
     readonly entryId?: string;
     readonly bound: boolean;
@@ -152,20 +141,17 @@ export const resendKept = Effect.fn("UnboundMessages.resendKept")(function* (
   const shell = yield* engine.threadShell(ThreadId.make(input.threadId));
   if (shell === null || (shell.activeRunId !== null && shell.activeRunId !== undefined))
     return { sent: 0, failed: 0 };
-  const mine = pendingKept(readKept(input.dir), readLedger(input.dir)).filter(
-    (entry) =>
-      entry.thread === input.threadId &&
-      (input.entryId === undefined || entry.id === input.entryId),
-  );
   // One message per pass: a turn is running after the first, and the rest follow in order.
-  const next = mine[0];
-  if (next === undefined) return { sent: 0, failed: 0 };
-  appendLedger(input.dir, { id: next.id, state: "claimed" });
+  const next = (yield* weave.unbound).find(
+    (row) =>
+      row.thread === input.threadId && (input.entryId === undefined || row.id === input.entryId),
+  );
+  if (next === undefined || !(yield* weave.claimUnbound(next.id))) return { sent: 0, failed: 0 };
   const ok = yield* engine.sendMessage({
     tag: "unbound-retry",
     threadId: ThreadId.make(input.threadId),
     text: next.text,
   });
-  if (!ok) appendLedger(input.dir, { id: next.id, state: "released" });
+  if (!ok) yield* weave.releaseUnbound(next.id);
   return ok ? { sent: 1, failed: 0 } : { sent: 0, failed: 1 };
 });

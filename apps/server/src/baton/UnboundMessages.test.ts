@@ -5,17 +5,19 @@ import * as NodePath from "node:path";
 
 import { it } from "@effect/vitest";
 import { Effect } from "effect";
+import * as Layer from "effect/Layer";
 import { describe, expect } from "vite-plus/test";
 
 import type { BatonEngineShape } from "./BatonEngine.ts";
+import { layerMemory } from "./BatonDatabase.ts";
+import { BatonWeaveBoxes } from "./BatonWeaveBoxes.ts";
+import { make as makeWeave, WeaveStores } from "./BatonWeaveService.ts";
 
 import {
-  appendLedger,
   pendingKept,
-  readKept,
-  readLedger,
   resendKept,
   sessionOfThread,
+  stampKept,
   type KeptMessage,
 } from "./UnboundMessages.ts";
 
@@ -54,47 +56,83 @@ describe("kept unbound messages", () => {
 
 describe("resending a kept message", () => {
   const THREAD = "baton-live4:s";
+  /** The old kept file, taken into the table when the weave service starts; the second line was already claimed. */
   const setup = (sendOk: boolean, active: boolean) => {
     const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-kept-"));
     NodeFS.writeFileSync(
       NodePath.join(dir, "unbound-messages.ndjson"),
-      `${JSON.stringify({ id: "m1", at: "t", text: "one", threadId: THREAD })}\n${JSON.stringify({ id: "m2", at: "t", text: "two", threadId: THREAD })}\n`,
+      [
+        { id: "m1", at: "t", text: "one", threadId: THREAD },
+        { id: "m0", at: "t", text: "already sent", threadId: THREAD },
+        { id: "m2", at: "t", text: "two", sessionId: "baton-unbound-1-2" },
+      ]
+        .map((line) => `${JSON.stringify(line)}\n`)
+        .join(""),
+    );
+    NodeFS.writeFileSync(
+      NodePath.join(dir, "unbound-ledger.ndjson"),
+      `${JSON.stringify({ id: "m0", state: "claimed" })}\n`,
     );
     const sent: string[] = [];
     const engine = {
       threadShell: () => Effect.succeed({ activeRunId: active ? "run" : null }),
+      threadShells: Effect.succeed([{ id: THREAD }]),
+      activeProviderThread: () =>
+        Effect.succeed({ nativeThreadRef: { nativeId: "baton-unbound-1-2" } }),
       sendMessage: (input: { text: string }) => (sent.push(input.text), Effect.succeed(sendOk)),
     } as unknown as BatonEngineShape;
-    const run = () => resendKept(engine, { dir, threadId: THREAD, bound: true });
-    return { dir, sent, run };
+    return { dir, sent, engine };
   };
+  const provide = <A, E, R>(dir: string, effect: Effect.Effect<A, E, R>) =>
+    effect.pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          layerMemory,
+          Layer.succeed(BatonWeaveBoxes, []),
+          Layer.succeed(WeaveStores, {
+            liveQueueDir: () => dir,
+            catalogFile: NodePath.join(dir, "none.json"),
+          }),
+        ),
+      ),
+    );
 
-  it.effect("sends the oldest once, then the next, and never the same twice", () =>
-    Effect.gen(function* () {
-      const { dir, sent, run } = setup(true, false);
-      yield* run();
-      yield* run();
-      yield* run();
-      expect(sent).toEqual(["one", "two"]);
-      expect(pendingKept(readKept(dir), readLedger(dir))).toEqual([]);
+  it.effect("waits until the thread is bound, then sends the oldest once, then the next", () =>
+    Effect.suspend(() => {
+      const { dir, sent, engine } = setup(true, false);
+      return provide(
+        dir,
+        Effect.gen(function* () {
+          const weave = yield* makeWeave;
+          expect(
+            NodeFS.readdirSync(dir).some((n) => n.startsWith("unbound-messages.ndjson.migrated-")),
+          ).toBe(true);
+          const run = (bound: boolean) => resendKept(engine, weave, { threadId: THREAD, bound });
+          yield* run(false);
+          expect(sent).toEqual([]);
+          yield* stampKept(engine, weave);
+          for (let i = 0; i < 4; i += 1) yield* run(true);
+          expect(sent).toEqual(["one", "two"]);
+          expect(yield* weave.unbound).toEqual([]);
+        }),
+      );
     }),
   );
 
   it.effect("keeps a message whose send failed, and waits while a turn is running", () =>
-    Effect.gen(function* () {
+    Effect.suspend(() => {
       const failed = setup(false, false);
-      yield* failed.run();
-      expect(pendingKept(readKept(failed.dir), readLedger(failed.dir)).map((e) => e.id)).toEqual([
-        "m1",
-        "m2",
-      ]);
-      const busy = setup(true, true);
-      yield* busy.run();
-      expect(busy.sent).toEqual([]);
-      appendLedger(busy.dir, { id: "m1", state: "claimed" });
-      expect(pendingKept(readKept(busy.dir), readLedger(busy.dir)).map((e) => e.id)).toEqual([
-        "m2",
-      ]);
+      return provide(
+        failed.dir,
+        Effect.gen(function* () {
+          const weave = yield* makeWeave;
+          yield* resendKept(failed.engine, weave, { threadId: THREAD, bound: true });
+          expect((yield* weave.unbound).map((r) => r.text)).toEqual(["one", "two"]);
+          const busy = setup(true, true);
+          yield* resendKept(busy.engine, weave, { threadId: THREAD, bound: true });
+          expect(busy.sent).toEqual([]);
+        }),
+      );
     }),
   );
 });

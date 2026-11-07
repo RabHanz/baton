@@ -9,7 +9,8 @@ A live thread mirrors one running terminal session (`baton-live4:<session id>`).
 2. The binding is checked every 30 s per followed session. A thread on another provider instance, or on the live
    instance without its session, is bound again to the running session with the same id, and a `rebound` line is
    written to `baton-mirror.ndjson`. A session is never chosen by guessing: a message to a thread with no binding is
-   kept in `unbound-messages.ndjson` and shown back, even when exactly one session runs in the folder (Reattach, 5).
+   kept in the server's message queue (the `fabric_weaves` table, `unbound` rows) and shown back, even when exactly one
+   session runs in the folder (Reattach, 5).
 3. A handoff twin is retired with `baton.sessions.retirehandoff` (explicit confirm token and `caughtUp`).
 4. `baton-mirror.ndjson` names every mirror decision: the live session set, follow or skip per session, failures, and
    which question the pane shows.
@@ -18,5 +19,12 @@ A live thread mirrors one running terminal session (`baton-live4:<session id>`).
    (`baton.sessions.reattach`, service `reattach`) binds again by session id; with no id match and exactly one running
    session in the folder it only offers "Reattach to <pane>?" and acts on that pane's confirmation.
 6. A kept unbound message is shown in its thread with a Retry button and is sent again through the thread once it is
-   bound to its running session. The server only appends to `unbound-ledger.ndjson` (thread stamp, claimed before the
-   resend, released if it fails), so a message is neither dropped nor sent twice.
+   bound to its running session. Its row is claimed before the resend and released if it fails, so a message is
+   neither dropped nor sent twice.
+7. One queue for text waiting to be typed into a live session: `fabric_weaves`. The bridge appends what it cannot type
+   now to `inbound.ndjson` in the live-queue folder; the server imports each line once (by id, from a saved offset) and
+   types it on its own 3 s clock into the pane `herdr agent list` shows for the session id, never while a question is
+   up, and drops (and says) a send Herdr did not confirm rather than typing it twice. Each row has one owner: the
+   server's drainer, the thread (unbound rows), or the sessions list (`catalog` rows, sent on a send or Resume). A
+   `<session id>.server` file marks a session the server owns; the bridge's drainer never types for it. One server owns
+   a live-queue folder at a time (`.server.lock`); a server on another base dir (a dev worktree) uses its own folder.

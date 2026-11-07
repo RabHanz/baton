@@ -34,8 +34,8 @@ import { ProjectService } from "../project/ProjectService.ts";
 
 import { LIVE_INSTANCE_ID, liveThreadId, rebindThread } from "./LiveSessionMirror.ts";
 import { decideReattach } from "./BindingHealth.ts";
-import { liveQueueDir } from "./BatonLiveQueue.ts";
-import { pendingKept, readKept, readLedger, resendKept, stampKept } from "./UnboundMessages.ts";
+import { BatonWeaveService } from "./BatonWeaveService.ts";
+import { resendKept, stampKept } from "./UnboundMessages.ts";
 import { retireHandoff, type RetireResult } from "./RetireHandoff.ts";
 import { appendResumeLog } from "./ResumeLog.ts";
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
@@ -68,7 +68,7 @@ import {
   type WatchdogOutcome,
 } from "@t3tools/baton-shared/watch";
 import { createSessionCatalog, sendOutcome, type CatalogPorts } from "./SessionCatalog.ts";
-import { readKeptFile, realCatalogPorts, writeKeptFile } from "./SessionCatalogLive.ts";
+import { realCatalogPorts } from "./SessionCatalogLive.ts";
 
 export class BatonSessionCatalogService extends Context.Service<
   BatonSessionCatalogService,
@@ -155,6 +155,7 @@ export const layer = Layer.effect(
   BatonSessionCatalogService,
   Effect.gen(function* () {
     const adopted = yield* AdoptedSessionService;
+    const weave = yield* BatonWeaveService;
     const services = yield* Effect.context<never>();
     const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
     const resumeLog = (record: Record<string, unknown>) =>
@@ -365,10 +366,9 @@ export const layer = Layer.effect(
       Option.isSome(config) ? NodePath.dirname(config.value.dbPath) : NodeOS.homedir(),
       "baton-autoresume.json",
     );
-    // Messages sent to a stopped session while it comes back, kept across a restart.
-    const keptFile = NodePath.join(NodePath.dirname(stateFile), "baton-catalog-kept.json");
-    const { kept: keptAtStart, problem: keptProblem } = readKeptFile(keptFile);
-    if (keptProblem !== null) yield* Effect.logWarning("Tessaya kept messages", keptProblem);
+    // Messages sent to a stopped session while it comes back, kept across a restart in the weave table.
+    const keptAtStart = yield* weave.catalogKept;
+    let keptSaved = Promise.resolve();
     let autoState: AutoResumeState = emptyAutoResumeState;
     try {
       autoState = {
@@ -410,18 +410,19 @@ export const layer = Layer.effect(
       autoResumed: (id) => autoResumedWithin(autoState, id, Date.now(), 2 * HOUR_MS),
       kept: {
         read: () => keptAtStart,
+        // Each write is the whole set, so they are saved in order, one after another.
         write: (all) => {
-          try {
-            writeKeptFile(keptFile, all);
-          } catch (cause) {
-            // A read-only data directory keeps them in memory only.
-            void Effect.runPromiseWith(services)(
-              Effect.logWarning("Tessaya kept messages not saved", {
-                keptFile,
-                cause: String(cause),
-              }),
-            );
-          }
+          keptSaved = keptSaved.then(() =>
+            Effect.runPromiseWith(services)(
+              weave
+                .setCatalogKept(all)
+                .pipe(
+                  Effect.catchCause((cause) =>
+                    Effect.logWarning("Tessaya kept messages not saved", cause),
+                  ),
+                ),
+            ),
+          );
         },
       },
     };
@@ -591,22 +592,20 @@ export const layer = Layer.effect(
       }),
       kept: Effect.fn("BatonSessionCatalogService.kept")(
         function* (input: { threadId: string; retryId?: string }) {
-          const dir = liveQueueDir();
           if (Option.isNone(engine)) return { messages: [], retry: null } as const;
-          yield* stampKept(engine.value, dir);
+          yield* stampKept(engine.value, weave);
           let retry: "sent" | "busy" | "none" | null = null;
           if (input.retryId !== undefined) {
-            const result = yield* resendKept(engine.value, {
-              dir,
+            const result = yield* resendKept(engine.value, weave, {
               threadId: input.threadId,
               entryId: input.retryId,
               bound: false,
             });
             retry = result.sent > 0 ? "sent" : result.failed > 0 ? "busy" : "none";
           }
-          const messages = pendingKept(readKept(dir), readLedger(dir))
-            .filter((entry) => entry.thread === input.threadId)
-            .map(({ id, at, text }) => ({ id, at, text }));
+          const messages = (yield* weave.unbound)
+            .filter((row) => row.thread === input.threadId)
+            .map(({ id, at, text }) => ({ id, at: new Date(at).toISOString(), text }));
           return { messages, retry };
         },
         Effect.catchCause(() => Effect.succeed({ messages: [], retry: null } as const)),

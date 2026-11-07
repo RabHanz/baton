@@ -7,6 +7,7 @@ import type { ClaudeLiveSession } from "@t3tools/baton-contracts";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as TestClock from "effect/testing/TestClock";
 
 import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
 import { BatonWeaveBoxes, makeLiveBox } from "./BatonWeaveBoxes.ts";
@@ -32,9 +33,26 @@ const live = makeLiveBox(
   () => dir,
 );
 
+/** This machine's Herdr: no panes to discover, and the session's pane once it is moved into Herdr. */
+const herdr = { pane: null as string | null, typed: [] as string[] };
+const here = {
+  name: "here",
+  adapter: {
+    discover: Effect.succeed({ available: true, reason: "", candidates: [] }),
+    sendInput: (input: { text: string; session: { location: { pane: string } } }) =>
+      Effect.sync(() => {
+        herdr.typed.push(`${input.session.location.pane}: ${input.text}`);
+        return { delivered: true, detail: "" };
+      }),
+  },
+  agents: Effect.sync(
+    () => new Map(herdr.pane === null ? [] : [["sid-1", { pane: herdr.pane, status: "idle" }]]),
+  ),
+};
+
 const layer = it.layer(
   weaveLayer.pipe(
-    Layer.provideMerge(Layer.succeed(BatonWeaveBoxes, [live])),
+    Layer.provideMerge(Layer.succeed(BatonWeaveBoxes, [here, live] as never)),
     Layer.provideMerge(SqlitePersistenceMemory),
   ),
 );
@@ -43,23 +61,29 @@ const queued = (id: string): Array<{ text: string; kind?: string }> =>
   JSON.parse(NodeFS.readFileSync(NodePath.join(dir, `${id}.json`), "utf8"));
 
 layer("weaving to live threads outside Herdr", (it) => {
-  it.effect("queues for the session and notes the sender's thread", () =>
-    Effect.gen(function* () {
-      const weave = yield* BatonWeaveService;
-      const sent = yield* weave.send({
-        to: "plain",
-        text: "please look at the build",
-        from: "sender",
-      });
-      assert.strictEqual(sent.status, "delivered");
-      assert.deepStrictEqual(
-        queued("sid-1").map((i) => i.text),
-        ["please look at the build"],
-      );
-      const [note] = queued("sid-3");
-      assert.strictEqual(note?.kind, "note");
-      assert.match(note?.text ?? "", /^Sent to live:plain/);
-    }),
+  it.effect(
+    "waits for the session, notes the sender's thread, and is typed once it has a pane",
+    () =>
+      Effect.gen(function* () {
+        const weave = yield* BatonWeaveService;
+        const sent = yield* weave.send({
+          to: "plain",
+          text: "please look at the build",
+          from: "sender",
+        });
+        assert.strictEqual(sent.status, "queued");
+        assert.strictEqual(sent.toPane, "session|sid-1");
+        const [note] = queued("sid-3");
+        assert.strictEqual(note?.kind, "note");
+        assert.match(note?.text ?? "", /^Queued for live:plain/);
+        assert.strictEqual(yield* weave.deliver, 0);
+        herdr.pane = "w1:p4";
+        // It was not there, so it is looked at again after a while.
+        yield* TestClock.adjust("1 minute");
+        assert.strictEqual(yield* weave.deliver, 1);
+        assert.strictEqual(yield* weave.deliver, 0);
+        assert.deepStrictEqual(herdr.typed, ["w1:p4: please look at the build"]);
+      }),
   );
 
   it.effect("a session already in a pane is not offered here", () =>

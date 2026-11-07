@@ -14,15 +14,72 @@ import type { ClaudeLiveSession } from "@t3tools/baton-contracts";
 import { AdoptedRuntimeAdapter } from "./AdoptedSessionService.ts";
 import { readAllProfileLiveSessions } from "./ClaudeLiveSessions.ts";
 import { appendLiveQueue, liveQueueDir } from "./BatonLiveQueue.ts";
+import {
+  cliLayer,
+  HerdrCli,
+  parseHerdrSessionList,
+  SESSION_SEPARATOR,
+} from "./HerdrAdapterLive.ts";
 
 export interface WeaveBox {
   readonly name: string;
   readonly adapter: AdoptedRuntimeAdapter["Service"];
-  /** A box with no pane to read: sending hands the text to the session's own queue, which types it later. */
-  readonly queueOnly?: boolean;
   /** Puts a line into the named sender's own thread, when the sender is a session of this box. */
   readonly notify?: (from: string, line: string) => Effect.Effect<void>;
+  /**
+   * Every Claude session in a Herdr pane now, by session id: one listing per pass serves every target, and a Herdr
+   * restart that renumbers panes still finds each session.
+   */
+  readonly agents?: Effect.Effect<ReadonlyMap<string, SessionPane>>;
 }
+
+export interface SessionPane {
+  readonly pane: string;
+  /** Herdr's word for the agent: idle, working, blocked (a question or approval is up), done, unknown. */
+  readonly status: string;
+}
+
+/** The Claude sessions in `herdr agent list`, by session id. */
+export const agentsOf = (json: string): ReadonlyMap<string, SessionPane> => {
+  const found = new Map<string, SessionPane>();
+  try {
+    const agents: unknown = (JSON.parse(json) as { result?: { agents?: unknown } })?.result?.agents;
+    if (!Array.isArray(agents)) return found;
+    for (const a of agents as Array<{
+      agent_session?: { value?: unknown };
+      pane_id?: unknown;
+      agent_status?: unknown;
+    }>) {
+      const id = a?.agent_session?.value;
+      if (typeof id !== "string" || typeof a.pane_id !== "string") continue;
+      found.set(id, {
+        pane: a.pane_id,
+        status: typeof a.agent_status === "string" ? a.agent_status : "unknown",
+      });
+    }
+  } catch {}
+  return found;
+};
+
+/** Every running Herdr session is asked, as discovery does; the pane comes back as `<session>~<pane>` off default. */
+export const agentsWith = Effect.fn("BatonWeaveBoxes.agents")(function* (cli: HerdrCli["Service"]) {
+  const listed = yield* cli.run(["session", "list"]);
+  const names = listed.exitCode === 0 ? parseHerdrSessionList(listed.stdout) : [];
+  const all = new Map<string, SessionPane>();
+  for (const session of names.length === 0 ? ["default"] : names) {
+    const named = session === "default" ? [] : ["--session", session];
+    const out = yield* cli.run([...named, "agent", "list"]);
+    if (out.exitCode !== 0) continue;
+    for (const [id, found] of agentsOf(out.stdout))
+      all.set(
+        id,
+        named.length === 0
+          ? found
+          : { ...found, pane: `${session}${SESSION_SEPARATOR}${found.pane}` },
+      );
+  }
+  return all;
+});
 
 export class BatonWeaveBoxes extends Context.Service<BatonWeaveBoxes, ReadonlyArray<WeaveBox>>()(
   "t3/baton/BatonWeaveBoxes",
@@ -31,16 +88,14 @@ export class BatonWeaveBoxes extends Context.Service<BatonWeaveBoxes, ReadonlyAr
 const liveName = (s: ClaudeLiveSession): string => s.name ?? NodePath.basename(s.cwd);
 
 /**
- * Live threads outside Herdr: a Claude Code session in a plain terminal has no pane to type into.
- * A weave to one is written into the queue that baton-live-acp drains (it types the text once the
- * session is moved into Herdr, and says so in that thread).
+ * Live threads outside Herdr: a Claude Code session in a plain terminal has no pane to type into yet. A weave to one
+ * is stored addressed to the session, and the server types it once the session is in a Herdr pane.
  */
 export const makeLiveBox = (
   read: Effect.Effect<ReadonlyArray<ClaudeLiveSession>>,
   dir: () => string = liveQueueDir,
 ): WeaveBox => ({
   name: "live",
-  queueOnly: true,
   adapter: {
     discover: Effect.map(read, (sessions) => ({
       available: true,
@@ -56,18 +111,6 @@ export const makeLiveBox = (
           state: null,
         })),
     })),
-    readOutput: () => Effect.succeed({ available: false, detail: "no pane", output: "" }),
-    sendInput: ({ session, text }: { session: { location: { pane: string } }; text: string }) =>
-      Effect.sync(() => {
-        const n = appendLiveQueue(dir(), session.location.pane, {
-          text,
-          shown: text.slice(0, 200),
-        });
-        return {
-          delivered: true,
-          detail: `queued (${n} waiting); typed when the session is in a Herdr pane`,
-        };
-      }),
   } as unknown as AdoptedRuntimeAdapter["Service"],
   notify: (from, line) =>
     Effect.flatMap(read, (sessions) =>
@@ -87,9 +130,10 @@ export const layer = Layer.effect(
   BatonWeaveBoxes,
   Effect.gen(function* () {
     const local = yield* AdoptedRuntimeAdapter;
+    const cli = yield* HerdrCli;
     return [
-      { name: "here", adapter: local },
+      { name: "here", adapter: local, agents: Effect.suspend(() => agentsWith(cli)) },
       makeLiveBox(readAllProfileLiveSessions()),
     ] as ReadonlyArray<WeaveBox>;
   }),
-);
+).pipe(Layer.provide(cliLayer));
