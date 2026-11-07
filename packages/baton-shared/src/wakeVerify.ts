@@ -78,6 +78,15 @@ const LATIN: Readonly<Record<string, string>> = {
   ω: "o",
 };
 
+/**
+ * How recognition writes a name at the start of a sentence, as one word nothing else is spelt like: only
+ * there, never in the wake check, where "…take the seat" is close to "teseat". (0.1.68: the US TTS voice's
+ * "Tessaya" came back as "Teseat" or "Teseot" in all 20 lines.)
+ */
+const LEAD_SPELLINGS: Readonly<Record<string, ReadonlyArray<string>>> = {
+  tessaya: ["teseat", "teseot"],
+};
+
 const letters = (text: string): string =>
   [...text.toLowerCase().normalize("NFD")]
     .map((c) => LATIN[c] ?? c)
@@ -187,6 +196,7 @@ export const wakeWordLead = (
 ): number => {
   const targets = wakeWords.map((w) => letters(w).replace(/ /g, "")).filter(Boolean);
   const heard = words.map((w) => letters(w).replace(/ /g, ""));
+  if (targets.some((t) => (LEAD_SPELLINGS[t] ?? []).includes(heard[0] ?? ""))) return 1;
   for (let n = 1; n <= Math.min(MAX_WORDS, heard.length); n += 1) {
     const lead = heard.slice(0, n);
     if (lead.every(Boolean) && targets.some((t) => matches(lead, t, false))) return n;

@@ -945,6 +945,8 @@ export interface DesktopBatonVoiceInput {
   readonly openMainWindow: () => void;
   /** Wake-to-pill, for the record. */
   readonly onWakeShown?: (ms: number) => void;
+  /** Start the assistant's sessions, so the first turn after launch does not wait for them. */
+  readonly warmAssistant?: () => void;
   /** Each change of what the pill says, and "idle" when it goes: for the turn log. */
   readonly onPillState?: (phase: string) => void;
   /** How a pill drag ended, for the turn log. */
@@ -991,6 +993,8 @@ const wordName = (word: string | null): string | null =>
   word === null ? null : `${word[0]!.toUpperCase()}${word.slice(1)}`;
 
 /** Recognition slower than this, and slower than the clip itself, logs the machine's load. */
+/** After the voice has started, so the sessions' start does not compete with it. */
+const LAUNCH_WARM_MS = 5_000;
 const SLOW_RECOGNITION_MS = 2_000;
 const CPU_SAMPLE_MS = 3_000;
 /** A minute of readings: enough to find one from before the slowest recognition. */
@@ -3543,9 +3547,18 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       onUtterance: (utterance) => flash(utteranceCaption(utterance)),
     });
     step("loop-started");
+    // Not at his first wake: a cold start then cost the first turn 27 s (0.1.68).
+    if (launchWarm === null)
+      launchWarm = setTimeout(() => {
+        launchWarm = null;
+        if (loop !== null) input.warmAssistant?.();
+      }, LAUNCH_WARM_MS);
   };
+  let launchWarm: ReturnType<typeof setTimeout> | null = null;
 
   const stop = async () => {
+    if (launchWarm !== null) clearTimeout(launchWarm);
+    launchWarm = null;
     // Off mid-dictation: Esc is his again and the old window is forgotten, so no later wake acts there.
     if (dictatingByVoice) stateTurn("sleeping", null);
     dictationHold.clear();

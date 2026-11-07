@@ -505,6 +505,8 @@ export interface ScreenCompanion {
   readonly dismiss: () => void;
   /** He has woken Baton: starts the sessions a turn will need, which costs no quota. */
   readonly warm: () => void;
+  /** Only the assistant's sessions, with no first-run checks: for the warm-up at launch. */
+  readonly warmAssistant: () => void;
   /** A turn or dictation began from this wake word: its persona answers from here, in its own voice. */
   readonly addressed: (wake: string | null) => void;
   readonly openAskBox: () => void;
@@ -985,6 +987,7 @@ export const startScreenCompanion = (input: {
     model: settings.assistantModel === "auto" ? null : settings.assistantModel,
     effort: settings.assistantEffort === "auto" ? null : settings.assistantEffort,
   });
+  let disposed = false;
   const warmTiers = () =>
     agentOf().warm(tierBrains(leadBrain(), manual(), tierMemory.previous() ?? "default"));
   /** Voice, tray, settings and the assistant_model tool all land here; the next turn uses it, and its session is warmed now. */
@@ -3269,6 +3272,9 @@ export const startScreenCompanion = (input: {
         spareLook = visionFor("look");
       }
     },
+    warmAssistant: () => {
+      if (!disposed) warmTiers();
+    },
     openAskBox,
     askAbout: (text) => {
       rememberOutside(outsideSaid, text);
@@ -3651,6 +3657,7 @@ export const startScreenCompanion = (input: {
       }
     },
     dispose: () => {
+      disposed = true;
       stopMemorySync?.();
       agent?.dispose();
       for (const mcp of agentMcps) void mcp.close();
