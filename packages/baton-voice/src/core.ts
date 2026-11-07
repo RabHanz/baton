@@ -196,6 +196,8 @@ const WAKE_LOOKBACK_MS = 1_600;
 const WAKE_TAIL_MS = 200;
 /** A wake only the model heard, with no speech after it for this long, is let go quietly (not the whole window). */
 const QUIET_WAKE_MS = 3_000;
+/** How long a wake the model is sure of waits for its check before it shows anyway (a busy computer). */
+const SURE_CHECK_WAIT_MS = 600;
 /** Audio kept behind the newest frame, so a wake scored late (a busy computer just after launch) still finds the name and what followed. */
 const RECENT_MS = 30_000;
 /** However long the speech after held words takes to recognise, they are let go after this. */
@@ -275,6 +277,8 @@ export const createVoiceCore = (input: {
     ok: boolean | null;
   }
   let segmentFire: Fire | null = null;
+  /** Checks of a wake the model was sure of, each with the sample by which it must have answered. */
+  const slowChecks = new Set<{ readonly by: number; readonly late: () => void }>();
   /** The wake word the sentence being routed answers to, set in queue order so each sentence has its own. */
   let addressee: string | null = null;
   let segment: Int16Array[] | null = null;
@@ -562,8 +566,6 @@ export const createVoiceCore = (input: {
       }
       return show();
     }
-    // He has started talking: the window is his, however long he pauses later.
-    wakeHold = null;
     const pcm = joined(parts);
     const endAt = now();
     after(() => {
@@ -602,7 +604,13 @@ export const createVoiceCore = (input: {
       const cleaned = text.trim();
       const dictating = machine.mode === "dictation";
       if (text === SET_ASIDE) return;
-      if (NOISE.test(cleaned)) return dictating ? undefined : emit({ type: "nothing" });
+      if (NOISE.test(cleaned)) {
+        if (wakeHold?.denied === true) dropLoneWake(wakeHold);
+        return dictating ? undefined : emit({ type: "nothing" });
+      }
+      // Words from him: the window is his, however long he pauses later. Until then (a wake that re-opened its
+      // audio late counts it as speech) a wake nothing confirmed can still be let go.
+      wakeHold = null;
       if (turn.consumed) return;
       if (
         !dictating &&
@@ -917,6 +925,8 @@ export const createVoiceCore = (input: {
     readonly acceptedAt: number;
     confirmed: boolean;
     checking: boolean;
+    /** Its check said it was not the name while words were still being heard: nothing in them lets it go. */
+    denied: boolean;
     vadPeak: number;
     vadSum: number;
     vadFrames: number;
@@ -956,6 +966,7 @@ export const createVoiceCore = (input: {
    */
   const checkLoneWake = () => {
     const hold = wakeHold;
+    if (hold?.denied === true) return dropLoneWake(hold);
     if (hold === null || hold.confirmed || hold.checking || input.verifyWake === undefined) return;
     hold.checking = true;
     void input
@@ -989,6 +1000,7 @@ export const createVoiceCore = (input: {
             acceptedAt: samples,
             confirmed: checkMs !== undefined,
             checking: false,
+            denied: false,
             vadPeak: 0,
             vadSum: 0,
             vadFrames: 0,
@@ -1026,6 +1038,11 @@ export const createVoiceCore = (input: {
     // Inside a cue's window the microphone is replaced by silence for everything downstream.
     const frame = samples < cueUntil ? new Int16Array(heard.length) : heard;
     samples += frame.length;
+    for (const slow of slowChecks)
+      if (samples >= slow.by) {
+        slowChecks.delete(slow);
+        slow.late();
+      }
 
     const score = input.wake.process(frame);
     const wakeWord = score === null ? null : (input.wake.lastWord?.() ?? null);
@@ -1047,13 +1064,39 @@ export const createVoiceCore = (input: {
       // The reply itself says the name: it is its own voice, never a barge-in.
       emit({ type: "dropped", text: wakeWord, reason: "own voice", score });
     } else if (score !== null && machine.mode !== "dictation") {
+      // A sure score from sleep is checked too: the model is saturated, so noise scores like his voice. It
+      // waits only so long; past that it shows anyway, and a late "not the name" lets it go silently.
+      const sureFromSleep =
+        sure &&
+        machine.mode === "sleeping" &&
+        machine.pending === null &&
+        !speaking &&
+        !hearingItself();
       // Over its own voice too: a barge-in needs the recogniser to hear the name, not just the model.
-      if (input.verifyWake !== undefined && !sure) {
+      if (input.verifyWake !== undefined && (!sure || sureFromSleep)) {
         // The model alone is not enough, asleep or in a follow-up window (where a false fire would play the
         // cue, flash the pill and extend the window): recognise what was just said first.
         const checkFrom = samples;
+        const check = input.verifyWake(nameAudio(firedAt), wakeWord, score).catch(() => true);
+        let timedOut = false;
+        const verdict = !sureFromSleep
+          ? check
+          : Promise.race([
+              check,
+              new Promise<boolean>((resolve) => {
+                const slow = {
+                  by: samples + msToSamples(SURE_CHECK_WAIT_MS),
+                  late: () => {
+                    timedOut = true;
+                    resolve(true);
+                  },
+                };
+                slowChecks.add(slow);
+                void check.finally(() => slowChecks.delete(slow));
+              }),
+            ]);
         const fire: Fire = {
-          verdict: input.verifyWake(nameAudio(firedAt), wakeWord, score).catch(() => true),
+          verdict,
           made: false,
           segment: "none",
           ok: null,
@@ -1071,7 +1114,26 @@ export const createVoiceCore = (input: {
           fire.ok = ok;
           if (disposed) return;
           if (!ok) emit({ type: "dropped", text: "", reason: "wake not confirmed" });
-          else {
+          else if (timedOut) {
+            // Shown before the check answered: held as unconfirmed, and the check still decides.
+            acceptWake(score, firedAt, wakeWord, true, undefined, fire.segment === "none");
+            const hold = wakeHold;
+            if (hold === null) return show();
+            hold.checking = true;
+            void check.then((heardName) => {
+              hold.checking = false;
+              if (disposed || wakeHold !== hold) return;
+              if (heardName) hold.confirmed = true;
+              // Not the name, and no words from him yet: gone without a sound. Words he has begun, or that are
+              // being recognised, decide; if they turn out to be nothing, the silence lets it go (QUIET_WAKE_MS).
+              else if (
+                transcribing === 0 &&
+                (segment === null || speechSamples < msToSamples(seg.minSpeechMs))
+              )
+                dropLoneWake(hold);
+              else hold.denied = true;
+            });
+          } else {
             const checkMs = Math.round(((samples - checkFrom) * 1000) / VOICE_SAMPLE_RATE);
             acceptWake(score, firedAt, wakeWord, true, checkMs, fire.segment === "none");
           }

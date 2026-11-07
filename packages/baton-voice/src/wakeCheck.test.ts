@@ -18,6 +18,7 @@ const rig = (
   let speech = false;
   const heard: number[] = [];
   const loud: number[] = [];
+  let said = "what time is it";
   const events: VoiceCoreEvent[] = [];
   const core = createVoiceCore({
     waitMs: () => 0,
@@ -55,7 +56,7 @@ const rig = (
       transcribe: async (pcm) => {
         heard.push(pcm.length);
         loud.push(pcm.filter((v) => v !== 0).length);
-        return "what time is it";
+        return said;
       },
     },
   });
@@ -75,11 +76,14 @@ const rig = (
       firedAgo = Math.round(agoSeconds * 16_000);
     },
     speak: (on: boolean) => (speech = on),
+    /** What recognition returns from now on. */
+    hears: (text: string) => (said = text),
   };
 };
 
 describe("the second check before a wake from sleep", () => {
-  it("takes a wake the model is sure of without asking the recogniser, when she is not speaking", async () => {
+  // The model is saturated (0.1.70: a noise fire scored 1.0519, like his real wakes), so a sure score proves nothing.
+  it("checks a wake the model is sure of before it shows, and a no leaves no wake, no cue and no pill", async () => {
     let checks = 0;
     const r = rig(
       async () => {
@@ -92,8 +96,33 @@ describe("the second check before a wake from sleep", () => {
     r.wake();
     r.push(0.1);
     await r.core.idle();
-    expect(checks).toBe(0);
+    expect(checks).toBe(1);
+    expect(r.events.some((e) => e.type === "wake")).toBe(false);
+    expect(r.core.snapshot().machine.mode).toBe("sleeping");
+  });
+
+  it("shows a sure wake whose check has not answered in 600 ms, and lets it go silently when the late answer is no", async () => {
+    let answer: (heard: boolean) => void = () => {};
+    const r = rig(
+      () => new Promise<boolean>((resolve) => (answer = resolve)),
+      () => true,
+    );
+    r.hears("");
+    r.push(2);
+    r.wake();
+    r.push(0.5);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(r.events.some((e) => e.type === "wake")).toBe(false);
+    r.push(0.2);
+    await new Promise((resolve) => setImmediate(resolve));
     expect(r.events.some((e) => e.type === "wake")).toBe(true);
+    answer(false);
+    await new Promise((resolve) => setImmediate(resolve));
+    // The audio kept since the name is heard out, and holds nothing: it goes then, not after 3 s.
+    r.push(1);
+    await r.core.idle();
+    expect(r.events.some((e) => e.type === "dropped" && e.reason === "wake not heard")).toBe(true);
+    expect(r.core.snapshot().machine.mode).toBe("sleeping");
   });
 
   it("sends a sure fire over her voice to the check when his voice was not heard", async () => {
@@ -592,23 +621,31 @@ describe("right after launch, when the wake check is slow", () => {
 });
 
 describe("a wake with nothing after it", () => {
-  it("checks a sure wake on the name's own audio, and lets it go without a sound when the name is not there", async () => {
+  it("lets a wake that showed before its slow check go silently when the late answer is no and nothing followed", async () => {
     let checks = 0;
+    // The check is slow (a busy computer), so the wake shows at 600 ms; nothing follows the name.
+    let first: (heard: boolean) => void = () => {};
     const r = rig(
-      async () => {
+      (): Promise<boolean> => {
         checks += 1;
-        return false;
+        return checks === 1 ? new Promise((resolve) => (first = resolve)) : Promise.resolve(false);
       },
       () => true,
     );
+    // Only silence after the name: recognition hears nothing in it.
+    r.hears("");
     r.push(2);
     r.wake();
-    r.push(0.1);
+    r.push(0.7);
     await r.core.idle();
     expect(r.core.snapshot().machine.mode).toBe("command_window");
+    // The late answer is no, after his silence: it goes without a sound, well inside the window.
     r.push(1.4);
     await r.core.idle();
-    expect(checks).toBe(1);
+    first(false);
+    await new Promise((resolve) => setImmediate(resolve));
+    r.push(0.1);
+    await r.core.idle();
     const dropped = r.events.find((e) => e.type === "dropped" && e.reason === "wake not heard");
     expect(dropped).toMatchObject({ vadPeak: 0.02, vadMean: 0.02 });
     expect(r.events.some((e) => e.type === "dismissed")).toBe(false);
