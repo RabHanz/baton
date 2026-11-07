@@ -7,10 +7,11 @@ import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
+import * as TestClock from "effect/testing/TestClock";
 
 import { layerMemory } from "./BatonDatabase.ts";
-import { agentOfSession, BatonWeaveBoxes, type SessionPane } from "./BatonWeaveBoxes.ts";
-import { make as makeWeave, WeaveStores } from "./BatonWeaveService.ts";
+import { agentsOf, BatonWeaveBoxes, type SessionPane } from "./BatonWeaveBoxes.ts";
+import { make as makeWeave, queueDirFor, WeaveStores } from "./BatonWeaveService.ts";
 // @ts-expect-error -- plain JS shared with the live agent, which runs without a build
 import * as bridge from "../../../../scripts/tessaya/live/baton-live-acp.mjs";
 
@@ -21,6 +22,7 @@ const herdrOf = () => {
     answer: (_text: string) => ({ delivered: true, detail: "" }),
     typed: [] as Array<string>,
     asked: [] as Array<string>,
+    listings: 0,
   };
   const box = {
     name: "here",
@@ -34,7 +36,10 @@ const herdrOf = () => {
           return answer;
         }),
     },
-    locate: (sessionId: string) => Effect.sync(() => state.where.get(sessionId) ?? null),
+    agents: Effect.sync(() => {
+      state.listings += 1;
+      return new Map(state.where);
+    }),
   };
   return { state, box };
 };
@@ -93,7 +98,8 @@ it.effect("takes in the three old stores once, in order, and moves each aside", 
     t.write("unbound-ledger.ndjson", `${JSON.stringify({ id: "u0", state: "claimed" })}\n`);
     t.write("baton-catalog-kept.json", { "sid-a": ["from the list"] });
     return Effect.gen(function* () {
-      const weave = yield* makeWeave;
+      // Each start is its own scope, as a server restart is: the folder lock goes with it.
+      const kept = yield* Effect.scoped(Effect.flatMap(makeWeave, (w) => w.catalogKept));
       assert.deepStrictEqual(
         (yield* t.rows).map((r) => [r.to_pane, r.text, r.source]),
         [
@@ -120,14 +126,19 @@ it.effect("takes in the three old stores once, in order, and moves each aside", 
         );
       assert.isFalse(names.includes("baton-catalog-kept.json"));
       assert.deepStrictEqual(t.read("sid-a.server"), { waiting: 2 });
-      assert.deepStrictEqual(yield* weave.catalogKept, { "sid-a": ["from the list"] });
+      assert.deepStrictEqual(kept, { "sid-a": ["from the list"] });
 
       // A second start takes in nothing; nor does one after a crash between commit and move.
-      yield* makeWeave;
+      yield* Effect.scoped(makeWeave);
       const aside = names.find((n) => n.startsWith("sid-a.json.migrated-"))!;
       NodeFS.copyFileSync(t.file(aside), t.file("sid-a.json"));
-      yield* makeWeave;
+      yield* Effect.scoped(makeWeave);
       assert.strictEqual((yield* t.rows).length, 4);
+      // A kept file that could not be moved aside is not sent again once its rows were sent and dropped.
+      yield* Effect.scoped(Effect.flatMap(makeWeave, (w) => w.setCatalogKept({})));
+      t.write("baton-catalog-kept.json", { "sid-a": ["from the list"] });
+      const again = yield* Effect.scoped(Effect.flatMap(makeWeave, (w) => w.catalogKept));
+      assert.deepStrictEqual(again, {});
     }).pipe(Effect.provide(t.layer));
   }),
 );
@@ -139,8 +150,7 @@ it.effect("imports each inbound line once, across a restart mid-line and a repla
     t.inbound(line("b", "s1", "second"));
     t.inbound(line("c", "s1", "third"), "");
     return Effect.gen(function* () {
-      const before = yield* makeWeave;
-      yield* before.deliver;
+      yield* Effect.scoped(Effect.flatMap(makeWeave, (before) => before.deliver));
       assert.deepStrictEqual(
         (yield* t.rows).map((r) => r.text),
         ["first", "second"],
@@ -195,6 +205,8 @@ it.effect(
         t.herdr.where.set("s1", { pane: "w2:p7", status: "working" });
         t.herdr.where.set("s2", { pane: "w2:p8", status: "idle" });
         t.herdr.answer = () => ({ delivered: true, detail: "" });
+        // s2 was not there before, so it is looked at less often; a minute later it is looked at again.
+        yield* TestClock.adjust("1 minute");
         assert.strictEqual(yield* weave.deliver, 3);
         assert.deepStrictEqual(t.herdr.typed, ["w2:p7: first", "w2:p7: second", "w2:p8: other"]);
         assert.match(
@@ -203,6 +215,7 @@ it.effect(
         );
         // Herdr did not answer in time: it may be in the pane, so it is dropped and said, never sent again.
         t.herdr.where.set("s3", { pane: "w2:p9", status: "idle" });
+        yield* TestClock.adjust("1 minute");
         t.herdr.answer = () => ({ delivered: false, detail: "herdr timed out" });
         yield* weave.deliver;
         yield* weave.deliver;
@@ -291,7 +304,127 @@ it("finds a session's pane and state in `herdr agent list` by its id", () => {
       ],
     },
   });
-  assert.deepStrictEqual(agentOfSession(listed, "sid-1"), { pane: "w2:p4", status: "blocked" });
-  assert.strictEqual(agentOfSession(listed, "gone"), null);
-  assert.strictEqual(agentOfSession("not json", "sid-1"), null);
+  assert.deepStrictEqual(
+    [...agentsOf(listed)],
+    [
+      ["other", { pane: "w1:p1", status: "idle" }],
+      ["sid-1", { pane: "w2:p4", status: "blocked" }],
+    ],
+  );
+  assert.strictEqual(agentsOf("not json").size, 0);
 });
+
+it.effect("two servers on one folder: only the one holding it imports and types", () =>
+  Effect.suspend(() => {
+    const t = setup();
+    t.inbound(line("a", "s1", "only once"));
+    t.herdr.where.set("s1", { pane: "w1:p1", status: "idle" });
+    // The second server has its own database, as a desktop server and a second install would.
+    const second = Effect.flatMap(makeWeave, (w) => w.deliver).pipe(
+      Effect.scoped,
+      Effect.provide(layerMemory),
+    );
+    return Effect.gen(function* () {
+      const first = yield* makeWeave;
+      assert.strictEqual(yield* second, 0);
+      assert.strictEqual(yield* first.deliver, 1);
+      assert.strictEqual(yield* second, 0);
+      assert.deepStrictEqual(t.herdr.typed, ["w1:p1: only once"]);
+    }).pipe(Effect.provide(t.layer));
+  }),
+);
+
+it("a server on another base dir keeps its own folder; the real install uses the usual one", () => {
+  assert.strictEqual(queueDirFor("/home/me/.t3", "/home/me"), null);
+  assert.strictEqual(
+    queueDirFor("/w/tree/.t3", "/home/me"),
+    NodePath.join("/w/tree/.t3", "tessaya", "live-queue"),
+  );
+});
+
+it.effect(
+  "one Herdr listing serves every target, and a target not there is looked at less often",
+  () =>
+    Effect.suspend(() => {
+      const t = setup();
+      t.inbound(line("a", "gone-1", "one"));
+      t.inbound(line("b", "gone-2", "two"));
+      return Effect.gen(function* () {
+        const weave = yield* makeWeave;
+        yield* weave.deliver;
+        assert.strictEqual(t.herdr.listings, 1);
+        yield* weave.deliver;
+        assert.strictEqual(t.herdr.listings, 1);
+        yield* TestClock.adjust("3 seconds");
+        yield* weave.deliver;
+        assert.strictEqual(t.herdr.listings, 2);
+        // Twice as long now.
+        yield* TestClock.adjust("3 seconds");
+        yield* weave.deliver;
+        assert.strictEqual(t.herdr.listings, 2);
+      }).pipe(Effect.provide(t.layer));
+    }),
+);
+
+it.effect("taken-in rows keep the time they were first queued", () =>
+  Effect.suspend(() => {
+    const t = setup();
+    t.write("sid-b.json", [{ tries: 0, at: "2026-11-07T09:00:00.000Z", text: "from before" }]);
+    return Effect.gen(function* () {
+      yield* makeWeave;
+      const [row] = yield* Effect.flatMap(
+        SqlClient.SqlClient,
+        (sql) => sql<{ created_at: number }>`SELECT created_at FROM fabric_weaves`,
+      ).pipe(Effect.orDie);
+      assert.strictEqual(row?.created_at, Date.parse("2026-11-07T09:00:00.000Z"));
+    }).pipe(Effect.provide(t.layer));
+  }),
+);
+
+it.effect("a weave Herdr may have typed is reported lost and never typed again", () =>
+  Effect.suspend(() => {
+    const t = setup();
+    const typed: Array<string> = [];
+    const pane = {
+      name: "here",
+      adapter: {
+        discover: Effect.succeed({
+          available: true,
+          reason: "",
+          candidates: [
+            {
+              runtime: "herdr",
+              label: "build",
+              location: { workspace: "w", pane: "p1", host: null },
+              agentKind: "claude",
+              runtimeState: "idle",
+            },
+          ],
+        }),
+        readOutput: () => Effect.succeed({ available: true, detail: "", output: "│ > │" }),
+        sendInput: (input: { text: string }) =>
+          Effect.sync(() => {
+            typed.push(input.text);
+            return { delivered: false, detail: "the text reached build, but return did not" };
+          }),
+      },
+    };
+    return Effect.gen(function* () {
+      const weave = yield* makeWeave;
+      const sent = yield* weave.send({ to: "build", text: "run the tests please" });
+      assert.strictEqual(sent.status, "lost");
+      assert.match(sent.reason ?? "", /may already be in the pane/);
+      yield* weave.deliver;
+      yield* weave.tick;
+      assert.deepStrictEqual(typed, ["run the tests please"]);
+    }).pipe(
+      Effect.provide(Layer.mergeAll(layerMemory, Layer.succeed(BatonWeaveBoxes, [pane] as never))),
+      Effect.provide(
+        Layer.succeed(WeaveStores, {
+          liveQueueDir: () => t.dir,
+          catalogFile: t.file("none.json"),
+        }),
+      ),
+    );
+  }),
+);

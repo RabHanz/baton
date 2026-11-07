@@ -26,8 +26,11 @@ export interface WeaveBox {
   readonly adapter: AdoptedRuntimeAdapter["Service"];
   /** Puts a line into the named sender's own thread, when the sender is a session of this box. */
   readonly notify?: (from: string, line: string) => Effect.Effect<void>;
-  /** The pane a Claude session is in now, found by its id, so a Herdr restart that renumbers panes still finds it. */
-  readonly locate?: (sessionId: string) => Effect.Effect<SessionPane | null>;
+  /**
+   * Every Claude session in a Herdr pane now, by session id: one listing per pass serves every target, and a Herdr
+   * restart that renumbers panes still finds each session.
+   */
+  readonly agents?: Effect.Effect<ReadonlyMap<string, SessionPane>>;
 }
 
 export interface SessionPane {
@@ -36,43 +39,47 @@ export interface SessionPane {
   readonly status: string;
 }
 
-/** The agent running a Claude session, from `herdr agent list`. */
-export const agentOfSession = (json: string, sessionId: string): SessionPane | null => {
+/** The Claude sessions in `herdr agent list`, by session id. */
+export const agentsOf = (json: string): ReadonlyMap<string, SessionPane> => {
+  const found = new Map<string, SessionPane>();
   try {
     const agents: unknown = (JSON.parse(json) as { result?: { agents?: unknown } })?.result?.agents;
-    if (!Array.isArray(agents)) return null;
-    const agent = agents.find(
-      (a: { agent_session?: { value?: unknown } }) => a?.agent_session?.value === sessionId,
-    ) as { pane_id?: unknown; agent_status?: unknown } | undefined;
-    return typeof agent?.pane_id === "string"
-      ? {
-          pane: agent.pane_id,
-          status: typeof agent.agent_status === "string" ? agent.agent_status : "unknown",
-        }
-      : null;
-  } catch {
-    return null;
-  }
+    if (!Array.isArray(agents)) return found;
+    for (const a of agents as Array<{
+      agent_session?: { value?: unknown };
+      pane_id?: unknown;
+      agent_status?: unknown;
+    }>) {
+      const id = a?.agent_session?.value;
+      if (typeof id !== "string" || typeof a.pane_id !== "string") continue;
+      found.set(id, {
+        pane: a.pane_id,
+        status: typeof a.agent_status === "string" ? a.agent_status : "unknown",
+      });
+    }
+  } catch {}
+  return found;
 };
 
 /** Every running Herdr session is asked, as discovery does; the pane comes back as `<session>~<pane>` off default. */
-export const locateWith =
-  (cli: HerdrCli["Service"]) =>
-  (sessionId: string): Effect.Effect<SessionPane | null> =>
-    Effect.gen(function* () {
-      const listed = yield* cli.run(["session", "list"]);
-      const names = listed.exitCode === 0 ? parseHerdrSessionList(listed.stdout) : [];
-      for (const session of names.length === 0 ? ["default"] : names) {
-        const named = session === "default" ? [] : ["--session", session];
-        const out = yield* cli.run([...named, "agent", "list"]);
-        const found = out.exitCode === 0 ? agentOfSession(out.stdout, sessionId) : null;
-        if (found !== null)
-          return named.length === 0
-            ? found
-            : { ...found, pane: `${session}${SESSION_SEPARATOR}${found.pane}` };
-      }
-      return null;
-    });
+export const agentsWith = Effect.fn("BatonWeaveBoxes.agents")(function* (cli: HerdrCli["Service"]) {
+  const listed = yield* cli.run(["session", "list"]);
+  const names = listed.exitCode === 0 ? parseHerdrSessionList(listed.stdout) : [];
+  const all = new Map<string, SessionPane>();
+  for (const session of names.length === 0 ? ["default"] : names) {
+    const named = session === "default" ? [] : ["--session", session];
+    const out = yield* cli.run([...named, "agent", "list"]);
+    if (out.exitCode !== 0) continue;
+    for (const [id, found] of agentsOf(out.stdout))
+      all.set(
+        id,
+        named.length === 0
+          ? found
+          : { ...found, pane: `${session}${SESSION_SEPARATOR}${found.pane}` },
+      );
+  }
+  return all;
+});
 
 export class BatonWeaveBoxes extends Context.Service<BatonWeaveBoxes, ReadonlyArray<WeaveBox>>()(
   "t3/baton/BatonWeaveBoxes",
@@ -125,7 +132,7 @@ export const layer = Layer.effect(
     const local = yield* AdoptedRuntimeAdapter;
     const cli = yield* HerdrCli;
     return [
-      { name: "here", adapter: local, locate: locateWith(cli) },
+      { name: "here", adapter: local, agents: Effect.suspend(() => agentsWith(cli)) },
       makeLiveBox(readAllProfileLiveSessions()),
     ] as ReadonlyArray<WeaveBox>;
   }),

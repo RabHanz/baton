@@ -8,6 +8,7 @@
  */
 import {
   BatonWeaveError,
+  type AdoptedDiscoverResult,
   type AdoptedSession,
   type AdoptedSessionCandidate,
   type BatonWeave,
@@ -36,6 +37,7 @@ import * as NodePath from "node:path";
 import * as ServerConfig from "../config.ts";
 import {
   appendLiveQueue,
+  listOwned,
   liveQueueDir,
   moveAside,
   readInbound,
@@ -45,7 +47,7 @@ import {
   writeOwned,
 } from "./BatonLiveQueue.ts";
 import { BatonRecordService } from "./BatonRecordService.ts";
-import { BatonWeaveBoxes, type WeaveBox } from "./BatonWeaveBoxes.ts";
+import { BatonWeaveBoxes, type SessionPane, type WeaveBox } from "./BatonWeaveBoxes.ts";
 import { sendOutcome } from "./SessionCatalog.ts";
 import { readKeptFile } from "./SessionCatalogLive.ts";
 import { pendingKept, readKept, readLedger } from "./UnboundMessages.ts";
@@ -91,6 +93,10 @@ const newId = (): string => globalThis.crypto.randomUUID().slice(0, 8);
 const DRAIN_EVERY = "3 seconds";
 /** Settings key: how far into `inbound.ndjson` the server has imported. */
 const INBOUND_OFFSET = "weave.inbound.offset";
+const CATALOG_DONE = "weave.migrated.catalog";
+const UNBOUND_DONE = "weave.migrated.unbound";
+const BACKOFF_FIRST_MS = 3_000;
+const BACKOFF_MAX_MS = 60_000;
 /** A stable id for a row taken from an old store, so taking it again (a crash before the move) changes nothing. */
 const takenId = (...parts: ReadonlyArray<string>): string =>
   `m-${NodeCrypto.createHash("sha1").update(parts.join("\u0000")).digest("hex").slice(0, 16)}`;
@@ -148,17 +154,33 @@ export class WeaveStores extends Context.Service<
   { readonly liveQueueDir: () => string; readonly catalogFile: string }
 >()("t3/baton/BatonWeaveService/WeaveStores") {}
 
+/**
+ * A server on another base dir than `~/.t3` (a dev worktree's `.t3`) keeps its own folder there, and hands it to the
+ * bridges it starts through `BATON_LIVE_QUEUE_DIR`, so it never imports or types the real install's messages.
+ */
+export const queueDirFor = (baseDir: string, home: string): string | null =>
+  NodePath.resolve(baseDir) === NodePath.resolve(home, ".t3")
+    ? null
+    : NodePath.join(baseDir, "tessaya", "live-queue");
+
 export const storesLayer = Layer.effect(
   WeaveStores,
-  Effect.map(Effect.serviceOption(ServerConfig.ServerConfig), (config) => ({
-    // Read each time: the folder can move to ~/.t3/tessaya while the server runs.
-    liveQueueDir,
-    // The sessions list kept its messages beside the auto-resume state (BatonSessionCatalogService).
-    catalogFile: NodePath.join(
-      Option.isSome(config) ? NodePath.dirname(config.value.dbPath) : NodeOS.homedir(),
-      "baton-catalog-kept.json",
-    ),
-  })),
+  Effect.gen(function* () {
+    const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
+    const own =
+      process.env["BATON_LIVE_QUEUE_DIR"] ??
+      (Option.isSome(config) ? queueDirFor(config.value.baseDir, NodeOS.homedir()) : null);
+    if (own !== null) yield* Effect.sync(() => void (process.env["BATON_LIVE_QUEUE_DIR"] = own));
+    return {
+      // Read each time otherwise: the folder can move to ~/.t3/tessaya while the server runs.
+      liveQueueDir: own === null ? liveQueueDir : () => own,
+      // The sessions list kept its messages beside the auto-resume state (BatonSessionCatalogService).
+      catalogFile: NodePath.join(
+        Option.isSome(config) ? NodePath.dirname(config.value.dbPath) : NodeOS.homedir(),
+        "baton-catalog-kept.json",
+      ),
+    };
+  }),
 );
 
 export const make = Effect.gen(function* () {
@@ -168,6 +190,25 @@ export const make = Effect.gen(function* () {
   const nowMs = Clock.currentTimeMillis;
   /** One drain at a time: the drainer, a send and a client's tick must never type the same row twice. */
   const draining = yield* Semaphore.make(1);
+  /**
+   * One server owns a live-queue folder (`.server.lock`, the bridge's stale-pid rule): only it imports from the
+   * folder and drains, so two servers on one machine never both type a message. Held for the service's lifetime.
+   */
+  let folder: { readonly dir: string; readonly release: () => void } | null = null;
+  const ownFolder = Effect.sync((): string | null => {
+    if (Option.isNone(stores)) return null;
+    const dir = stores.value.liveQueueDir();
+    if (folder?.dir === dir) return dir;
+    folder?.release();
+    folder = null;
+    const release = takeQueueLock(dir, ".server.lock");
+    if (release === null) return null;
+    folder = { dir, release };
+    return dir;
+  });
+  yield* Effect.addFinalizer(() => Effect.sync(() => folder?.release()));
+  /** Targets not there now are looked at less often, up to once a minute, so a gone session costs little. */
+  const backoff = new Map<string, { readonly until: number; readonly delay: number }>();
 
   const get = (id: string) =>
     sql<Row>`SELECT * FROM fabric_weaves WHERE id = ${id}`.pipe(
@@ -222,6 +263,29 @@ export const make = Effect.gen(function* () {
   /** Addressed to a Claude session, not a pane: its pane is looked up each time it is typed. */
   const bySession = (box: string) => box === "session" || box === "live";
 
+  /** What Herdr shows, read once per pass and shared by every target in it. */
+  const newPass = () => {
+    let agents: ReadonlyMap<string, SessionPane> | null = null;
+    const found = new Map<string, AdoptedDiscoverResult>();
+    const here = boxes.find((b) => b.agents !== undefined);
+    return {
+      here,
+      agents: Effect.suspend(() =>
+        agents !== null || here?.agents === undefined
+          ? Effect.succeed(agents ?? new Map<string, SessionPane>())
+          : Effect.map(here.agents, (all) => (agents = all)),
+      ),
+      discover: (box: WeaveBox) =>
+        Effect.suspend(() => {
+          const seen = found.get(box.name);
+          return seen !== undefined
+            ? Effect.succeed(seen)
+            : Effect.tap(box.adapter.discover, (r) => Effect.sync(() => found.set(box.name, r)));
+        }),
+    };
+  };
+  type Pass = ReturnType<typeof newPass>;
+
   /** Only the pane and label are read by the adapter; no stored session is involved. */
   const synth = (c: AdoptedSessionCandidate): AdoptedSession =>
     ({
@@ -244,9 +308,9 @@ export const make = Effect.gen(function* () {
 
   /** A line in the session's own thread, which the bridge shows (a note is never typed). */
   const note = (row: Row, sessionId: string, text: string) =>
-    row.source === "thread" && Option.isSome(stores)
+    row.source === "thread" && folder !== null
       ? Effect.sync(() =>
-          appendLiveQueue(stores.value.liveQueueDir(), sessionId, {
+          appendLiveQueue(folder!.dir, sessionId, {
             text,
             shown: text,
             kind: "note",
@@ -261,12 +325,13 @@ export const make = Effect.gen(function* () {
   const attemptSession = Effect.fn("BatonWeaveService.attemptSession")(function* (
     row: Row,
     sessionId: string,
+    pass: Pass,
   ) {
     const rec = fromRow(row);
     const quiet = row.source !== null;
     const now = yield* nowMs;
-    const here = boxes.find((b) => b.locate !== undefined);
-    const where = here?.locate === undefined ? null : yield* here.locate(sessionId);
+    const here = pass.here;
+    const where = (yield* pass.agents).get(sessionId) ?? null;
     const step = nextStep(rec, { present: where !== null, busy: false, input: "empty" }, now);
     const wait = (reason: string, tries = rec.tries) =>
       setState(rec.id, { status: "queued", reason, tries }, quiet).pipe(
@@ -278,7 +343,9 @@ export const make = Effect.gen(function* () {
       return "lost" as const;
     }
     if (here === undefined || where === null)
-      return yield* wait("the session is not in a Herdr pane here now");
+      return yield* wait("the session is not in a Herdr pane here now").pipe(
+        Effect.as("absent" as const),
+      );
     if (where.status === "blocked")
       return yield* wait("it is waiting on a question or an approval in its terminal");
     const sent = yield* here.adapter.sendInput({
@@ -314,14 +381,14 @@ export const make = Effect.gen(function* () {
   });
 
   /** Looks at the target now and, if it can take the message, types it. Waiting does not use up a try. */
-  const attempt = (row: Row) =>
+  const attempt = (row: Row, pass: Pass) =>
     Effect.gen(function* () {
       const rec = fromRow(row);
       const now = yield* nowMs;
       const { box: boxName, pane } = splitKey(rec.toPane);
-      if (bySession(boxName)) return yield* attemptSession(row, pane);
+      if (bySession(boxName)) return yield* attemptSession(row, pane, pass);
       const box = boxNamed(boxName);
-      const found = box === undefined ? null : yield* box.adapter.discover;
+      const found = box === undefined ? null : yield* pass.discover(box);
       const cand = found?.candidates.find((c) => c.location.pane === pane);
       if (box === undefined || cand === undefined) {
         const step = nextStep(rec, { present: false, busy: false, input: "unknown" }, now);
@@ -330,7 +397,7 @@ export const make = Effect.gen(function* () {
           reason: step.do === "send" ? null : step.why,
           tries: rec.tries,
         });
-        return step.do === "lose" ? ("lost" as const) : ("waiting" as const);
+        return step.do === "lose" ? ("lost" as const) : ("absent" as const);
       }
       const busy = cand.runtimeState === "working" || cand.runtimeState === "blocked";
       const session = synth(cand);
@@ -339,7 +406,8 @@ export const make = Effect.gen(function* () {
       const step = nextStep(rec, { present: true, busy, input }, now);
       if (step.do === "send") {
         const sent = yield* box.adapter.sendInput({ session, text: rec.text, submit: true });
-        if (sent.delivered) {
+        const outcome = sendOutcome(sent);
+        if (outcome === "sent") {
           yield* setState(rec.id, {
             status: "delivered",
             reason: null,
@@ -348,10 +416,20 @@ export const make = Effect.gen(function* () {
           });
           return "delivered" as const;
         }
+        // Only a definite refusal is tried again; anything else may already be in the pane (a timeout, the text
+        // without its return), so it is reported and never typed twice.
+        if (outcome === "unsure") {
+          yield* setState(rec.id, {
+            status: "lost",
+            reason: `it may already be in the pane, so it is not sent again: ${sent.detail || "no answer"}`,
+            tries: rec.tries + 1,
+          });
+          return "lost" as const;
+        }
         yield* setState(rec.id, {
           status: "queued",
           reason: sent.detail || "the pane did not take it",
-          tries: rec.tries + 1,
+          tries: outcome === "refused" ? rec.tries + 1 : rec.tries,
         });
         return "waiting" as const;
       }
@@ -372,7 +450,7 @@ export const make = Effect.gen(function* () {
     );
 
   /** Oldest first; stops at the first message that cannot go yet, so the order is kept. */
-  const drainPane = Effect.fn("BatonWeaveService.drainPane")(function* (pane: string) {
+  const drainPane = Effect.fn("BatonWeaveService.drainPane")(function* (pane: string, pass: Pass) {
     const rows = yield* sql<Row>`
         SELECT * FROM fabric_weaves WHERE status = 'queued' AND to_pane = ${pane}
           AND (source IS NULL OR source = 'thread')
@@ -380,16 +458,27 @@ export const make = Effect.gen(function* () {
       `.pipe(Effect.orDie);
     let delivered = 0;
     for (const row of rows) {
-      const r = yield* attempt(row);
+      const r = yield* attempt(row, pass);
       if (r === "delivered") {
         delivered += 1;
         continue;
       }
       if (r === "lost") continue;
-      break;
+      return { delivered, absent: r === "absent" };
     }
-    return delivered;
+    return { delivered, absent: false };
   });
+
+  const setSetting = (key: string, value: string) => sql`
+    INSERT INTO fabric_settings (key, value) VALUES (${key}, ${value})
+    ON CONFLICT (key) DO UPDATE SET value = excluded.value
+  `;
+  /** Set in the same transaction as an old store's rows: a file that could not be moved aside is never sent again. */
+  const isDone = (key: string) =>
+    sql<{ value: string }>`SELECT value FROM fabric_settings WHERE key = ${key}`.pipe(
+      Effect.map((rows) => rows.length > 0),
+      Effect.orDie,
+    );
 
   const inboundOffset = sql<{ value: string }>`
     SELECT value FROM fabric_settings WHERE key = ${INBOUND_OFFSET}
@@ -400,7 +489,10 @@ export const make = Effect.gen(function* () {
 
   /** Marks each session whose waiting messages the server types, for the bridge (`writeOwned`). */
   const markOwned = Effect.gen(function* () {
-    if (Option.isNone(stores)) return;
+    const dir = folder?.dir;
+    if (dir === undefined) return;
+    // Listed before anything is counted: a marker the bridge writes after this is never removed by this pass.
+    const markers = listOwned(dir);
     const rows = yield* sql<{ to_pane: string; n: number }>`
       SELECT to_pane, COUNT(*) AS n FROM fabric_weaves
       WHERE status = 'queued' AND (source IS NULL OR source = 'thread')
@@ -409,10 +501,9 @@ export const make = Effect.gen(function* () {
     `.pipe(Effect.orDie);
     const waiting = new Map(rows.map((r) => [splitKey(r.to_pane).pane, Number(r.n)]));
     // Lines the bridge appended since the last import are the server's too, though not in the table yet.
-    const dir = stores.value.liveQueueDir();
     for (const line of readInbound(dir, yield* inboundOffset).lines)
       if (!line.unbound) waiting.set(line.sessionId, (waiting.get(line.sessionId) ?? 0) + 1);
-    yield* Effect.sync(() => writeOwned(dir, waiting));
+    yield* Effect.sync(() => writeOwned(dir, waiting, markers));
   });
 
   const insertRows = (rows: ReadonlyArray<NewRow>) =>
@@ -433,10 +524,10 @@ export const make = Effect.gen(function* () {
    */
   const takeOver = Effect.fn("BatonWeaveService.takeOver")(function* () {
     if (Option.isNone(stores)) return;
-    const dir = stores.value.liveQueueDir();
-    const catalogFile = stores.value.catalogFile;
     const now = yield* nowMs;
-    if (readQueueFiles(dir).length > 0) {
+    const catalogFile = stores.value.catalogFile;
+    const dir = yield* ownFolder;
+    if (dir !== null && readQueueFiles(dir).length > 0) {
       const release = takeQueueLock(dir);
       if (release !== null) {
         yield* Effect.gen(function* () {
@@ -450,7 +541,7 @@ export const make = Effect.gen(function* () {
                   toLabel: `session ${q.sessionId.slice(0, 8)}`,
                   toPane: paneKey("session", q.sessionId),
                   text: t.text,
-                  createdAt: now,
+                  createdAt: Date.parse(t.at) || now,
                   source: "thread" as const,
                 })),
               ),
@@ -462,48 +553,61 @@ export const make = Effect.gen(function* () {
         }).pipe(Effect.ensuring(Effect.sync(release)));
       }
     }
-    const keptFile = NodePath.join(dir, "unbound-messages.ndjson");
-    if (NodeFS.existsSync(keptFile)) {
+    const keptFile = dir === null ? null : NodePath.join(dir, "unbound-messages.ndjson");
+    if (
+      dir !== null &&
+      keptFile !== null &&
+      NodeFS.existsSync(keptFile) &&
+      !(yield* isDone(UNBOUND_DONE))
+    ) {
       const pending = pendingKept(readKept(dir), readLedger(dir));
       yield* sql.withTransaction(
-        insertRows(
-          pending.map((e) => ({
-            id: `u-${e.id}`,
-            from: "thread",
-            toLabel: "its thread",
-            toPane:
-              e.thread !== null
-                ? paneKey("thread", e.thread)
-                : paneKey("unbound", e.sessionId ?? e.id),
-            text: e.text,
-            createdAt: now,
-            source: "unbound" as const,
-          })),
-        ),
+        Effect.gen(function* () {
+          yield* insertRows(
+            pending.map((e) => ({
+              id: `u-${e.id}`,
+              from: "thread",
+              toLabel: "its thread",
+              toPane:
+                e.thread !== null
+                  ? paneKey("thread", e.thread)
+                  : paneKey("unbound", e.sessionId ?? e.id),
+              text: e.text,
+              createdAt: Date.parse(e.at) || now,
+              source: "unbound" as const,
+            })),
+          );
+          yield* setSetting(UNBOUND_DONE, String(now));
+        }),
       );
       moveAside(keptFile, now);
       moveAside(NodePath.join(dir, "unbound-ledger.ndjson"), now);
     }
-    if (NodeFS.existsSync(catalogFile)) {
+    // The catalog file is this server's own (beside its database), so it is taken in whether or not it owns the folder.
+    if (NodeFS.existsSync(catalogFile) && !(yield* isDone(CATALOG_DONE))) {
       const { kept, problem } = readKeptFile(catalogFile);
       if (problem !== null) yield* Effect.logWarning("Tessaya kept messages", problem);
       yield* sql.withTransaction(
-        insertRows(
-          Object.entries(kept).flatMap(([sessionId, texts]) =>
-            texts.map((text, i) => ({
-              id: takenId("catalog", sessionId, String(i), text),
-              from: "Sessions",
-              toLabel: `session ${sessionId.slice(0, 8)}`,
-              toPane: paneKey("session", sessionId),
-              text,
-              createdAt: now,
-              source: "catalog" as const,
-            })),
-          ),
-        ),
+        Effect.gen(function* () {
+          yield* insertRows(
+            Object.entries(kept).flatMap(([sessionId, texts]) =>
+              texts.map((text, i) => ({
+                id: takenId("catalog", sessionId, String(i), text),
+                from: "Sessions",
+                toLabel: `session ${sessionId.slice(0, 8)}`,
+                toPane: paneKey("session", sessionId),
+                text,
+                createdAt: now,
+                source: "catalog" as const,
+              })),
+            ),
+          );
+          yield* setSetting(CATALOG_DONE, String(now));
+        }),
       );
       moveAside(catalogFile, now);
     }
+    if (dir === null) return;
     const offset = yield* inboundOffset;
     const { lines, next } = readInbound(dir, offset);
     if (next === offset && lines.length === 0) return;
@@ -524,10 +628,7 @@ export const make = Effect.gen(function* () {
             source: l.unbound ? ("unbound" as const) : ("thread" as const),
           })),
         );
-        yield* sql`
-          INSERT INTO fabric_settings (key, value) VALUES (${INBOUND_OFFSET}, ${String(next)})
-          ON CONFLICT (key) DO UPDATE SET value = excluded.value
-        `;
+        yield* setSetting(INBOUND_OFFSET, String(next));
       }),
     );
     // Marked at once, so a message the bridge gets next joins the end instead of going first.
@@ -536,12 +637,26 @@ export const make = Effect.gen(function* () {
 
   const deliverUnlocked = Effect.gen(function* () {
     yield* takeOver().pipe(Effect.orDie);
+    // Another server owns this machine's folder: it drains, this one does not.
+    if (Option.isSome(stores) && folder === null) return 0;
     const panes = yield* sql<{ to_pane: string }>`
       SELECT DISTINCT to_pane FROM fabric_weaves
       WHERE status = 'queued' AND (source IS NULL OR source = 'thread')
     `.pipe(Effect.orDie);
+    const now = yield* nowMs;
+    const pass = newPass();
     let delivered = 0;
-    for (const { to_pane } of panes) delivered += yield* drainPane(to_pane);
+    for (const { to_pane } of panes) {
+      const wait = backoff.get(to_pane);
+      if (wait !== undefined && wait.until > now) continue;
+      const r = yield* drainPane(to_pane, pass);
+      delivered += r.delivered;
+      if (!r.absent) backoff.delete(to_pane);
+      else {
+        const delay = Math.min(BACKOFF_MAX_MS, (wait?.delay ?? BACKOFF_FIRST_MS / 2) * 2);
+        backoff.set(to_pane, { until: now + delay, delay });
+      }
+    }
     if (panes.length > 0) yield* markOwned;
     return delivered;
   });
@@ -594,8 +709,9 @@ export const make = Effect.gen(function* () {
       VALUES (${id}, ${input.from ?? "Tessaya"}, ${target.target.label}, ${target.target.pane}, ${input.text.trim()},
               'queued', ${input.job ?? null}, 0, ${now})
     `.pipe(Effect.orDie);
-    // Earlier messages to the same pane go first, so the order he sent them in is kept.
-    yield* draining.withPermits(1)(drainPane(target.target.pane));
+    // Earlier messages to the same pane go first, so the order he sent them in is kept. A pass already running is not
+    // waited for: the row is queued, and the drainer takes it in a few seconds.
+    yield* draining.withPermitsIfAvailable(1)(drainPane(target.target.pane, newPass()));
     const sent = (yield* get(id))!;
     const line =
       sent.status === "delivered"

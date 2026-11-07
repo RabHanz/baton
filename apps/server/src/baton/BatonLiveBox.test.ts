@@ -7,6 +7,7 @@ import type { ClaudeLiveSession } from "@t3tools/baton-contracts";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as TestClock from "effect/testing/TestClock";
 
 import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
 import { BatonWeaveBoxes, makeLiveBox } from "./BatonWeaveBoxes.ts";
@@ -44,10 +45,9 @@ const here = {
         return { delivered: true, detail: "" };
       }),
   },
-  locate: (sessionId: string) =>
-    Effect.succeed(
-      sessionId === "sid-1" && herdr.pane !== null ? { pane: herdr.pane, status: "idle" } : null,
-    ),
+  agents: Effect.sync(
+    () => new Map(herdr.pane === null ? [] : [["sid-1", { pane: herdr.pane, status: "idle" }]]),
+  ),
 };
 
 const layer = it.layer(
@@ -78,6 +78,8 @@ layer("weaving to live threads outside Herdr", (it) => {
         assert.match(note?.text ?? "", /^Queued for live:plain/);
         assert.strictEqual(yield* weave.deliver, 0);
         herdr.pane = "w1:p4";
+        // It was not there, so it is looked at again after a while.
+        yield* TestClock.adjust("1 minute");
         assert.strictEqual(yield* weave.deliver, 1);
         assert.strictEqual(yield* weave.deliver, 0);
         assert.deepStrictEqual(herdr.typed, ["w1:p4: please look at the build"]);

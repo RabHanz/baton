@@ -114,10 +114,11 @@ export const readInbound = (
 
 /**
  * The bridge's `.drain.lock` (`takeDrainLock` in baton-live-acp.mjs), so no bridge is mid-send while the server takes
- * a queue file over. A lock whose process is gone is taken over. Returns the release, or null when a drain is running.
+ * a queue file over, or another lock by the same rule. One whose process is gone is taken over. Returns the release,
+ * or null when a live process holds it.
  */
-export const takeQueueLock = (dir: string): (() => void) | null => {
-  const lock = NodePath.join(dir, ".drain.lock");
+export const takeQueueLock = (dir: string, name = ".drain.lock"): (() => void) | null => {
+  const lock = NodePath.join(dir, name);
   const take = () => {
     try {
       NodeFS.mkdirSync(dir, { recursive: true });
@@ -204,11 +205,20 @@ export const takeOverQueueFile = (q: QueueFile, now: number): void => {
  * The ownership marker: `<sessionId>.server` names a session whose waiting messages the server owns. The bridge's
  * drainer never types for such a session, and the bridge queues a new message behind them instead of typing it.
  */
-export const writeOwned = (dir: string, waiting: ReadonlyMap<string, number>): void => {
-  let names: string[] = [];
+/** The ownership markers there now; read before counting, so one written meanwhile is never removed. */
+export const listOwned = (dir: string): ReadonlyArray<string> => {
   try {
-    names = NodeFS.readdirSync(dir).filter((name) => name.endsWith(OWNED_SUFFIX));
-  } catch {}
+    return NodeFS.readdirSync(dir).filter((name) => name.endsWith(OWNED_SUFFIX));
+  } catch {
+    return [];
+  }
+};
+
+export const writeOwned = (
+  dir: string,
+  waiting: ReadonlyMap<string, number>,
+  names: ReadonlyArray<string>,
+): void => {
   const keep = new Set([...waiting.keys()].map(safe));
   for (const name of names) {
     if (!keep.has(name.slice(0, -OWNED_SUFFIX.length)))

@@ -26,7 +26,6 @@ export interface WeaveRecord {
 }
 
 export const WEAVE_TEXT_MAX = 4_000;
-export const WEAVE_TRIES_MAX = 40;
 export const WEAVE_LOST_AFTER_MS = 24 * 3_600_000;
 export const REPLY_MAX = 1_500;
 
@@ -136,7 +135,8 @@ export const nextStep = (
   },
   now: number,
 ): Step => {
-  if (now - rec.createdAt > WEAVE_LOST_AFTER_MS || rec.tries >= WEAVE_TRIES_MAX) {
+  // Time, not tries: the server's drainer looks every few seconds, so a count would run out in minutes.
+  if (now - rec.createdAt > WEAVE_LOST_AFTER_MS) {
     return { do: "lose", why: "it could not be delivered in a day" };
   }
   if (!seen.present) return { do: "wait", why: "the session is not running here now" };

@@ -26,4 +26,5 @@ A live thread mirrors one running terminal session (`baton-live4:<session id>`).
    types it on its own 3 s clock into the pane `herdr agent list` shows for the session id, never while a question is
    up, and drops (and says) a send Herdr did not confirm rather than typing it twice. Each row has one owner: the
    server's drainer, the thread (unbound rows), or the sessions list (`catalog` rows, sent on a send or Resume). A
-   `<session id>.server` file marks a session the server owns; the bridge's drainer never types for it.
+   `<session id>.server` file marks a session the server owns; the bridge's drainer never types for it. One server owns
+   a live-queue folder at a time (`.server.lock`); a server on another base dir (a dev worktree) uses its own folder.
