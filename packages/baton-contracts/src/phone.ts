@@ -10,6 +10,8 @@ export const BATON_PHONE_WS_METHODS = { call: "baton.phone.call" } as const;
 export const BATON_PHONE_OPS = [
   "take",
   "renew",
+  "state",
+  "stateGet",
   "answer",
   "fail",
   "prompt",

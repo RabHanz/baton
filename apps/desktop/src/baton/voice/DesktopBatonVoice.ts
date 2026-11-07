@@ -278,6 +278,7 @@ import { pendingSecret } from "../vault/pendingSecret.ts";
 import { createMemorySync } from "../memory/memorySync.ts";
 import { createMemoryTab } from "../memory/memoryTab.ts";
 import { windowsHello } from "../vault/hello.ts";
+import { desktopState, type DesktopStateInput } from "../phone/desktopState.ts";
 import { createPhoneRelay, guardedPhoneCall, nextPollMs } from "../phone/phoneRelay.ts";
 import { createNightlyCache, runGh } from "../presence/nightlyRead.ts";
 import { createSyncExtraCache } from "../presence/syncRead.ts";
@@ -666,6 +667,8 @@ const DEFAULT_SETTINGS: VoiceSettings = {
 /** The renderer has this long to answer an intent call before the core is told it failed. */
 const REQUEST_TIMEOUT_MS = 20_000;
 const PHONE_POLL_MS = 5_000;
+/** Sent again at least this often, so the server can tell a quiet desktop from a gone one. */
+const STATE_REFRESH_MS = 5 * 60_000;
 /** Under the context bus's 30 s TTL, so what Baton has open never expires while it is open. */
 const CONTEXT_REFRESH_MS = 10_000;
 /** Long enough for him to fix a word in the field before it is read back. */
@@ -858,6 +861,8 @@ export interface TrayExtras extends BrainVoiceHook {
     text: string,
     source: "phone" | "device",
   ) => Promise<{ readonly spoken: string; readonly card: string }>;
+  /** What it may tell its server about itself (desktopState.ts adds the voice side and versions). */
+  readonly stateForServer?: () => Omit<DesktopStateInput, "voice" | "appVersion" | "environments">;
   readonly setPhoneMirror?: (mirror: PhoneMirror | null) => void;
   readonly menuItems: () => ReadonlyArray<Electron.MenuItemConstructorOptions>;
   readonly controls: () => ReadonlyArray<HomeControl>;
@@ -1865,13 +1870,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   // The phone relay: the desktop assistant answers what the phone page asked. It only talks while the app's own window is
   // already open (it never opens one to ask), so a tray-only app is "not connected" to the phone, and the ask waits.
+  const phoneCall = guardedPhoneCall({
+    windowUp: async () => (await input.mainWindowUp?.()) === true,
+    request: (op, args) =>
+      request({ kind: "phone", op: op as BatonPhoneBridgeRequest["op"], args }),
+    mark: markPhase,
+  });
   const phoneRelay = createPhoneRelay({
-    call: guardedPhoneCall({
-      windowUp: async () => (await input.mainWindowUp?.()) === true,
-      request: (op, args) =>
-        request({ kind: "phone", op: op as BatonPhoneBridgeRequest["op"], args }),
-      mark: markPhase,
-    }),
+    call: phoneCall,
     run: (text, source) =>
       input.extras?.askFromPhone === undefined
         ? Promise.reject(new Error("No assistant here."))
@@ -1879,9 +1885,28 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   });
   input.extras?.setPhoneMirror?.(phoneRelay.mirror);
   let phoneQuiet = 0;
+  // Its account of itself for `tessaya_state`, sent when it changes and at least every few minutes.
+  let statePublished = { json: "", at: 0 };
+  const publishState = async (): Promise<void> => {
+    const own = input.extras?.stateForServer?.();
+    if (own === undefined) return;
+    const peers = ((await request({ kind: "memory", op: "syncPeers", args: {} }).catch(() => [])) ??
+      []) as ReadonlyArray<{ label?: unknown }>;
+    const state = desktopState({
+      ...own,
+      voice: settings,
+      appVersion: Electron.app.getVersion(),
+      environments: peers.map((p) => ({ label: String(p.label ?? ""), state: "connected" })),
+    });
+    const json = JSON.stringify(state);
+    if (json === statePublished.json && Date.now() - statePublished.at < STATE_REFRESH_MS) return;
+    await phoneCall("state", { state });
+    statePublished = { json, at: Date.now() };
+  };
   const phoneLoop = async (): Promise<void> => {
     markPhase("phone-tick:begin");
     const outcome = await phoneRelay.tick().finally(() => markPhase("phone-tick:end"));
+    if (outcome !== "away") void publishState().catch(() => undefined);
     phoneQuiet = outcome === "idle" || outcome === "away" ? phoneQuiet + 1 : 0;
     setTimeout(() => void phoneLoop(), nextPollMs(phoneQuiet)).unref();
   };

@@ -233,6 +233,66 @@ layer("BatonPhoneInbox", (it) => {
   );
 
   it.effect(
+    "keeps only the named fields of the desktop's account of itself, and refuses an oversized one",
+    () =>
+      Effect.gen(function* () {
+        const inbox = yield* BatonPhoneInbox;
+        yield* inbox.take;
+        const state = {
+          settings: {
+            output: "spoken",
+            captureApproval: "ask",
+            actWithoutAsking: false,
+            socialOn: true,
+            browserChrome: false,
+            remoteHands: false,
+            assistantModel: "auto",
+            assistantEffort: "auto",
+            claudeBinary: "/home/ann/claude",
+          },
+          voice: {
+            enabled: true,
+            voice: "anna",
+            recognition: "cloud",
+            cloudProvider: "openai",
+            cloudModel: null,
+            cloudApiKey: "sk-live-abc123",
+            languages: ["en"],
+            wakeWords: ["freya"],
+            dictationCleanup: "claude",
+          },
+          personas: [],
+          skills: [],
+          diagnostics: {
+            appVersion: "1.2.3",
+            brain: "opus",
+            voiceEngine: "kokoro",
+            recognition: "cloud",
+            environments: [],
+            errors: [],
+          },
+          vault: ["github-token"],
+        };
+        yield* phoneCall({ op: "state", args: { state } });
+        const got = (yield* phoneCall({ op: "stateGet", args: {} })).value;
+        const text = JSON.stringify(got);
+        for (const secret of ["sk-live-abc123", "/home/ann/claude", "github-token"])
+          assert.notInclude(text, secret);
+        assert.include(text, '"recognition":"cloud"');
+
+        const huge = {
+          ...state,
+          personas: [{ id: "x", name: "x", role: "y".repeat(70_000), lead: false }],
+        };
+        const refused = yield* phoneCall({ op: "state", args: { state: huge } }).pipe(
+          Effect.flip,
+          Effect.map((e) => e._tag),
+        );
+        assert.strictEqual(refused, "BatonPhoneError");
+      }),
+  );
+
+  it.effect(
     "the web intent bar asks the lead only while a desktop is there, and its ask expires in minutes",
     () =>
       Effect.gen(function* () {

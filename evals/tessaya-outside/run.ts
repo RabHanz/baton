@@ -2,7 +2,7 @@
 // @effect-diagnostics nodeBuiltinImport:off globalDate:off globalConsole:off
 /**
  * Tessaya's /mcp tools as an outside agent sees them: their real names, descriptions and schemas, served to a
- * plain `claude -p` session on your own Claude login, with no T3 or Tessaya prompt. Tools answer from the case;
+ * plain `claude -p` session on your own Claude login, with no T3 or Tessaya prompt and no built-in tools. Tools answer from the case;
  * nothing reaches Tessaya. Scored on which tools it called and what it said it did.
  */
 import * as NodeChildProcess from "node:child_process";
@@ -77,6 +77,9 @@ const sample = async (c: OutsideCase): Promise<Sample> => {
           "--mcp-config",
           config,
           "--strict-mcp-config",
+          // Only Tessaya's tools: no shell or file tools reach this machine, and the score is which of hers it picks.
+          "--tools",
+          "",
           "--allowedTools",
           `${PREFIX}*`,
           "--no-session-persistence",

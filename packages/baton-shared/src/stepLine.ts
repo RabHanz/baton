@@ -24,6 +24,18 @@ export const stepLine = (text: string, maxWords: number = STEP_WORDS): string =>
 const SOUNDS_RAW =
   /\b(?:E[A-Z]{3,}|at\s+\S+\s+\(|stack|exception|undefined|\[object|TypeError|SyntaxError|exit code|spawn|JSON)\b|[{}<>]|\bnode:/i;
 
+/** The kind of failure, for diagnostics that must carry no message text. */
+export const errorCode = (
+  message: string,
+): "claude_missing" | "timeout" | "claude_stopped" | "other" => {
+  const m = message.trim();
+  if (/ENOENT|not found|is not recognized|cannot find/i.test(m) && /claude|codex/i.test(m))
+    return "claude_missing";
+  if (/time(?:d)? ?out|took too long|ETIMEDOUT/i.test(m)) return "timeout";
+  if (/^claude stopped/i.test(m)) return "claude_stopped";
+  return "other";
+};
+
 /** A failure in plain words. A message that already reads like a sentence for a person passes through. */
 export const plainError = (message: string): string => {
   const m = message.trim();
