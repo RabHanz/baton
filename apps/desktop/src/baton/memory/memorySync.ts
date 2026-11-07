@@ -22,6 +22,8 @@ export interface SyncPeer {
 /** What the window sends a server's sync calls with: the token, and the only origin it may go to. */
 interface PeerCredential {
   readonly origin: string;
+  /** Where the window reached it, with any relay path. */
+  readonly baseUrl?: string;
   readonly token: string;
   readonly expiresAt: number;
 }
@@ -105,14 +107,21 @@ export const createMemorySync = (input: {
     const listed = (await input.call("syncPeers", {}).catch(() => null)) as ReadonlyArray<{
       environmentId: string;
       label: string;
+      baseUrl?: string;
     }> | null;
-    const labels = new Map((listed ?? lastPeers).map((p) => [p.environmentId, p.label]));
-    for (const [environmentId, peer] of Object.entries(peers))
+    // A relay peer is reached under a path the old file never kept; the window's connection knows it.
+    const known = new Map<string, { label: string; baseUrl?: string }>(
+      (listed ?? lastPeers).map((p) => [p.environmentId, p]),
+    );
+    for (const [environmentId, peer] of Object.entries(peers)) {
+      const seen = known.get(environmentId);
       await input.call("syncAddPeer", {
         environmentId,
-        label: labels.get(environmentId) ?? environmentId,
+        label: seen?.label ?? environmentId,
         ...peer,
+        ...(seen?.baseUrl === undefined ? {} : { baseUrl: seen.baseUrl }),
       });
+    }
     if (on) await input.call("syncSetEnabled", { on: true });
     if (input.peersFile !== undefined) NodeFS.rmSync(input.peersFile, { force: true });
     NodeFS.rmSync(input.file, { force: true });

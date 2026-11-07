@@ -61,12 +61,25 @@ it.effect(
     }),
 );
 
-it("sends a credential only to the origin that issued it", () => {
+it("sends a credential only to the origin that issued it, under a relay's path when it has one", () => {
+  const origin = "https://box.example:8443";
   assert.strictEqual(
-    peerUrl("https://box.example:8443", "baton.memory.syncPull")?.href,
+    peerUrl({ origin }, "baton.memory.syncPull")?.href,
     "https://box.example:8443/tessaya/desk/baton.memory.syncPull",
   );
-  assert.isNull(peerUrl("not a url", "baton.memory.syncPull"));
+  assert.strictEqual(
+    peerUrl(
+      { origin: "https://relay.t3.codes", baseUrl: "https://relay.t3.codes/e/abc123" },
+      "baton.memory.syncPull",
+    )?.href,
+    "https://relay.t3.codes/e/abc123/tessaya/desk/baton.memory.syncPull",
+  );
+  // A base URL on another origin than the one that issued the credential is refused.
+  assert.isNull(
+    peerUrl({ origin: "https://relay.t3.codes", baseUrl: "https://elsewhere.example/e/1" }, "x"),
+  );
+  assert.isNull(peerUrl({ origin: "http://box.example" }, "baton.memory.syncPull"));
+  assert.isNull(peerUrl({ origin: "not a url" }, "baton.memory.syncPull"));
 });
 
 const stored = new Map<string, Uint8Array>();

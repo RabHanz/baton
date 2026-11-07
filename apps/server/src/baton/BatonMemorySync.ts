@@ -43,6 +43,8 @@ export const originAllowed = (origin: string): boolean => {
 const StoredPeer = Schema.Struct({
   label: Schema.String,
   origin: Schema.String,
+  /** Where the peer is reached, with any relay path (T3 Connect); absent, at its origin. */
+  baseUrl: Schema.optionalKey(Schema.String),
   token: Schema.String,
   expiresAt: Schema.Number,
 });
@@ -94,12 +96,19 @@ export const syncRound = Effect.fn("BatonMemorySync.round")(function* (
   return { servers: hellos.length, applied };
 });
 
-/** The credential goes only back to the origin that issued it. */
-export const peerUrl = (origin: string, method: string): URL | null => {
-  if (!originAllowed(origin)) return null;
+/**
+ * The peer's method under its base URL, keeping a relay's path. The credential goes only back to the origin that
+ * issued it, and only where the base URL may receive it.
+ */
+export const peerUrl = (
+  peer: { readonly origin: string; readonly baseUrl?: string | undefined },
+  method: string,
+): URL | null => {
   try {
-    const url = new URL(`tessaya/desk/${method}`, origin.endsWith("/") ? origin : `${origin}/`);
-    return url.origin === new URL(origin).origin ? url : null;
+    const base = new URL(peer.baseUrl ?? peer.origin);
+    const root = new URL(base.href.endsWith("/") ? base.href : `${base.href}/`);
+    if (!syncOriginAllowed(root) || root.origin !== new URL(peer.origin).origin) return null;
+    return new URL(`tessaya/desk/${method}`, root);
   } catch {
     return null;
   }
@@ -173,7 +182,7 @@ export const make = Effect.gen(function* () {
       input: unknown,
       schema: Schema.Codec<A, unknown>,
     ) {
-      const url = peerUrl(peer.origin, method);
+      const url = peerUrl(peer, method);
       if (url === null) return Option.none<A>();
       const response = yield* Effect.tryPromise({
         try: () =>
@@ -266,7 +275,7 @@ export const make = Effect.gen(function* () {
       sql`INSERT INTO fabric_settings (key, value) VALUES (${ENABLED_KEY}, ${on ? "on" : "off"})
         ON CONFLICT (key) DO UPDATE SET value = excluded.value`.pipe(Effect.asVoid, Effect.orDie),
     addPeer: ({ environmentId, ...peer }) =>
-      originAllowed(peer.origin)
+      originAllowed(peer.origin) && peerUrl(peer, "baton.memory.syncHello") !== null
         ? modify((peers) => ({ ...peers, [environmentId]: peer }))
         : Effect.fail(
             new BatonMemorySyncError({

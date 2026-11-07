@@ -34,12 +34,22 @@ const fakeServer = (window: { open: boolean } = { open: true }) => {
     if (op === "syncForget") return (void peers.delete(String(args["environmentId"])), {});
     if (op === "syncRun") return { servers: 1 + peers.size, applied: 2, refused: [] };
     if (op === "syncLink")
-      return { origin: "https://box.example", token: "sync-token", expiresAt: 10_000 };
+      return {
+        origin: "https://box.example",
+        baseUrl: "https://box.example/relay",
+        token: "sync-token",
+        expiresAt: 10_000,
+      };
     if (op === "syncPeers") {
       if (!window.open) throw new Error("T3's window is closed.");
       return [
         { environmentId: "here", label: "Laptop", local: true },
-        { environmentId: "box", label: "Server", local: false },
+        {
+          environmentId: "box",
+          label: "Server",
+          local: false,
+          baseUrl: "https://relay.example/e/box",
+        },
       ];
     }
     throw new Error(`unexpected ${op}`);
@@ -72,7 +82,11 @@ describe("memory sync, carried by this app's own server", () => {
     const box = async () => (await sync.peers()).find((p) => p.environmentId === "box");
     expect((await box())?.paired).toBe(false);
     await sync.link("box", "CODE");
-    expect(server.peers.get("box")).toMatchObject({ label: "Server", token: "sync-token" });
+    expect(server.peers.get("box")).toMatchObject({
+      label: "Server",
+      baseUrl: "https://box.example/relay",
+      token: "sync-token",
+    });
     expect(NodeFS.readdirSync(dir)).toEqual([]);
     expect(await box()).toMatchObject({ paired: true, expiresAt: 10_000 });
     await sync.forget("box");
@@ -107,6 +121,7 @@ describe("memory sync, carried by this app's own server", () => {
     // Moved under his name for it, from the window's list.
     expect(server.peers.get("box")).toMatchObject({
       label: "Server",
+      baseUrl: "https://relay.example/e/box",
       token: "old-token",
       origin: "https://box.example",
     });

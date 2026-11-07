@@ -228,6 +228,8 @@ export const BatonMemorySyncAddPeerInput = Schema.Struct({
   environmentId: TrimmedNonEmptyString,
   label: Schema.String,
   origin: TrimmedNonEmptyString,
+  /** The URL the window reaches it at, with any relay path; absent, the origin itself. */
+  baseUrl: Schema.optionalKey(TrimmedNonEmptyString),
   token: TrimmedNonEmptyString,
   expiresAt: Schema.Number,
 });
