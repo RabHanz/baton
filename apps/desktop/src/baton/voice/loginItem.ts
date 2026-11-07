@@ -17,28 +17,52 @@ interface LoginApi {
   }) => void;
 }
 
-/** Whether the Run entry `name` exists. Windows only; elsewhere there is none. */
-export const runEntryExists = (name: string): boolean => {
-  if (process.platform !== "win32") return false;
+/** Whether the Run entry `name` exists. Windows only; elsewhere there is none. Never on the main thread's clock. */
+export const runEntryExists = (name: string): Promise<boolean> =>
+  process.platform !== "win32"
+    ? Promise.resolve(false)
+    : new Promise((resolve) => {
+        NodeChildProcess.execFile("reg", ["query", RUN_KEY, "/v", name], (error) =>
+          resolve(error === null),
+        );
+      });
+
+/** On when the Run entry exists under the app's id or under Electron's default name. */
+export const loginItemOn = async (
+  api: LoginApi,
+  entry: string,
+  exists: (name: string) => Promise<boolean> = runEntryExists,
+): Promise<boolean> => {
   try {
-    NodeChildProcess.execFileSync("reg", ["query", RUN_KEY, "/v", name], { stdio: "ignore" });
-    return true;
+    return (await exists(entry)) || api.getLoginItemSettings().openAtLogin;
   } catch {
     return false;
   }
 };
 
-/** On when the Run entry exists under the app's id or under Electron's default name. */
-export const loginItemOn = (
+/**
+ * The switch as Home shows it: read from the registry once at start and after each change, never while
+ * Home's state is built (a `reg query` there blocked the main thread on every build, 0.1.66).
+ */
+export const createLoginItemState = (
   api: LoginApi,
   entry: string,
-  exists: (name: string) => boolean = runEntryExists,
-): boolean => {
-  try {
-    return exists(entry) || api.getLoginItemSettings().openAtLogin;
-  } catch {
-    return false;
-  }
+  exists: (name: string) => Promise<boolean> = runEntryExists,
+) => {
+  let on = false;
+  const refresh = async () => {
+    on = await loginItemOn(api, entry, exists);
+    return on;
+  };
+  return {
+    on: () => on,
+    refresh,
+    set: (next: boolean) => {
+      setLoginItem(api, entry, next);
+      on = next;
+      void refresh();
+    },
+  };
 };
 
 /** One entry, under the app's id, for the current exe; the default-named one is cleared so there is never two. */

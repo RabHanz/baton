@@ -429,7 +429,7 @@ import {
   planReadyLine,
 } from "@t3tools/baton-shared/attention";
 import { contextFromLastInsert, fitInsertion } from "@t3tools/baton-shared/dictationFit";
-import { loginItemOn, setLoginItem } from "./loginItem.ts";
+import { createLoginItemState, setLoginItem } from "./loginItem.ts";
 import { DICTATION_SETTLE_MS, dictationAtLaunch, holdFramesUntil, startWarmUp } from "./warmUp.ts";
 import { makeTestAudioInput, type TestAudioEvent } from "./testAudio.ts";
 import { startVoiceLoop, type VoiceLoop } from "./voiceLoop.ts";
@@ -1031,13 +1031,16 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       muted: false,
     }),
   );
+  const loginItem = createLoginItemState(Electron.app, input.loginEntry);
   // Renamed from Baton: drop the old login entry, and write the one he asked for for the new exe.
   if (input.platform === "win32") {
     Electron.app.setLoginItemSettings({ openAtLogin: false, name: "Baton" });
-    // The switch follows the real entry (the installer writes it too); an entry from an older exe is rewritten.
-    if (loginItemOn(Electron.app, input.loginEntry))
-      setLoginItem(Electron.app, input.loginEntry, true);
   }
+  // The switch follows the real entry (the installer writes it too); an entry from an older exe is rewritten.
+  void loginItem.refresh().then((on) => {
+    if (on && input.platform === "win32") setLoginItem(Electron.app, input.loginEntry, true);
+    render();
+  });
   // Only now is there something to quit from, and a way back to a window.
   keepRunningForTray();
   // A left click is what an icon invites, and without this it did nothing on Windows.
@@ -5386,7 +5389,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         section: "Start",
         label: "Start Tessaya when I sign in",
         kind: "toggle",
-        on: loginItemOn(Electron.app, input.loginEntry),
+        on: loginItem.on(),
       },
       {
         id: "v.diag",
@@ -6182,7 +6185,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       pill.setRest(on);
     } else if (id === "v.login") {
       save({ openAtLogin: on });
-      setLoginItem(Electron.app, input.loginEntry, on);
+      loginItem.set(on);
     } else if (id === "k.addskill:add" && typeof value === "string") {
       void addSkillFrom(value);
     } else if (/^k\.conn\.(calendar|mail|chat):add$/.test(id) && typeof value === "string") {
