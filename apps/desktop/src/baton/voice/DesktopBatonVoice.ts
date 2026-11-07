@@ -2861,6 +2861,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   void duck.recover();
   const setRecording = (next: boolean) => {
     if (next === (releaseRecordingEscape !== null)) return;
+    // Hold, toggle, the setup's test and the tray all record here: no wake or turn while they do.
+    core?.setKeyDictation(next);
     if (next) void duck.start(settings.duckWhileDictating);
     else void duck.stop();
     if (next) releaseRecordingEscape = input.holdEscape(() => sidecar?.cancel(), "recording");
@@ -3418,6 +3420,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       },
     });
     markPhase("voice-core:end");
+    core.setKeyDictation(releaseRecordingEscape !== null);
     pushContext();
     contextTimer = setInterval(pushContext, CONTEXT_REFRESH_MS);
     step("core-made");

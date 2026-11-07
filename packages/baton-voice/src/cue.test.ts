@@ -53,3 +53,26 @@ describe("a cue is not heard", () => {
     expect(core.hearingSpeech()).toBe(true);
   });
 });
+
+describe("dictation owns everything said during it", () => {
+  it("hears no wake while the dictation key records, and hears again once it stops", () => {
+    const { core, events } = makeCore();
+    core.setKeyDictation(true);
+    feed(core, tone(frames(250)));
+    expect(events.some((e) => e.type === "wake")).toBe(false);
+    expect(core.hearingSpeech()).toBe(false);
+    core.setKeyDictation(false);
+    feed(core, tone(frames(250)));
+    expect(events.some((e) => e.type === "wake")).toBe(true);
+  });
+
+  it("does not wake while dictating by voice, but still hears the words", async () => {
+    const { core, events } = makeCore();
+    await core.hear("Jarvis, dictate");
+    expect(core.snapshot().state).toBe("dictation");
+    events.length = 0;
+    feed(core, tone(frames(250)));
+    expect(events.some((e) => e.type === "wake")).toBe(false);
+    expect(core.hearingSpeech()).toBe(true);
+  });
+});
