@@ -5,8 +5,11 @@
  * until he approves it; only then is anything started. Each harness says how it is started and how its
  * state is read; everything else is shared here.
  */
+import type { BatonInstanceWeekly } from "@t3tools/baton-contracts";
+
 import {
   BRIEF_MAX,
+  overCap,
   type CloudProvider,
   type CloudRequest,
   type Detection,
@@ -48,11 +51,70 @@ export interface LocalHarness {
   ) => Promise<Outcome<{ readonly link: string | null; readonly taskId: string | null }>>;
   readonly refresh?: (request: CloudRequest) => Promise<Outcome<CloudRequest>>;
   readonly usage: () => Promise<Outcome<ReadonlyArray<Usage>>>;
+  /** One login's weekly figure now, from T3's provider snapshot (D2); null when nothing reports it. */
+  readonly weeklyOf?: (account: string) => Promise<Weekly | null>;
   readonly diffOf?: (request: CloudRequest) => Promise<Outcome<string>>;
   readonly applyOf?: (request: CloudRequest, dir: string) => Promise<Outcome<string>>;
 }
 
 const fail = <T>(error: string): Outcome<T> => ({ ok: false, error });
+
+export interface Weekly {
+  readonly percent: number;
+  readonly resetsAt: string | null;
+}
+
+/**
+ * A local login's weekly figure among T3's instances (D2): the computer's own login is the driver's
+ * default instance; a named one is the instance with that address, name or id suffix.
+ */
+export const weeklyForLogin = (
+  instances: ReadonlyArray<BatonInstanceWeekly>,
+  defaultInstance: string,
+  account: string,
+  own: boolean,
+): Weekly | null => {
+  const wanted = account.trim().toLowerCase();
+  const match = own
+    ? instances.find((instance) => instance.instanceId === defaultInstance)
+    : instances.find((instance) =>
+        [instance.email, instance.label, instance.instanceId.replace(/^[A-Za-z]+_/, "")].some(
+          (name) => name?.toLowerCase() === wanted,
+        ),
+      );
+  return match?.weeklyPercent === null || match === undefined
+    ? null
+    : { percent: match.weeklyPercent, resetsAt: match.resetsAt };
+};
+
+const weeklyReader =
+  (s: LocalSettings, driver: string, isOwn: (account: string) => boolean) =>
+  async (account: string): Promise<Weekly | null> => {
+    if (s.weekly === undefined) return null;
+    const instances = await s.weekly(driver).catch(() => []);
+    return weeklyForLogin(instances, driver, account, isOwn(account));
+  };
+
+const weeklyUsage = async (
+  provider: ProviderId,
+  accounts: ReadonlyArray<string>,
+  weeklyOf: (account: string) => Promise<Weekly | null>,
+): Promise<Outcome<ReadonlyArray<Usage>>> => ({
+  ok: true,
+  value: await Promise.all(
+    accounts.map(async (account) => {
+      const week = await weeklyOf(account);
+      return {
+        provider,
+        account,
+        weeklyPercent: week?.percent ?? null,
+        resetsAt: week?.resetsAt ?? null,
+        rejected: false,
+        pointsThisWeek: null,
+      };
+    }),
+  ),
+});
 
 /** Longer than any harness's start timeout: a start older than this has died without saying so. */
 const START_LIMIT_MS = 5 * 60_000;
@@ -90,6 +152,20 @@ export const localProvider = (
     return healed;
   };
   const find = (id: string) => load().find((r) => r.id === id);
+  // shortcut: the week's figure moves with anything else that login does meanwhile; a per-task figure would need the provider to report one.
+  const withPointsUsed = async (r: CloudRequest): Promise<CloudRequest> => {
+    if (
+      r.state !== "done" ||
+      r.weeklyBefore === null ||
+      r.weeklyAfter !== null ||
+      r.account === null
+    )
+      return r;
+    const after = (await h.weeklyOf?.(r.account)) ?? null;
+    if (after === null) return r;
+    const pointsUsed = Math.max(0, Math.round(after.percent - r.weeklyBefore));
+    return { ...r, weeklyAfter: after.percent, pointsUsed, overCap: overCap({ pointsUsed }) };
+  };
   const replace = (r: CloudRequest) => store.save(load().map((x) => (x.id === r.id ? r : x)));
   return {
     id: h.id,
@@ -142,8 +218,9 @@ export const localProvider = (
       if (h.refresh !== undefined && (r.state === "running" || r.state === "approved")) {
         const fresh = await h.refresh(r);
         if (fresh.ok) {
-          replace(fresh.value);
-          return fresh;
+          const next = await withPointsUsed(fresh.value);
+          replace(next);
+          return { ok: true, value: next };
         }
       }
       return { ok: true, value: r };
@@ -183,6 +260,7 @@ export const localProvider = (
         account,
         startedBy: { pid: process.pid, at: Date.now() },
       });
+      const before = (await h.weeklyOf?.(account)) ?? null;
       const started = await h.start(r, brief, account);
       if (!started.ok) {
         replace(r);
@@ -191,6 +269,7 @@ export const localProvider = (
       briefs.drop(id);
       const next: CloudRequest = {
         ...r,
+        weeklyBefore: before?.percent ?? null,
         provider: h.id,
         state: "running",
         account,
@@ -241,28 +320,20 @@ export interface LocalSettings {
   readonly codexHomes?: Readonly<Record<string, string>>;
   /** Extra Claude logins by name, each a CLAUDE_CONFIG_DIR folder. Absent: this computer's own login. */
   readonly claudeHomes?: Readonly<Record<string, string>>;
+  /** T3's instances with their weekly figures, for one driver (D2). Absent: no weekly figure here. */
+  readonly weekly?: (driver: string) => Promise<ReadonlyArray<BatonInstanceWeekly>>;
 }
-
-const NO_USAGE = (
-  provider: ProviderId,
-  accounts: ReadonlyArray<string>,
-): Outcome<ReadonlyArray<Usage>> => ({
-  ok: true,
-  value: accounts.map((account) => ({
-    provider,
-    account,
-    weeklyPercent: null,
-    resetsAt: null,
-    rejected: false,
-    pointsThisWeek: null,
-  })),
-});
 
 /** Claude: `claude auth status` for who is signed in; `claude --cloud` to start. Named logins are CLAUDE_CONFIG_DIR folders. */
 export const claudeHarness = (exec: Exec, s: LocalSettings = {}): LocalHarness => {
   const bin = s.binary ?? "claude";
   const homes = s.claudeHomes ?? {};
   const own = "This computer's Claude login";
+  const weeklyOf = weeklyReader(
+    s,
+    "claudeAgent",
+    (account) => account === own || dirOf.get(account) === undefined,
+  );
   /** Account label (the login's address when known) -> the folder it lives in; empty means the computer's own. */
   const dirOf = new Map<string, string>();
   let signed: ReadonlyArray<string> = [];
@@ -349,7 +420,8 @@ export const claudeHarness = (exec: Exec, s: LocalSettings = {}): LocalHarness =
       return { ok: true, value: { link, taskId: null } };
     },
     // Claude's own figures are read from the account page, not by this program.
-    usage: async () => NO_USAGE("claude", signed.length === 0 ? [own] : signed),
+    usage: () => weeklyUsage("claude", signed.length === 0 ? [own] : signed, weeklyOf),
+    weeklyOf,
   };
 };
 
@@ -359,6 +431,7 @@ export const codexHarness = (exec: Exec, s: LocalSettings = {}): LocalHarness =>
   const homes = s.codexHomes ?? {};
   const names = (): ReadonlyArray<string> =>
     Object.keys(homes).length === 0 ? ["This computer's Codex login"] : Object.keys(homes);
+  const weeklyOf = weeklyReader(s, "codex", (account) => homes[account] === undefined);
   const envFor = (account: string) =>
     homes[account] === undefined ? undefined : { CODEX_HOME: homes[account]! };
   const run = (args: ReadonlyArray<string>, account: string, timeoutMs = 60_000, cwd?: string) => {
@@ -450,7 +523,8 @@ export const codexHarness = (exec: Exec, s: LocalSettings = {}): LocalHarness =>
           : "running";
       return x.code === 0 ? { ok: true, value: { ...r, state } } : fail("Codex did not answer.");
     },
-    usage: async () => NO_USAGE("codex", names()),
+    usage: () => weeklyUsage("codex", names(), weeklyOf),
+    weeklyOf,
     diffOf: async (r) => {
       const task = r.sessionLink === null ? null : idIn(r.sessionLink);
       if (task === null || r.account === null) return fail("There is no task to read a diff from.");

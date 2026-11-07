@@ -63,6 +63,8 @@ import {
   BatonOnLimitInput,
   BatonOnLimitResult,
   BatonSetOnLimitInput,
+  BatonAccountWeeklyInput,
+  BatonAccountWeeklyResult,
   BatonThreadKeepInput,
   BatonThreadKeepResult,
   BatonThreadKeptInput,
@@ -244,6 +246,12 @@ const WsBatonThreadKeptRpc = Rpc.make(BATON_ACCOUNT_WS_METHODS.threadKept, {
 const WsBatonThreadKeepRpc = Rpc.make(BATON_ACCOUNT_WS_METHODS.threadKeep, {
   payload: BatonThreadKeepInput,
   success: BatonThreadKeepResult,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsBatonAccountWeeklyRpc = Rpc.make(BATON_ACCOUNT_WS_METHODS.weekly, {
+  payload: BatonAccountWeeklyInput,
+  success: BatonAccountWeeklyResult,
   error: EnvironmentAuthorizationError,
 });
 
@@ -734,6 +742,7 @@ export const BatonRpcGroup = RpcGroup.make(
   WsBatonSetOnLimitRpc,
   WsBatonThreadKeptRpc,
   WsBatonThreadKeepRpc,
+  WsBatonAccountWeeklyRpc,
   WsBatonWorkSessionListRpc,
   WsBatonWorkSessionCreateRpc,
   WsBatonWorkSessionUpdateRpc,

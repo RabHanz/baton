@@ -1014,23 +1014,25 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
     {
       name: "cloud_dispatch",
       description:
-        "Ask for a coding task to run in the cloud (Claude, Codex or another assistant). It only creates a request that waits for his answer on a card in Approvals; nothing runs until he picks an assistant and an account there. The branch must already be pushed. Set from_web_or_file to true when the brief was built from web or file content, so the card says it is data.",
+        "Ask for a coding task to run in the cloud (Claude, Codex or another assistant). It only creates a request that waits for his answer on a card in Approvals; nothing runs until he picks an assistant and an account there. The branch must already be pushed. Set expected_points to your estimate of how much of the account's week the task will use, in percentage points (a small fix is 1, a large feature 5 or more); a task over his cap is refused, so split it. Set from_web_or_file to true when the brief was built from web or file content, so the card says it is data.",
       inputSchema: object(
         {
           repo: { type: "string", maxLength: 120 },
           branch: { type: "string", maxLength: 120 },
           brief: { type: "string", maxLength: 4000 },
+          expected_points: { type: "integer", minimum: 0, maximum: 100 },
           provider: { type: "string", maxLength: 20 },
           label: { type: "string", maxLength: 60 },
           from_web_or_file: { type: "boolean" },
         },
-        ["repo", "branch", "brief"],
+        ["repo", "branch", "brief", "expected_points"],
       ),
       run: async (a) => ({
         text: await host.jobs("cloud_dispatch", {
           repo: str(a, "repo", 120),
           branch: str(a, "branch", 120),
           brief: str(a, "brief", 4000),
+          expected_points: Math.max(0, Math.round(num(a, "expected_points"))),
           ...(typeof a["provider"] === "string" ? { provider: a["provider"].slice(0, 20) } : {}),
           ...(typeof a["label"] === "string" ? { label: a["label"].slice(0, 60) } : {}),
           from_web_or_file: a["from_web_or_file"] === true,

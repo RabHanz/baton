@@ -76,6 +76,13 @@ describe("cloud tasks in the desktop", () => {
     });
   });
 
+  it("refuses a task expected to use more of the week than his cap, before anything waits", async () => {
+    const { cloud } = rig({ capPoints: 2 });
+    expect(await cloud.tool.dispatch({ ...task, expectedUsage: 5 })).toContain("over his cap of 2");
+    expect(cloud.view().requests).toHaveLength(0);
+    expect(await cloud.tool.dispatch({ ...task, expectedUsage: 2 })).toContain("waiting");
+  });
+
   it("walks the card: assistant, account, confirm, and only then starts it", async () => {
     const { cloud, calls } = rig();
     await cloud.tool.dispatch(task);

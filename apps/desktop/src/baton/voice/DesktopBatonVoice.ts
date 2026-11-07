@@ -244,7 +244,7 @@ import {
 } from "../presence/standingJobs.ts";
 import { skillsDirOf, waitingSkillsLine } from "../pack/learnedSkills.ts";
 import { standingVerdict } from "@t3tools/baton-shared/trust";
-import type { OrchestrationRuleWithFirings } from "@t3tools/baton-contracts";
+import type { BatonInstanceWeekly, OrchestrationRuleWithFirings } from "@t3tools/baton-contracts";
 import { nodeExec } from "@t3tools/baton-shared/cloud/nodeExec";
 import { terminalPlan } from "../cloud/terminal.ts";
 import { useVaultKey } from "../cloud/vaultKey.ts";
@@ -2113,6 +2113,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           branch: String(args["branch"] ?? ""),
           brief: String(args["brief"] ?? ""),
           ...(typeof args["label"] === "string" ? { label: args["label"] } : {}),
+          ...(typeof args["expected_points"] === "number"
+            ? { expectedUsage: args["expected_points"] }
+            : {}),
           fromWeb: args["from_web_or_file"] === true,
         });
       }
@@ -4491,6 +4494,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   const cloud = createCloud({
     settings: cloudSettings,
+    weekly: async (driver) =>
+      (
+        (await input.direct?.("fabric.account.weekly", { driver }).catch(() => null)) as {
+          readonly instances?: ReadonlyArray<BatonInstanceWeekly>;
+        } | null
+      )?.instances ?? [],
     exec: nodeExec,
     dir: NodePath.join(input.stateDir, "cloud"),
     hub: async (op, provider, args) => {

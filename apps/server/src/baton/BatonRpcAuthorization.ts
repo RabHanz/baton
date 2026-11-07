@@ -59,6 +59,7 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_ACCOUNT_WS_METHODS.setOnLimit]: AuthOrchestrationOperateScope,
   [BATON_ACCOUNT_WS_METHODS.threadKept]: AuthOrchestrationReadScope,
   [BATON_ACCOUNT_WS_METHODS.threadKeep]: AuthOrchestrationOperateScope,
+  [BATON_ACCOUNT_WS_METHODS.weekly]: AuthOrchestrationReadScope,
   [BATON_WS_METHODS.workSessionList]: AuthOrchestrationReadScope,
   [BATON_WS_METHODS.workSessionCreate]: AuthOrchestrationOperateScope,
   [BATON_WS_METHODS.workSessionUpdate]: AuthOrchestrationOperateScope,
@@ -186,6 +187,7 @@ const SYNC_METHODS: ReadonlySet<string> = new Set([
 
 /** What the desktop may call while T3's window is closed: jobs it does not have to place, the watch, the Record, rules (standing jobs) and memory. */
 export const DESK_METHODS: ReadonlySet<string> = new Set([
+  BATON_ACCOUNT_WS_METHODS.weekly,
   BATON_ORCHESTRATION_WS_METHODS.ruleList,
   BATON_ORCHESTRATION_WS_METHODS.ruleEnable,
   BATON_ORCHESTRATION_WS_METHODS.ruleDisable,
