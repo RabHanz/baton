@@ -65,6 +65,8 @@ export interface VadProvider {
    * last answer for frames it has not scored yet (a burst after a stall); these only move when it has.
    */
   readonly scored?: () => { readonly speech: number; readonly quiet: number };
+  /** Its latest speech probability (0–1), for the turn log. */
+  readonly probability?: () => number;
 }
 
 export interface SttProvider {

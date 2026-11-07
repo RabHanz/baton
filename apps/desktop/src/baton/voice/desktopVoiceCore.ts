@@ -301,8 +301,14 @@ export const createDesktopVoiceCore = async (input: {
   /** How long the command window and the conversation stay open, read each time they are used. */
   readonly listening?: () => { readonly commandWindowMs: number; readonly conversationMs: number };
   /** The second check before a wake from sleep. */
-  readonly verifyWake?: (pcm: Int16Array, word: string | null, score: number) => Promise<boolean>;
+  readonly verifyWake?: (
+    pcm: Int16Array,
+    word: string | null,
+    score: number,
+  ) => Promise<boolean | null>;
   readonly trustWake?: (word: string, score: number) => boolean;
+  /** He is recording with the dictation keys (the sidecar): a lone wake must not end that. */
+  readonly recording?: () => boolean;
   /** Baton's one voice; off in tests. */
   readonly tts?: TtsProvider | null;
   /** Everything the core reports, for the cue after a wake word. */
@@ -375,6 +381,7 @@ export const createDesktopVoiceCore = async (input: {
     ...(input.waitMs === undefined ? {} : { waitMs: input.waitMs }),
     ...(input.verifyWake === undefined ? {} : { verifyWake: input.verifyWake }),
     ...(input.trustWake === undefined ? {} : { trustWake: input.trustWake }),
+    ...(input.recording === undefined ? {} : { recording: input.recording }),
     ...(input.echo === undefined ? {} : { echo: input.echo }),
     ...(input.speakerMode === undefined ? {} : { speakerMode: input.speakerMode }),
   });

@@ -351,6 +351,7 @@ import {
   HEALTHY_RUN_MS,
   makeSidecarAudioInput,
   makeSidecarStt,
+  busyAfter,
   recordingAfter,
   restartDelayMs,
   startDictationSidecar,
@@ -848,10 +849,16 @@ export interface VoiceCoreHooks {
   readonly waitMs: () => number;
   /** How long the command window and the conversation stay open. */
   readonly listening: () => { readonly commandWindowMs: number; readonly conversationMs: number };
-  /** The second check before a wake from sleep: was the wake word really said. */
-  readonly verifyWake: (pcm: Int16Array, word: string | null, score: number) => Promise<boolean>;
+  /** The second check before a wake: true heard the name, false did not, null did not check (off, or failed). */
+  readonly verifyWake: (
+    pcm: Int16Array,
+    word: string | null,
+    score: number,
+  ) => Promise<boolean | null>;
   /** The model is sure of this word past any doubt (see `wakeTrusted`). */
   readonly trustWake: (word: string, score: number) => boolean;
+  /** A key dictation is recording or being written out: a wake with nothing after it must not end that. */
+  readonly recording: () => boolean;
   /** Hears him over Baton's own voice through the speakers (docs/baton/BARGE_IN.md). */
   readonly echo: EchoGuard | undefined;
   readonly speakerMode: () => "speakers" | "headphones";
@@ -1082,6 +1089,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let modelJob: Promise<string> | null = null;
   let sidecarDevices: ReadonlyArray<SidecarDevice> = [];
   let releaseRecordingEscape: (() => void) | null = null;
+  /** The sidecar is recording or writing out a key dictation (`busyAfter`). */
+  let sidecarBusy = false;
   let lastDictation: string | null = null;
   /** What Baton last answered, so Copy last transcript can take it; cleared by his next words. */
   let lastReply: string | null = null;
@@ -2981,6 +2990,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (event.ev === "binding") return onBinding(event.id);
     if (event.ev === "configured") mouseHookReady = event.mouse === true;
     setRecording(recordingAfter(event.ev, releaseRecordingEscape !== null));
+    sidecarBusy = busyAfter(event.ev, sidecarBusy);
     if (event.ev === "recording") {
       focusedApp = { exe: event.app ?? "", title: event.title ?? "" };
       if (settings.dictationCleanup === "claude") rewriter.warm();
@@ -3273,6 +3283,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         case "dropped":
           // Set aside over her voice: the pill keeps saying she is speaking.
           if (OVER_HER_VOICE.has(event.reason)) return null;
+          // A wake nothing showed was him (no words, and not the name to the recogniser): gone without a sound.
+          if (event.reason === "wake not heard") {
+            pill.on({ type: "dismissed" }, { silent: true });
+            return null;
+          }
           return { type: event.reason === "wake not confirmed" ? "unconfirmed" : "resume" };
         case "stop_heard":
           input.onSpokenStop?.();
@@ -3489,16 +3504,17 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       echo: settings.voiceBargeIn ? echoGuard : undefined,
       speakerMode: () => speakerModeOf(settings.outputDevice, output.kind()),
       trustWake: (word, score) => wakeTrusted(settings.wakeWords, word, score),
+      recording: () => sidecarBusy,
       verifyWake: async (pcm, word, score) => {
-        // Unsure is a wake: the check only ever removes wakes it is sure were not the name.
-        if (!settings.verifyWake || word === null || sidecar === null) return true;
+        // Null is "not checked" (switched off, or it failed): a wake, but not one the recogniser confirmed.
+        if (!settings.verifyWake || word === null || sidecar === null) return null;
         try {
           const heard = await wakeStt(sidecar).transcribe(pcm);
           const ok = wakeWordHeard(heard, word);
           if (!ok) input.onNote?.("wake_check", { word, heard, score });
           return ok;
         } catch {
-          return true;
+          return null;
         }
       },
       vocabulary: async (text) => {

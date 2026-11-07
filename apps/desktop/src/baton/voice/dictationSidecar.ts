@@ -43,6 +43,14 @@ export interface DictationConfig {
  * Whether the recorder is recording after this event. Only its state events say so: a result fed back
  * from the cloud, a notice or a reconfigure leaves a live recording as it was.
  */
+/** Whether the sidecar is busy with a key dictation (recording it, or writing it out) after this event. */
+export const busyAfter = (ev: DictationEvent["ev"], was: boolean): boolean =>
+  ev === "recording" || ev === "transcribing"
+    ? true
+    : ev === "idle" || ev === "error"
+      ? false
+      : was;
+
 export const recordingAfter = (ev: DictationEvent["ev"], was: boolean): boolean =>
   ev === "recording" || ev === "transcribing" || ev === "idle" || ev === "error"
     ? ev === "recording"

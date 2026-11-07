@@ -8,20 +8,30 @@ const FRAME = 320;
 const frames = (seconds: number) => Math.round((seconds * 16_000) / FRAME);
 
 const rig = (
-  verify: (pcm: Int16Array, word: string | null, score: number) => Promise<boolean>,
+  verify:
+    | ((pcm: Int16Array, word: string | null, score: number) => Promise<boolean | null>)
+    | undefined,
   trustWake?: (word: string, score: number) => boolean,
   /** The echo guard hears someone over her voice. */
   nearEnd = false,
+  /** Recognition waits for this: a busy recogniser. */
+  recognised?: Promise<void>,
+  /** He is recording with the dictation keys. */
+  recording?: () => boolean,
 ) => {
   let fire = false;
   let firedAgo = 0;
   let speech = false;
   const heard: number[] = [];
   const loud: number[] = [];
+  let said = "what time is it";
+  let wall = 0;
   const events: VoiceCoreEvent[] = [];
   const core = createVoiceCore({
     waitMs: () => 0,
-    verifyWake: verify,
+    clock: () => wall,
+    ...(verify === undefined ? {} : { verifyWake: verify }),
+    ...(recording === undefined ? {} : { recording }),
     ...(trustWake === undefined ? {} : { trustWake }),
     ...(nearEnd
       ? {
@@ -44,13 +54,19 @@ const rig = (
       lastWord: () => "Sebastian",
       firedAgo: () => firedAgo,
     },
-    vad: { name: "fake", reset: () => {}, isSpeech: () => speech },
+    vad: {
+      name: "fake",
+      reset: () => {},
+      isSpeech: () => speech,
+      probability: () => (speech ? 0.9 : 0.02),
+    },
     stt: {
       name: "fake",
       transcribe: async (pcm) => {
+        await recognised;
         heard.push(pcm.length);
         loud.push(pcm.filter((v) => v !== 0).length);
-        return "what time is it";
+        return said;
       },
     },
   });
@@ -70,6 +86,10 @@ const rig = (
       firedAgo = Math.round(agoSeconds * 16_000);
     },
     speak: (on: boolean) => (speech = on),
+    /** What recognition returns from now on. */
+    hears: (text: string) => (said = text),
+    /** The wall clock moves on (the lone-wake check's time limit). */
+    advance: (ms: number) => (wall += ms),
   };
 };
 
@@ -584,4 +604,275 @@ describe("right after launch, when the wake check is slow", () => {
     expect(r.events.some((e) => e.type === "dropped" && e.reason === "own voice")).toBe(false);
     expect(r.events.some((e) => e.type === "wake" && e.word === "Freya")).toBe(true);
   });
+});
+
+const deferred = <T>() => {
+  let resolve: (value: T) => void = () => {};
+  const promise = new Promise<T>((r) => (resolve = r));
+  return { promise, resolve };
+};
+const was = (events: ReadonlyArray<VoiceCoreEvent>, reason: string) =>
+  events.some((e) => e.type === "dropped" && e.reason === reason);
+
+// The model is saturated (0.1.70: a noise fire scored 1.0519, like his real wakes), so a sure wake with nothing
+// after it has its name checked in the background. Nothing in the voice queue waits on that check.
+describe("a wake from sleep with nothing after it", () => {
+  it("is let go silently after 5 s when the name's own audio does not hold the name", async () => {
+    const r = rig(
+      async () => false,
+      () => true,
+    );
+    r.hears("");
+    r.push(2);
+    r.wake();
+    r.push(0.1);
+    await r.core.idle();
+    // The pill shows at once, as for any sure wake.
+    expect(r.events.some((e) => e.type === "wake")).toBe(true);
+    // A no is only unsure: his real name can fail the matcher.
+    r.push(4.5);
+    await r.core.idle();
+    expect(r.core.snapshot().machine.mode).toBe("command_window");
+    r.push(0.6);
+    await r.core.idle();
+    expect(
+      r.events.find((e) => e.type === "dropped" && e.reason === "wake not heard"),
+    ).toMatchObject({ vadPeak: 0.02, vadMean: 0.02 });
+    expect(r.events.some((e) => e.type === "dismissed")).toBe(false);
+    expect(r.core.snapshot().machine.mode).toBe("sleeping");
+  });
+
+  it("keeps the window for a pause after the name, and the words he says then (L-11)", async () => {
+    // His real "Tessaya" can fail the matcher ("Okay, to say you, what time…"): his words decide when he speaks.
+    for (const [heardName, pause] of [
+      [true, 7],
+      [false, 4.5],
+    ] as const) {
+      const r = rig(
+        async () => heardName,
+        () => true,
+      );
+      r.push(2);
+      r.wake();
+      r.push(0.1);
+      await r.core.idle();
+      r.push(pause);
+      await r.core.idle();
+      r.speak(true);
+      r.push(1);
+      r.speak(false);
+      r.push(1.5);
+      await r.core.idle();
+      expect(r.events.some((e) => e.type === "transcript")).toBe(true);
+      expect(was(r.events, "wake not heard")).toBe(false);
+    }
+  });
+
+  it("keeps his sentence when the no arrives just after he starts speaking", async () => {
+    const answer = deferred<boolean>();
+    const asked = deferred<void>();
+    const r = rig(
+      () => {
+        asked.resolve();
+        return answer.promise;
+      },
+      () => true,
+    );
+    r.push(2);
+    r.wake();
+    r.push(0.7);
+    await asked.promise;
+    r.speak(true);
+    r.push(0.1);
+    answer.resolve(false);
+    await r.core.idle();
+    r.push(0.9);
+    r.speak(false);
+    r.push(1.5);
+    await r.core.idle();
+    expect(r.events.some((e) => e.type === "transcript")).toBe(true);
+    expect(was(r.events, "wake not heard")).toBe(false);
+  });
+
+  it("with the check off or unsure, is let go after 5 s of no speech", async () => {
+    const r = rig(
+      async () => null,
+      () => true,
+    );
+    r.push(2);
+    r.wake();
+    r.push(0.1);
+    await r.core.idle();
+    r.push(4);
+    await r.core.idle();
+    expect(r.core.snapshot().machine.mode).toBe("command_window");
+    r.push(1.2);
+    await r.core.idle();
+    expect(was(r.events, "wake not heard")).toBe(true);
+    expect(r.core.snapshot().machine.mode).toBe("sleeping");
+  });
+
+  it("takes a hung check as unsure after 2 s on the clock, and never holds the queue on it", async () => {
+    const asked = deferred<void>();
+    const r = rig(
+      () => {
+        asked.resolve();
+        return new Promise<boolean>(() => {});
+      },
+      () => true,
+    );
+    r.push(2);
+    r.wake();
+    r.push(1);
+    await asked.promise;
+    await r.core.idle();
+    r.advance(2_100);
+    r.push(4.2);
+    await r.core.idle();
+    expect(was(r.events, "wake not heard")).toBe(true);
+  });
+
+  it("ignores a check that answers after a newer wake", async () => {
+    const first = deferred<boolean>();
+    const firstAsked = deferred<void>();
+    let checks = 0;
+    const r = rig(
+      () => {
+        checks += 1;
+        if (checks > 1) return Promise.resolve(null);
+        firstAsked.resolve();
+        return first.promise;
+      },
+      () => true,
+    );
+    r.push(2);
+    r.wake();
+    r.push(1);
+    await firstAsked.promise;
+    // He ends that window himself and wakes her again; only then does the first check say it heard the name.
+    r.core.activate("dismiss");
+    await r.core.idle();
+    r.wake();
+    r.push(0.1);
+    await r.core.idle();
+    // The newer wake's own check runs and is unsure; then the first one's late "heard" must change nothing.
+    r.push(1);
+    await r.core.idle();
+    first.resolve(true);
+    await r.core.idle();
+    r.push(4.2);
+    await r.core.idle();
+    expect(checks).toBe(2);
+    expect(was(r.events, "wake not heard")).toBe(true);
+  });
+
+  it("does not end a dictation, a key dictation or a question that came during it", async () => {
+    const dictating = rig(
+      async () => false,
+      () => true,
+    );
+    dictating.push(2);
+    dictating.wake();
+    dictating.push(0.1);
+    await dictating.core.idle();
+    expect(await dictating.core.setDictation(true)).toBe(true);
+    dictating.push(5.5);
+    await dictating.core.idle();
+    expect(was(dictating.events, "wake not heard")).toBe(false);
+    expect(dictating.core.snapshot().machine.mode).toBe("dictation");
+
+    // Recording or writing it out with the keys: the sidecar is busy.
+    const keys = rig(
+      async () => false,
+      () => true,
+      false,
+      undefined,
+      () => true,
+    );
+    keys.push(2);
+    keys.wake();
+    keys.push(5.5);
+    await keys.core.idle();
+    expect(was(keys.events, "wake not heard")).toBe(false);
+
+    const asking = rig(
+      async () => false,
+      () => true,
+    );
+    asking.push(2);
+    asking.wake();
+    asking.push(0.1);
+    await asking.core.idle();
+    asking.core.confirm("Send it to Sam?");
+    await asking.core.idle();
+    asking.push(5.5);
+    await asking.core.idle();
+    expect(was(asking.events, "wake not heard")).toBe(false);
+    expect(asking.core.snapshot().machine.pending).not.toBe(null);
+  });
+
+  // The paths that froze a version that waited on the check: each must leave a core that settles.
+  it.each([0, 0.1, 0.3])("settles after a %s s blip behind a no", async (blip) => {
+    const r = rig(
+      async () => false,
+      () => true,
+    );
+    r.hears("");
+    r.push(2);
+    r.wake();
+    r.push(0.3);
+    r.speak(true);
+    r.push(blip);
+    r.speak(false);
+    r.push(1.5);
+    await r.core.idle();
+    r.hears("what time is it");
+    r.push(1);
+    r.wake();
+    r.speak(true);
+    r.push(1);
+    r.speak(false);
+    r.push(1.5);
+    await r.core.idle();
+    expect(r.events.some((e) => e.type === "transcript")).toBe(true);
+  });
+
+  it("settles when she starts speaking during it", async () => {
+    const r = rig(
+      async () => false,
+      () => true,
+    );
+    r.hears("");
+    r.push(2);
+    r.wake();
+    r.push(0.1);
+    await r.core.idle();
+    r.core.setSpeaking(true);
+    r.push(0.5);
+    r.core.setSpeaking(false);
+    r.push(1.5);
+    await r.core.idle();
+    expect(was(r.events, "wake not heard")).toBe(false);
+  });
+
+  it.each([true, false])(
+    "settles after two sure fires inside one check (the check says %s)",
+    async (ok) => {
+      const r = rig(
+        async () => ok,
+        () => true,
+      );
+      r.push(2);
+      r.wake();
+      r.push(0.02);
+      r.wake();
+      r.push(0.02);
+      r.speak(true);
+      r.push(1);
+      r.speak(false);
+      r.push(1.5);
+      await r.core.idle();
+      expect(r.events.some((e) => e.type === "transcript")).toBe(true);
+    },
+  );
 });

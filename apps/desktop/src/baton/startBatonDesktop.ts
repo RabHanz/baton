@@ -624,6 +624,7 @@ export const startBatonDesktop = Effect.gen(function* () {
         listening,
         verifyWake,
         trustWake,
+        recording,
         echo,
         speakerMode,
       }) => {
@@ -662,6 +663,7 @@ export const startBatonDesktop = Effect.gen(function* () {
             listening,
             verifyWake,
             trustWake,
+            recording,
             ...(echo === undefined ? {} : { echo }),
             speakerMode,
             scorers: onnx,

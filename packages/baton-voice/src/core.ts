@@ -117,6 +117,13 @@ export type VoiceCoreEvent =
       readonly reason: string;
       /** The wake model's score, for a wake set aside as her own voice. */
       readonly score?: number;
+      /**
+       * For a wake with nothing after it: the speech detector's latest probability, read at each 20 ms frame from
+       * when the wake was accepted until it was let go (highest, and mean of those readings). None from before the
+       * name: the detector is off while she is asleep.
+       */
+      readonly vadPeak?: number;
+      readonly vadMean?: number;
     }
   /** He said only a dismissal ("never mind"): the window ended at once, no model was asked. */
   | { readonly type: "dismissed"; readonly text: string; readonly at: number }
@@ -191,6 +198,12 @@ const ECHO_TAIL_MS = 500;
 const WAKE_LOOKBACK_MS = 1_600;
 /** The wake word's own tail reads as speech: it opens no turn by itself. */
 const WAKE_TAIL_MS = 200;
+/** A wake from sleep with no speech after it this long has its name checked in the background (`LoneWake`). */
+const LONE_CHECK_AFTER_MS = 600;
+/** That background check counts as unsure when it has not answered by then. */
+const LONE_CHECK_LIMIT_MS = 2_000;
+/** An unsure lone wake (the check could not tell, or is off) is let go after this long with no speech. */
+const UNSURE_WAKE_MS = 5_000;
 /** Audio kept behind the newest frame, so a wake scored late (a busy computer just after launch) still finds the name and what followed. */
 const RECENT_MS = 30_000;
 /** However long the speech after held words takes to recognise, they are let go after this. */
@@ -222,11 +235,19 @@ export const createVoiceCore = (input: {
   readonly origin?: number;
   /** How long he must be quiet for a turn to be over: his setting, read each turn. */
   readonly waitMs?: () => number;
+  /** The wall clock for the lone-wake check's time limit; `Date.now` when absent. */
+  readonly clock?: () => number;
+  /** He is recording with the dictation keys (the sidecar, outside this core): a lone wake must not end that. */
+  readonly recording?: () => boolean;
   /**
    * The second check before a wake from sleep: the audio just before the model fired. False drops the
    * wake as if it never happened. Absent, the model alone decides.
    */
-  readonly verifyWake?: (pcm: Int16Array, word: string | null, score: number) => Promise<boolean>;
+  readonly verifyWake?: (
+    pcm: Int16Array,
+    word: string | null,
+    score: number,
+  ) => Promise<boolean | null>;
   /** The model is sure enough of this word that her saying the name too cannot make it her echo. */
   readonly trustWake?: (word: string, score: number) => boolean;
   /** Hears him over Baton's own voice through the speakers (docs/baton/BARGE_IN.md). Absent: only a wake or stop phrase gets through. */
@@ -237,6 +258,7 @@ export const createVoiceCore = (input: {
   const timings = input.timings ?? DEFAULT_TIMINGS;
   const seg = input.segmenter ?? DEFAULT_SEGMENTER;
   const origin = input.origin ?? Date.now();
+  const wallNow = input.clock ?? Date.now;
   let samples = 0;
   const now = () => origin + (samples * 1000) / VOICE_SAMPLE_RATE;
 
@@ -551,7 +573,8 @@ export const createVoiceCore = (input: {
         fire.segment = "none";
         return show();
       }
-      if (parts !== null) after(() => emit({ type: "dropped", text: "", reason: "no speech" }));
+      if (parts !== null)
+        after(() => emit({ type: "dropped", text: "", reason: "no speech", ...vadOf(lone) }));
       return show();
     }
     const pcm = joined(parts);
@@ -840,6 +863,8 @@ export const createVoiceCore = (input: {
       return;
     }
     if (active && !speaking) spokeFrom = samples;
+    // She speaks: whatever the last wake was, it is her turn now, and nothing may dismiss it.
+    if (active) lone = null;
     if (!active) fresh = true;
     speaking = active;
     if (active) {
@@ -896,6 +921,87 @@ export const createVoiceCore = (input: {
     return made;
   };
 
+  /**
+   * A wake from sleep with nothing said after it yet. Nothing waits on it: if no speech follows, its name is checked
+   * in the background, and the result acts only on the window it opened, untouched (`letGo`). Any speech from him
+   * ends it, and his words decide as for any wake. `heard`: the recogniser already heard the name.
+   */
+  interface LoneWake {
+    readonly id: number;
+    readonly firedAt: number;
+    readonly word: string | null;
+    readonly score: number;
+    readonly acceptedAt: number;
+    state: "waiting" | "checking" | "unsure";
+    vadPeak: number;
+    vadSum: number;
+    vadFrames: number;
+  }
+  let lone: LoneWake | null = null;
+  let loneIds = 0;
+  /** Things due by the clock (the lone check's limit), looked at on every frame. */
+  const due = new Set<{ readonly at: number; readonly run: () => void }>();
+  const vadOf = (wake: LoneWake | null) =>
+    wake === null || wake.vadFrames === 0
+      ? {}
+      : {
+          vadPeak: Math.round(wake.vadPeak * 1000) / 1000,
+          vadMean: Math.round((wake.vadSum / wake.vadFrames) * 1000) / 1000,
+        };
+  /** The audio a wake check reads: the name and what came just before it. */
+  const nameAudio = (firedAt: number) =>
+    joined(
+      recent
+        .filter((r) => r.end > firedAt - msToSamples(WAKE_LOOKBACK_MS) && r.end <= firedAt)
+        .map((r) => r.frame),
+    );
+  /** Let a lone wake go without a sound, but only from the plain window it opened, with nothing else going on. */
+  const letGo = (wake: LoneWake) => {
+    if (lone !== wake) return;
+    lone = null;
+    if (
+      machine.mode !== "command_window" ||
+      machine.pending !== null ||
+      speaking ||
+      (input.recording?.() ?? false)
+    )
+      return;
+    emit({
+      type: "dropped",
+      text: "",
+      reason: "wake not heard",
+      score: wake.score,
+      ...vadOf(wake),
+    });
+    enqueue(() => dispatch({ type: "dismiss", at: now() }));
+  };
+  /** The name's own audio, to the recogniser, in the background; unsure after LONE_CHECK_LIMIT_MS. */
+  const checkLone = (wake: LoneWake) => {
+    if (input.verifyWake === undefined) {
+      wake.state = "unsure";
+      return;
+    }
+    wake.state = "checking";
+    let settled = false;
+    const answer = (heardName: boolean | null) => {
+      if (settled) return;
+      settled = true;
+      due.delete(limit);
+      // A newer wake, speech from him, her voice or a dictation since: this answer is about nothing now.
+      if (disposed || lone !== wake) return;
+      // A heard name keeps the window. A no is only unsure, never a drop: his real name can fail the matcher,
+      // and the silence after it (UNSURE_WAKE_MS) still lets a noise fire go, never while he is being heard.
+      if (heardName === true) lone = null;
+      else wake.state = "unsure";
+    };
+    const limit = { at: wallNow() + LONE_CHECK_LIMIT_MS, run: () => answer(null) };
+    due.add(limit);
+    void input
+      .verifyWake(nameAudio(wake.firedAt), wake.word, wake.score)
+      .catch(() => null)
+      .then(answer);
+  };
+
   const acceptWake = (
     score: number,
     firedAt: number,
@@ -903,7 +1009,23 @@ export const createVoiceCore = (input: {
     late: boolean,
     checkMs?: number,
     open = true,
+    /** From sleep: "heard" when its check already heard the name, else "lone" (watched until he speaks). */
+    from: "lone" | "heard" | null = null,
   ) => {
+    lone =
+      from === "lone"
+        ? {
+            id: (loneIds += 1),
+            firedAt,
+            word,
+            score,
+            acceptedAt: samples,
+            state: "waiting",
+            vadPeak: 0,
+            vadSum: 0,
+            vadFrames: 0,
+          }
+        : null;
     if (speaking || hearingItself()) {
       // Only over her voice itself, not its echo after: then there is nothing of hers to carry on from.
       const said = speaking ? heardUntil(played, sounding, Date.now()) : "";
@@ -937,6 +1059,20 @@ export const createVoiceCore = (input: {
     // Inside a cue's window the microphone is replaced by silence for everything downstream.
     const frame = samples < cueUntil ? new Int16Array(heard.length) : heard;
     samples += frame.length;
+    if (due.size > 0) {
+      const clock = wallNow();
+      for (const item of due)
+        if (clock >= item.at) {
+          due.delete(item);
+          item.run();
+        }
+    }
+    // A lone wake: checked after a moment of quiet, and let go after longer when the check could not tell.
+    if (lone !== null && segment === null && transcribing === 0) {
+      const quiet = samples - lone.acceptedAt;
+      if (lone.state === "waiting" && quiet >= msToSamples(LONE_CHECK_AFTER_MS)) checkLone(lone);
+      if (lone?.state === "unsure" && quiet >= msToSamples(UNSURE_WAKE_MS)) letGo(lone);
+    }
 
     const score = input.wake.process(frame);
     const wakeWord = score === null ? null : (input.wake.lastWord?.() ?? null);
@@ -958,24 +1094,23 @@ export const createVoiceCore = (input: {
       // The reply itself says the name: it is its own voice, never a barge-in.
       emit({ type: "dropped", text: wakeWord, reason: "own voice", score });
     } else if (score !== null && machine.mode !== "dictation") {
+      // Asleep and quiet: a wake nothing confirms (the model is saturated) is watched until he speaks.
+      const fromSleep =
+        machine.mode === "sleeping" && machine.pending === null && !speaking && !hearingItself();
       // Over its own voice too: a barge-in needs the recogniser to hear the name, not just the model.
       if (input.verifyWake !== undefined && !sure) {
         // The model alone is not enough, asleep or in a follow-up window (where a false fire would play the
         // cue, flash the pill and extend the window): recognise what was just said first.
         const checkFrom = samples;
+        // Unsure (null) is a wake, as an error is; only a heard name counts as confirmed.
+        let heardName = false;
         const fire: Fire = {
           verdict: input
-            .verifyWake(
-              joined(
-                recent
-                  .filter(
-                    (r) => r.end > firedAt - msToSamples(WAKE_LOOKBACK_MS) && r.end <= firedAt,
-                  )
-                  .map((r) => r.frame),
-              ),
-              wakeWord,
-              score,
-            )
+            .verifyWake(nameAudio(firedAt), wakeWord, score)
+            .then((answer) => {
+              heardName = answer === true;
+              return answer !== false;
+            })
             .catch(() => true),
           made: false,
           segment: "none",
@@ -996,12 +1131,28 @@ export const createVoiceCore = (input: {
           if (!ok) emit({ type: "dropped", text: "", reason: "wake not confirmed" });
           else {
             const checkMs = Math.round(((samples - checkFrom) * 1000) / VOICE_SAMPLE_RATE);
-            acceptWake(score, firedAt, wakeWord, true, checkMs, fire.segment === "none");
+            acceptWake(
+              score,
+              firedAt,
+              wakeWord,
+              true,
+              checkMs,
+              fire.segment === "none",
+              fromSleep ? (heardName ? "heard" : "lone") : null,
+            );
           }
           show();
         });
       } else {
-        acceptWake(score, firedAt, wakeWord, firedAt < samples);
+        acceptWake(
+          score,
+          firedAt,
+          wakeWord,
+          firedAt < samples,
+          undefined,
+          true,
+          fromSleep ? "lone" : null,
+        );
         enqueue(woke(wakeWord));
       }
     } else if (machine.deadline !== null || machine.pending !== null) {
@@ -1064,6 +1215,12 @@ export const createVoiceCore = (input: {
 
     if (listening() && !hearingItself()) {
       const speech = input.vad.isSpeech(frame);
+      const probability = lone === null ? undefined : input.vad.probability?.();
+      if (lone !== null && probability !== undefined) {
+        lone.vadPeak = Math.max(lone.vadPeak, probability);
+        lone.vadSum += probability;
+        lone.vadFrames += 1;
+      }
       // Counted from what the detector has scored, not its last answer: frames it has not reached (a burst after a
       // stall) are neither speech nor silence yet.
       const scored = input.vad.scored?.();
@@ -1085,6 +1242,8 @@ export const createVoiceCore = (input: {
         } else {
           silenceSamples += frame.length;
         }
+        // Speech from him: whatever its check says, his words decide now.
+        if (lone !== null && speechSamples >= msToSamples(seg.minSpeechMs)) lone = null;
         if (
           silenceSamples >=
             msToSamples(machine.mode === "dictation" ? seg.endSilenceMs : seg.endSilenceMs * 0.7) ||
@@ -1169,6 +1328,8 @@ export const createVoiceCore = (input: {
     setDirectSession: (enabled) =>
       enqueue(() => dispatch({ type: "set_direct_session", enabled, at: now() })),
     setDictation: async (on) => {
+      // A dictation started over a lone wake is his: the wake must not end it.
+      lone = null;
       enqueue(() => dispatch({ type: "set_dictation", on, at: now() }));
       await work;
       return machine.mode === "dictation";
