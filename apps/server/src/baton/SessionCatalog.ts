@@ -82,6 +82,8 @@ export interface CatalogPorts {
   readonly readTail?: (file: string) => Promise<string>;
   /** Resumed by the watchdog in the last two hours: shown on the row. */
   readonly autoResumed?: (sessionId: string) => boolean;
+  /** Died mid-turn and the watchdog did not bring it back: why not, and when it saw the death; null otherwise. */
+  readonly died?: (sessionId: string) => { readonly why: string; readonly at: number } | null;
   /** How long a resume holds the caller before answering "resuming" (machines with no Herdr); tests shorten it. */
   readonly resumeWaitMs?: number;
   /** Where messages kept for a stopped session are stored, so a restart does not lose them. */
@@ -100,6 +102,7 @@ export interface CatalogPorts {
 /** Shown on a session the watchdog brought back, in the list; the thread shows the restart message itself. */
 export const IMPORTING = "Importing the conversation's history...";
 export const AUTO_RESUMED = "Resumed automatically after a crash";
+export const CRASHED = "Died mid-turn and was not resumed";
 
 export const READY_TIMEOUT_MS = 45_000;
 const POLL_MS = 500;
@@ -204,6 +207,18 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
           ? "running"
           : "stopped";
     const cwdOk = t.cwd !== null && ports.dirExists(t.cwd);
+    const died = state === "stopped" ? (ports.died?.(t.sessionId) ?? null) : null;
+    // Run again by hand since the death: no longer crashed.
+    const crashed = died === null || Date.parse(t.lastActivityAt ?? "") > died.at ? null : died.why;
+    const detail =
+      failed.get(t.sessionId) ??
+      (state === "resuming"
+        ? IMPORTING
+        : cwdOk
+          ? ports.autoResumed?.(t.sessionId) === true
+            ? AUTO_RESUMED
+            : null
+          : "Its folder is not on this machine, so it cannot be resumed here.");
     return {
       id: t.sessionId,
       machine: ports.machine,
@@ -216,15 +231,9 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
       source: "transcript",
       canResume: cwdOk,
       detail:
-        failed.get(t.sessionId) ??
-        (state === "resuming"
-          ? IMPORTING
-          : cwdOk
-            ? ports.autoResumed?.(t.sessionId) === true
-              ? AUTO_RESUMED
-              : null
-            : "Its folder is not on this machine, so it cannot be resumed here."),
+        crashed === null ? detail : `${CRASHED}: ${crashed}.${detail === null ? "" : ` ${detail}`}`,
       waiting: waiting.get(t.sessionId)?.length ?? 0,
+      ...(crashed === null ? {} : { crashed: true }),
       ...(resumedThreads.has(t.sessionId) ? { threadId: resumedThreads.get(t.sessionId)! } : {}),
     };
   };

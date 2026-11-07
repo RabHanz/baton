@@ -4,6 +4,7 @@
  * model's guess: a session is failed because its state says so, stalled because it says "working"
  * and nothing has happened for a long time.
  */
+import { freshFindings } from "./attention.ts";
 import {
   WorkSessionId,
   type BatonFleetEntry,
@@ -121,6 +122,80 @@ export const outcomesFromRecord = (
       },
     ];
   });
+
+/** A finding the server's own watch noticed, as a Record row (D1): kept with no desktop up, read by the morning brief. */
+export const findingRecord = (f: WatchFinding) => ({
+  kind: "watch",
+  actor: "watch",
+  ref: f.workSessionId,
+  subject: f.title,
+  outcome: f.kind,
+  detail: f.lastDid ?? "",
+});
+
+/** The same finding of the same session is written at most this often, so one that flaps does not fill the Record. */
+const RECORD_EVERY_MS = 6 * 3_600_000;
+/** An account out of room is the account pool's to report. */
+const RECORDED: ReadonlySet<string> = new Set(["failed", "stalled", "unanswered"]);
+const keyOf = (ref: string | null, kind: string) => `${ref}:${kind}`;
+
+export interface WatchRecordState {
+  /** What stands now, so it is not written again while it stands. */
+  readonly noted: ReadonlySet<string>;
+  /** When each session's finding was last written. */
+  readonly written: ReadonlyMap<string, number>;
+}
+
+/** From the Record's `watch` rows, newest first: each session's newest row stood when the server stopped, whatever its age. */
+export const watchRecordStart = (rows: ReadonlyArray<BatonRecordEntry>): WatchRecordState => {
+  const written = new Map<string, number>();
+  const newest = new Map<string | null, string>();
+  for (const r of rows) {
+    if (r.kind !== "watch") continue;
+    const key = keyOf(r.ref, r.outcome);
+    if (!written.has(key)) written.set(key, Date.parse(r.at));
+    if (!newest.has(r.ref)) newest.set(r.ref, key);
+  }
+  return { noted: new Set(newest.values()), written };
+};
+
+/** The findings to write now, and the state once they are written. */
+export const watchRecordStep = (
+  found: ReadonlyArray<WatchFinding>,
+  state: WatchRecordState,
+  now: number,
+): { readonly write: ReadonlyArray<WatchFinding>; readonly next: WatchRecordState } => {
+  const { fresh, next } = freshFindings(found, state.noted);
+  const written = new Map(state.written);
+  const write = fresh.filter((f) => {
+    const key = keyOf(f.workSessionId, f.kind);
+    if (!RECORDED.has(f.kind) || now - (written.get(key) ?? -Infinity) < RECORD_EVERY_MS)
+      return false;
+    written.set(key, now);
+    return true;
+  });
+  return { write, next: { noted: next, written } };
+};
+
+const KEPT_KINDS: ReadonlySet<string> = new Set(["failed", "stalled"]);
+
+/** The failures and stalls the watch recorded, as findings again, though they have since cleared; any other row is ignored. */
+export const findingsFromRecord = (
+  rows: ReadonlyArray<BatonRecordEntry>,
+): ReadonlyArray<WatchFinding> =>
+  rows.flatMap((r): ReadonlyArray<WatchFinding> =>
+    r.kind !== "watch" || r.ref === null || !KEPT_KINDS.has(r.outcome)
+      ? []
+      : [
+          {
+            workSessionId: WorkSessionId.make(r.ref),
+            title: r.subject,
+            kind: r.outcome as WatchFinding["kind"],
+            minutes: 0,
+            ...(r.detail === "" ? {} : { lastDid: r.detail }),
+          },
+        ],
+  );
 
 /**
  * His terminal sessions, which are not work sessions: one waiting on him too long, and what the watchdog did

@@ -315,6 +315,14 @@ describe("browsing", () => {
           account: "bob",
         }),
       ],
+      // OLD died after its last activity; ID was run again by hand after its death.
+      died: (id) =>
+        id === OLD || id === ID
+          ? {
+              why: "auto-resume is off here",
+              at: Date.parse(id === OLD ? "2026-10-02T00:00:00.000Z" : "2026-10-30T00:00:00.000Z"),
+            }
+          : null,
     });
     const { sessions, machine: name } = await catalog.list({});
     expect(name).toBe("box");
@@ -325,6 +333,13 @@ describe("browsing", () => {
     ]);
     expect(sessions[2]!.detail).toContain("not on this machine");
     expect(sessions[1]!.title).toBe("Fix the checkout");
+    // One that died mid-turn and was not brought back says so, and why, beside its other reason.
+    expect(sessions[2]!.crashed).toBe(true);
+    expect(sessions[2]!.detail).toBe(
+      "Died mid-turn and was not resumed: auto-resume is off here. Its folder is not on this machine, so it cannot be resumed here.",
+    );
+    // One run again by hand since its death is a plain stopped session.
+    expect(sessions[1]!.crashed).toBeUndefined();
     // A live thread checks its own session by id; the history index may not have it.
     const byId = (await catalog.list({ query: "run-1" })).sessions;
     expect(byId.map((s) => [s.id, s.state])).toEqual([["run-1", "running"]]);

@@ -97,6 +97,8 @@ export const morningBrief = (input: {
   readonly extra?: ReadonlyArray<string>;
   /** The Record's `background_turns` notes: who passed the day's guide. Never a stop. */
   readonly guide?: ReadonlyArray<BatonRecordEntry>;
+  /** What the server's watch recorded since the last brief; one that still stands is in `findings` already. */
+  readonly earlier?: ReadonlyArray<WatchFinding>;
 }): string => {
   const day = 24 * 3_600_000;
   const recent = input.jobs.filter((j) => input.now - Date.parse(j.lastActivityAt) <= day);
@@ -121,6 +123,16 @@ export const morningBrief = (input: {
   if (running.length > 0) parts.push(`Still running: ${list(running)}.`);
   const stuck = input.findings.filter((f) => f.kind === "stalled").map((f) => f.title);
   if (stuck.length > 0) parts.push(`Looks stalled: ${list(stuck)}.`);
+  const standing = new Set(input.findings.map((f) => f.workSessionId));
+  const cleared = (kind: WatchFinding["kind"]) => [
+    ...new Set(
+      (input.earlier ?? [])
+        .filter((f) => f.kind === kind && !standing.has(f.workSessionId))
+        .map((f) => f.title),
+    ),
+  ];
+  if (cleared("failed").length > 0) parts.push(`Failed overnight: ${list(cleared("failed"))}.`);
+  if (cleared("stalled").length > 0) parts.push(`Stalled earlier: ${list(cleared("stalled"))}.`);
   const guide = (input.guide ?? [])
     .filter((e) => e.kind === "background_turns" && input.now - Date.parse(e.at) <= day)
     .map((e) =>

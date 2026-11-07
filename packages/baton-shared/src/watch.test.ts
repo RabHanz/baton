@@ -1,9 +1,13 @@
-import type { BatonFleetEntry } from "@t3tools/baton-contracts";
+import { WorkSessionId, type BatonFleetEntry } from "@t3tools/baton-contracts";
 import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   describeWatch,
+  findingRecord,
+  findingsFromRecord,
+  watchRecordStart,
+  watchRecordStep,
   outcomeRecord,
   outcomesFromRecord,
   watchFleet,
@@ -129,5 +133,67 @@ describe("watching his terminal sessions", () => {
         lastDid: "died mid-turn, not resumed: stopped on purpose",
       },
     ]);
+  });
+  it("keeps the server watch's failures and stalls in the Record for the brief, though they cleared", () => {
+    const row = (kind: "failed" | "stalled" | "unanswered", id: number) => ({
+      ...findingRecord({
+        workSessionId: WorkSessionId.make(`w${id}`),
+        title: `T${id}`,
+        kind,
+        minutes: 40,
+        lastDid: "ran the tests",
+      }),
+      id,
+      at: ago(id),
+      project: null,
+    });
+    expect(findingsFromRecord([row("failed", 1), row("unanswered", 2), row("stalled", 3)])).toEqual(
+      [
+        { workSessionId: "w1", title: "T1", kind: "failed", minutes: 0, lastDid: "ran the tests" },
+        { workSessionId: "w3", title: "T3", kind: "stalled", minutes: 0, lastDid: "ran the tests" },
+      ],
+    );
+  });
+  it("writes a finding to the Record once while it stands, at most every 6 h when it flaps, never 'limited', and not again after a restart", () => {
+    const HOUR = 3_600_000;
+    const finding = (id: string, kind: "failed" | "stalled" | "limited") => ({
+      workSessionId: WorkSessionId.make(id),
+      title: id,
+      kind,
+      minutes: 40,
+    });
+    const ids = (write: ReadonlyArray<{ workSessionId: string }>) =>
+      write.map((f) => f.workSessionId);
+    let state = watchRecordStart([]);
+    const step = (found: ReturnType<typeof finding>[], at: number) => {
+      const out = watchRecordStep(found, state, at);
+      state = out.next;
+      return ids(out.write);
+    };
+    expect(step([finding("a", "failed"), finding("b", "limited")], NOW)).toEqual(["a"]);
+    expect(step([finding("a", "failed")], NOW + 60_000)).toEqual([]);
+    // It clears and comes back within 6 h: not written again; after them, it is.
+    expect(step([], NOW + 2 * 60_000)).toEqual([]);
+    expect(step([finding("a", "failed")], NOW + HOUR)).toEqual([]);
+    expect(step([], NOW + HOUR + 60_000)).toEqual([]);
+    expect(step([finding("a", "failed")], NOW + 7 * HOUR)).toEqual(["a"]);
+    // A restart reads the newest row per session, however old: what stood is not written again.
+    const row = (id: number, ref: string, outcome: string, at: number) => ({
+      id,
+      at: DateTime.formatIso(DateTime.makeUnsafe(at)),
+      kind: "watch",
+      actor: "watch",
+      project: null,
+      ref,
+      subject: ref,
+      outcome,
+      detail: "",
+    });
+    state = watchRecordStart([
+      row(2, "c", "stalled", NOW - 30 * HOUR),
+      row(1, "c", "failed", NOW - 40 * HOUR),
+    ]);
+    expect(step([finding("c", "stalled")], NOW)).toEqual([]);
+    expect(step([finding("c", "stalled"), finding("c", "failed")], NOW)).toEqual(["c"]);
   });
 });
