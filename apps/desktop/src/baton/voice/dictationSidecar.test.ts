@@ -135,13 +135,13 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
 });
 
 describe("the wake path's own model", () => {
-  it("falls back to dictation's model for a clip its own would not load, and says so", async () => {
+  const rig = (failure: string) => {
     const asked: Array<string | null> = [];
     const failed: string[] = [];
     const sidecar = {
       transcribe: async (_wav: string, model?: string | null) => {
         asked.push(model ?? null);
-        if (model != null) throw new Error("load: bad model");
+        if (model != null) throw new Error(failure);
         return "what time is it";
       },
     } as unknown as DictationSidecar;
@@ -153,8 +153,25 @@ describe("the wake path's own model", () => {
       () => "/m/fast.gguf",
       (file) => void failed.push(file),
     );
-    expect(await stt.transcribe(new Int16Array(1_600))).toBe("what time is it");
-    expect(asked).toEqual(["/m/fast.gguf", null]);
-    expect(failed).toEqual(["/m/fast.gguf"]);
+    return { stt, asked, failed };
+  };
+
+  it.each(["load: bad model", "Dictation stopped."])(
+    "falls back to dictation's model for a clip its own failed on (%s), and says so",
+    async (failure) => {
+      const r = rig(failure);
+      expect(await r.stt.transcribe(new Int16Array(1_600))).toBe("what time is it");
+      expect(r.asked).toEqual(["/m/fast.gguf", null]);
+      expect(r.failed).toEqual(["/m/fast.gguf"]);
+    },
+  );
+
+  it("takes a sidecar that did not answer in time for a busy machine, not a bad model", async () => {
+    const r = rig("Dictation did not answer.");
+    await expect(r.stt.transcribe(new Int16Array(1_600))).rejects.toThrow(
+      "Dictation did not answer.",
+    );
+    expect(r.asked).toEqual(["/m/fast.gguf"]);
+    expect(r.failed).toEqual([]);
   });
 });

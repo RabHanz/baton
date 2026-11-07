@@ -308,7 +308,7 @@ export const startDictationSidecar = (input: {
     else entry.resolve(result.value as never);
   };
   const arm = (id: number, ms: number): ReturnType<typeof setTimeout> =>
-    setTimeout(() => settle(id, { error: "Dictation did not answer." }), ms);
+    setTimeout(() => settle(id, { error: NO_ANSWER }), ms);
   const call = <T>(message: Record<string, unknown>, onLoad = false): Promise<T> =>
     new Promise<T>((resolve, reject) => {
       const id = ++nextId;
@@ -499,6 +499,9 @@ export const startDictationSidecar = (input: {
 };
 
 /** Parakeet behind the core's `SttProvider`, in the sidecar that already holds the model. */
+/** A call the sidecar did not answer in time: a busy machine, not a sign that the model it was given is bad. */
+const NO_ANSWER = "Dictation did not answer.";
+
 export const makeSidecarStt = (
   sidecar: DictationSidecar,
   /** His languages; what reads as another one is not heard, and `onOutside` is told which. */
@@ -523,6 +526,8 @@ export const makeSidecarStt = (
         own === null
           ? sidecar.transcribe(file)
           : sidecar.transcribe(file, own).catch((error: unknown) => {
+              // Asking again with dictation's model would only wait out another timeout.
+              if (error instanceof Error && error.message === NO_ANSWER) throw error;
               onModelFailed?.(own, error);
               return sidecar.transcribe(file);
             });
