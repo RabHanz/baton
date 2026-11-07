@@ -1796,7 +1796,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     // opening the window; other connected servers are reached only through the window.
     const direct = input.direct;
     if (direct !== undefined && (serverOnly(body) || (await input.mainWindowUp?.()) === false)) {
-      const call = deskCall(body);
+      const call = deskCall(body, input.sessions?.here() ?? null);
+      if (call !== null && "refuse" in call) throw new Error(call.refuse);
       if (call !== null) return direct(call.method, call.input);
     }
     // Listing servers for the Memory tab never reopens T3's window; the tab shows the last list.

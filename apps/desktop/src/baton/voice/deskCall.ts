@@ -1,7 +1,7 @@
 /**
  * A job, watch, memory, commitments or weave request as one call to this machine's own server, for while T3's window is closed
  * (GEN-6). The arguments are shaped as the sidebar shapes them; the server decodes and checks them. Null for a
- * request only the window can answer: starting a job (it picks the project and worker), handoff, sync, import.
+ * request only the window can answer; a refusal for acting on another machine, which only T3's own session to it does.
  */
 import type { BatonJobBridgeRequest } from "@t3tools/baton-contracts";
 
@@ -41,20 +41,25 @@ const SERVER_ONLY = new Set([
 export const serverOnly = (body: { readonly kind: string; readonly op?: unknown }): boolean =>
   body.kind === "memory" && typeof body.op === "string" && SERVER_ONLY.has(body.op);
 
-export const deskCall = (body: {
-  readonly kind: string;
-  readonly op?: unknown;
-  readonly args?: unknown;
-  readonly environmentId?: unknown;
-}): { readonly method: string; readonly input: unknown } | null => {
+export const deskCall = (
+  body: {
+    readonly kind: string;
+    readonly op?: unknown;
+    readonly args?: unknown;
+    readonly environmentId?: unknown;
+  },
+  /** This machine's server as its session list names it, once read. */
+  here: { readonly environmentId: string; readonly label: string } | null = null,
+): { readonly method: string; readonly input: unknown } | { readonly refuse: string } | null => {
   const args = (body.args ?? {}) as Readonly<Record<string, unknown>>;
-  // Cloud tasks on this machine's own hub; a hub on another machine is reached through the window.
+  // Cloud tasks on this machine's own hub; acting on another machine stays on T3's own session to it.
   if (body.kind === "cloud") {
-    return typeof body.op === "string" &&
-      CLOUD_OPS.has(body.op) &&
-      (body.environmentId === undefined || body.environmentId === "")
+    if (typeof body.op !== "string" || !CLOUD_OPS.has(body.op)) return null;
+    return body.environmentId === undefined ||
+      body.environmentId === "" ||
+      body.environmentId === here?.environmentId
       ? { method: `baton.cloud.${body.op}`, input: args }
-      : null;
+      : { refuse: "Open T3 to use cloud tasks on that computer." };
   }
   if (body.kind === "memory") {
     return typeof body.op === "string" && MEMORY_OPS.has(body.op)
@@ -74,9 +79,11 @@ export const deskCall = (body: {
   switch (body.op as BatonJobBridgeRequest["op"]) {
     case "list":
       return { method: "baton.job.list", input: {} };
-    // The server places a job here; one he asked to run on another machine still goes through the window.
+    // The server places a job here; one he asked to run on another machine stays on T3's own session to it.
     case "start": {
-      if (text("runOn").trim() !== "") return null;
+      const runOn = text("runOn").trim();
+      if (runOn !== "" && runOn.toLowerCase() !== here?.label.trim().toLowerCase())
+        return { refuse: `Open T3 to start a job on ${runOn}.` };
       const strings = (key: string) =>
         Array.isArray(args[key]) ? args[key].filter((v) => typeof v === "string") : [];
       return {

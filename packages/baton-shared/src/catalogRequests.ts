@@ -1,6 +1,7 @@
 /**
- * Baton's window asks this sidebar for the session catalog, one environment at a time, and the sidebar answers with
- * the same commands a click would use. Pure over its commands, so it is tested without a connection.
+ * Baton's window asks for the session catalog, one environment at a time: the T3 sidebar answers with the commands a
+ * click would use, and the desktop, with T3's window closed, with this machine's server through its door. Pure over
+ * its commands, so it is tested without a connection.
  */
 import type {
   BatonCatalogCreateInput,
