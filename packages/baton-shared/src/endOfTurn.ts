@@ -26,25 +26,34 @@ const LEAD_ONLY =
 
 /**
  * No sentence ends here, whatever full stop the recogniser added ("Open the.", "and then."). "I think so.",
- * "Even so." and "I need to." do; so does "plan A.", which is why a lone "a" counts only in lower case.
+ * "Even so." and "I need to." do; so do "plan A." and "plan a.".
  */
 const DANGLING =
-  /(?:^|\s)(?:and|or|but|because|the|an|my|your|of|(?:and|but) then|um+|uh+|er+|(?<!\b(?:need|needs|have|has|had|want|wants|love|like|going|got|ought|used|able)\s)to|(?<!\b(?:think|hope|guess|suppose|believe|said|do|not|so|and|or|even|okay|ok)\s)so)$/i;
-const DANGLING_A = /(?:^|\s)a$/;
+  /(?:^|\s)(?:and|or|but|because|the|an|my|your|of|(?:and|but) then|um+|uh+|er+|(?<!\b(?:need|needs|have|has|had|want|wants|love|like|going|got|ought|used|able)\s)to|(?<!\b(?:think|hope|guess|suppose|believe|said|do|not|so|and|or|even|okay|ok|that)\s)so)$/i;
+/** A lone article, in lower case and not naming a choice ("plan a", "option A"). */
+const DANGLING_A = /(?:^|(?<!\b(?:plan|option|vitamin|type|grade|class|section|part|point))\s)a$/;
 
 /** Words a question may end on ("Who is he with?", "What's it like?"); any other open end leaves it open. */
 const ASKS_END = /(?:^|\s)(?:with|for|to|of|from|about|that|like|why|where|when)$/i;
-/** Except "tell me about?": the subject is still to come. */
+/** A question cut off before what it compares or depends on ("Is it bigger than?", "Can you check if?"). */
+const ASKS_MORE = /(?:^|\s)(?:than|if|as)$/i;
+/** "Can you tell me about?": the subject is still to come. */
 const TOLD_ABOUT = /\b(?:tell|ask|show)\s+(?:me|us|him|her|them)\s+about$/i;
+
+const bareOf = (t: string): string => t.replace(/[.!?…"')\]]+$/, "");
 
 /** The words end on one that leaves the sentence open, read by the mark the recogniser closed it with. */
 const trailsOff = (t: string): boolean => {
-  const bare = t.replace(/[.!?…"')\]]+$/, "");
+  const bare = bareOf(t);
   const dangling = DANGLING.test(bare) || DANGLING_A.test(bare);
   if (t.endsWith("?"))
-    return (dangling || OPEN_END.test(bare)) && (!ASKS_END.test(bare) || TOLD_ABOUT.test(bare));
+    return (dangling && !ASKS_END.test(bare)) || ASKS_MORE.test(bare) || TOLD_ABOUT.test(bare);
   return dangling || (OPEN_END.test(bare) && !/[.!]$/.test(t));
 };
+
+/** "What's going on?", "Where am I?": a whole question, but one that often goes on, so it gets the usual wait. */
+const mayGoOn = (t: string): boolean =>
+  t.endsWith("?") && OPEN_END.test(bareOf(t)) && !ASKS_END.test(bareOf(t));
 
 /** The words stop mid-thought: a joining word, a comma, a lone opener, or a short fragment with no full stop. */
 export const isUnfinished = (text: string): boolean => {
@@ -57,7 +66,7 @@ export const isUnfinished = (text: string): boolean => {
 /** A whole sentence, or a question ("What time?", "Who is he with?"), closed with its own mark. */
 export const isComplete = (text: string): boolean => {
   const t = text.trim();
-  if (!/[.!?]$/.test(t) || trailsOff(t)) return false;
+  if (!/[.!?]$/.test(t) || trailsOff(t) || mayGoOn(t)) return false;
   return t.endsWith("?") ? words(t) >= 2 : words(t) >= 3 && !OPEN_END.test(t.replace(/[.!]+$/, ""));
 };
 
