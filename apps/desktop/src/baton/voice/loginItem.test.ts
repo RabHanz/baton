@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { loginItemOn, setLoginItem } from "./loginItem.ts";
+import { createLoginItemState, loginItemOn, setLoginItem } from "./loginItem.ts";
 
 const ENTRY = "app.id.example";
 
@@ -20,12 +20,28 @@ const registry = (initial: ReadonlyArray<string>) => {
 };
 
 describe("the sign-in switch", () => {
-  it("reads on when the installer's entry under the app's id exists, though the settings file never said so", () => {
-    expect(loginItemOn(registry([ENTRY]).api, ENTRY, (name) => name === ENTRY)).toBe(true);
-    expect(loginItemOn(registry([]).api, ENTRY, () => false)).toBe(false);
+  it("reads on when the installer's entry under the app's id exists, though the settings file never said so", async () => {
+    expect(await loginItemOn(registry([ENTRY]).api, ENTRY, async (name) => name === ENTRY)).toBe(
+      true,
+    );
+    expect(await loginItemOn(registry([]).api, ENTRY, async () => false)).toBe(false);
   });
-  it("reads on for Electron's default-named entry too", () => {
-    expect(loginItemOn(registry(["default"]).api, ENTRY, () => false)).toBe(true);
+  it("reads on for Electron's default-named entry too", async () => {
+    expect(await loginItemOn(registry(["default"]).api, ENTRY, async () => false)).toBe(true);
+  });
+  it("is read from the registry only on refresh and after a change, never when Home asks", async () => {
+    let reads = 0;
+    const state = createLoginItemState(registry([ENTRY]).api, ENTRY, async () => {
+      reads += 1;
+      return true;
+    });
+    for (let i = 0; i < 5; i += 1) state.on();
+    expect(reads).toBe(0);
+    expect(await state.refresh()).toBe(true);
+    expect(state.on()).toBe(true);
+    state.set(false);
+    expect(state.on()).toBe(false);
+    expect(reads).toBe(2);
   });
   it("keeps exactly one entry, under the app's id, and none when switched off", () => {
     const r = registry(["default"]);
