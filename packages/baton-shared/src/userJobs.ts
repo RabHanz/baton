@@ -6,6 +6,8 @@
 import { isUnattendedTool } from "./trust.ts";
 
 export const MAX_USER_JOBS = 20;
+/** Proposals from devices or other agents waiting for his yes, at most: a flood cannot crowd out his own. */
+export const MAX_PROPOSALS = 3;
 /** An event job waits at least this long between runs. */
 export const MIN_EVENT_MINUTES = 15;
 export const USER_JOB_EVENTS = ["session_waiting", "build_failed", "job_finished"] as const;
@@ -40,6 +42,8 @@ export interface UserJob {
   readonly on: boolean;
   /** Proposed by a device or another agent: off until he approves it on the Trust page. */
   readonly proposed: boolean;
+  /** Who wrote the instruction: a device's words are run as data, never as his, until he rewrites them. */
+  readonly from: "him" | "device";
   /** A timed job whose time passed while Tessaya was off: run once when back (default), or skip that day. */
   readonly missed: "once" | "skip";
   readonly createdAt: number;
@@ -57,6 +61,12 @@ export const DEFAULT_USER_JOB_TOOLS: ReadonlyArray<string> = [
   "approvals_list",
 ];
 
+/** What a job did by itself in the built-ins (a look job, a note, a skill draft): not for his own jobs, which only read. */
+const RECORD_WRITES: ReadonlySet<string> = new Set(["job_start", "job_refine", "skill_draft"]);
+/** A tool his own job may have: one that may run with nobody there, and only reads and reports. */
+export const isUserJobTool = (tool: string): boolean =>
+  isUnattendedTool(tool) && !RECORD_WRITES.has(tool);
+
 type Args = Readonly<Record<string, unknown>>;
 const int = (v: unknown, lo: number, hi: number): number | null =>
   typeof v === "number" && Number.isInteger(v) && v >= lo && v <= hi ? v : null;
@@ -64,8 +74,14 @@ const int = (v: unknown, lo: number, hi: number): number | null =>
 /** The job_create arguments as a job, or the reason they cannot be one, in words he can be told. */
 export const userJobFromArgs = (
   args: Args,
-  defaults: { readonly owner: string; readonly id: string; readonly now: number },
-): { readonly job: Omit<UserJob, "on" | "proposed"> } | { readonly refused: string } => {
+  defaults: {
+    readonly owner: string;
+    readonly id: string;
+    readonly now: number;
+    /** The persona ids it may run as. */
+    readonly owners: ReadonlyArray<string>;
+  },
+): { readonly job: Omit<UserJob, "on" | "proposed" | "from"> } | { readonly refused: string } => {
   const title = typeof args["title"] === "string" ? args["title"].trim().slice(0, 120) : "";
   const instruction =
     typeof args["instruction"] === "string" ? args["instruction"].trim().slice(0, 1_000) : "";
@@ -75,6 +91,8 @@ export const userJobFromArgs = (
   if (t["kind"] === "time") {
     const hour = int(t["hour"], 0, 23);
     const minute = t["minute"] === undefined ? 0 : int(t["minute"], 0, 59);
+    if (t["days"] !== undefined && !Array.isArray(t["days"]))
+      return { refused: "Days must be a list, like mon and fri." };
     const days = Array.isArray(t["days"]) ? t["days"] : [];
     if (hour === null || minute === null)
       return { refused: "The time must be an hour 0-23 and a minute 0-59." };
@@ -94,15 +112,19 @@ export const userJobFromArgs = (
     : [];
   // Only what may run with nobody there; anything else would only be held at run time.
   const tools =
-    asked.length === 0 ? DEFAULT_USER_JOB_TOOLS : (asked as string[]).filter(isUnattendedTool);
-  if (tools.length === 0) return { refused: "None of those tools may run with nobody there." };
+    asked.length === 0 ? DEFAULT_USER_JOB_TOOLS : (asked as string[]).filter(isUserJobTool);
+  if (tools.length === 0)
+    return { refused: "His own jobs only read and report; none of those tools does." };
+  const owner =
+    typeof args["owner"] === "string" && args["owner"] !== "" ? args["owner"] : defaults.owner;
+  if (!defaults.owners.includes(owner))
+    return { refused: `There is no persona ${owner}; use one of ${defaults.owners.join(", ")}.` };
   return {
     job: {
       id: defaults.id,
       title,
       instruction,
-      owner:
-        typeof args["owner"] === "string" && args["owner"] !== "" ? args["owner"] : defaults.owner,
+      owner,
       trigger,
       tools: [...new Set(tools)],
       missed: args["missed"] === "skip" ? "skip" : "once",
@@ -136,10 +158,31 @@ export const whenText = (trigger: UserJobTrigger): string => {
 };
 
 /** The confirm card: what it will do, when, as whom, and with which tools. */
-export const userJobCard = (job: Omit<UserJob, "on" | "proposed">, ownerName: string): string =>
+export const userJobCard = (
+  job: Omit<UserJob, "on" | "proposed" | "from">,
+  ownerName: string,
+): string =>
   [
     `${job.title}`,
     `When: ${whenText(job.trigger)}.`,
     `What: ${job.instruction}`,
-    `As: ${ownerName}. Tools: ${job.tools.join(", ")} (reading and reporting; anything else is held).`,
+    `As: ${ownerName}. Tools: ${job.tools.join(", ")}. It only reads and reports: it changes, sends and starts nothing.`,
   ].join("\n");
+
+/** A stored job, checked field by field: one written by an older or damaged file is skipped, not run. */
+export const isUserJob = (value: unknown): value is UserJob => {
+  const j = value as Partial<UserJob> | null;
+  const t = j?.trigger as Partial<UserJobTrigger> | undefined;
+  return (
+    typeof j?.id === "string" &&
+    typeof j.title === "string" &&
+    typeof j.instruction === "string" &&
+    typeof j.owner === "string" &&
+    typeof j.on === "boolean" &&
+    typeof j.proposed === "boolean" &&
+    (j.from === "him" || j.from === "device") &&
+    (j.missed === "once" || j.missed === "skip") &&
+    Array.isArray(j.tools) &&
+    (t?.kind === "time" || t?.kind === "event")
+  );
+};

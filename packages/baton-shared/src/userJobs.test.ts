@@ -8,7 +8,7 @@ import {
   whenText,
 } from "./userJobs.ts";
 
-const defaults = { owner: "executive", id: "user:1", now: 0 };
+const defaults = { owner: "executive", id: "user:1", now: 0, owners: ["executive", "operations"] };
 
 describe("his own standing jobs, from the assistant's job_create call", () => {
   it("takes a time job, read and report by default", () => {
@@ -35,7 +35,7 @@ describe("his own standing jobs, from the assistant's job_create call", () => {
         title: "t",
         instruction: "i",
         trigger: { kind: "time", hour: 9 },
-        tools: ["watch_report", "type_text", "session_send"],
+        tools: ["watch_report", "type_text", "session_send", "job_start", "skill_draft"],
       },
       defaults,
     );
@@ -45,7 +45,7 @@ describe("his own standing jobs, from the assistant's job_create call", () => {
         { title: "t", instruction: "i", trigger: { kind: "time", hour: 9 }, tools: ["click"] },
         defaults,
       ),
-    ).toEqual({ refused: "None of those tools may run with nobody there." });
+    ).toEqual({ refused: "His own jobs only read and report; none of those tools does." });
   });
 
   it("gives an event job at least the minimum gap", () => {
@@ -77,6 +77,11 @@ describe("his own standing jobs, from the assistant's job_create call", () => {
     [{ title: "t", instruction: "i", trigger: { kind: "event", event: "rain" } }, "event"],
     [{ title: "", instruction: "i", trigger: { kind: "time", hour: 8 } }, "title"],
     [{ title: "t", instruction: "i", trigger: { kind: "monthly" } }, "trigger"],
+    [{ title: "t", instruction: "i", trigger: { kind: "time", hour: 8, days: "mon" } }, "list"],
+    [
+      { title: "t", instruction: "i", trigger: { kind: "time", hour: 8 }, owner: "nobody" },
+      "persona",
+    ],
   ])("refuses %j in words", (args, word) => {
     const made = userJobFromArgs(args, defaults);
     expect("refused" in made && made.refused).toContain(word);

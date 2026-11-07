@@ -120,10 +120,8 @@ const BATON_QUIET = new Set([
   "open_page",
   "dictation_start",
   "dictation_stop",
-  // His own standing jobs (KIRO-1): job_create saves only on its own card's yes; a device's call only proposes one.
+  // His own standing job (KIRO-1): job_create saves only on its own card's yes; a device's call only proposes one.
   "job_create",
-  "job_update",
-  "job_delete",
   // His own choice of model for chat turns: local, and "back to normal" undoes it.
   "assistant_model",
   "screen_capture",
@@ -191,6 +189,8 @@ export const BATON_TOOLS: ReadonlySet<string> = new Set([
   "weave_send",
   "job_retry",
   "job_handoff",
+  "job_update",
+  "job_delete",
   "skill_draft",
   "text_transform",
   "text_undo",
@@ -381,6 +381,10 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
     case "job_handoff":
       // The same work on another provider or account spends another subscription: it asks every time.
       return { verdict: "ask", why: "It would move a job to another worker or account." };
+    case "job_update":
+    case "job_delete":
+      // Changing or removing one of his own jobs is his to say, every time: read text could otherwise rewrite one.
+      return { verdict: "ask", why: "It would change or remove one of your standing jobs." };
     case "job_schedule":
       // A repeating run is unattended spending, so it asks every time.
       return { verdict: "ask", why: "It would make a job run again on a schedule." };

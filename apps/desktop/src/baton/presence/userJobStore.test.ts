@@ -18,6 +18,7 @@ const job = (id: string): UserJob => ({
   tools: ["jobs_list"],
   on: true,
   proposed: false,
+  from: "him",
   missed: "once",
   createdAt: 0,
 });
@@ -41,6 +42,48 @@ describe("his own standing jobs, kept on this computer", () => {
     expect(store.remove("user:1")).toBe(true);
     expect(store.get("user:1")).toBeUndefined();
     expect(store.list()).toHaveLength(MAX_USER_JOBS - 1);
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("keeps proposals to three, and switches one on only from the Trust page", () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "user-jobs-"));
+    const store = createUserJobStore(dir);
+    const proposal = (id: string): UserJob => ({
+      ...job(id),
+      on: false,
+      proposed: true,
+      from: "device",
+    });
+    for (let i = 0; i < 3; i += 1)
+      expect(store.add(proposal(store.nextId()))).toEqual({ ok: true });
+    expect(store.add(proposal(store.nextId()))).toMatchObject({ ok: false });
+    // A tool, or a page it read, cannot approve one; the Trust page can.
+    expect(store.update("user:1", { on: true })).toEqual({
+      refused: "A proposal is approved by him on the Trust page, not here.",
+    });
+    expect(store.update("user:1", { on: true }, { approve: true })).toMatchObject({
+      on: true,
+      proposed: false,
+    });
+    // Words he rewrites are his from then on.
+    expect(store.update("user:2", { instruction: "Check CI" })).toMatchObject({ from: "him" });
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("skips a bad entry and keeps a damaged file aside, so the page never breaks on one", () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "user-jobs-"));
+    const file = NodePath.join(dir, "user-jobs.json");
+    const skipped: string[] = [];
+    NodeFS.writeFileSync(
+      file,
+      JSON.stringify({ next: 3, jobs: [job("user:1"), { id: "user:2" }] }),
+    );
+    const store = createUserJobStore(dir, (why) => void skipped.push(why));
+    expect(store.list().map((j) => j.id)).toEqual(["user:1"]);
+    expect(skipped).toHaveLength(1);
+    NodeFS.writeFileSync(file, JSON.stringify(["not", "a", "store"]));
+    expect(store.list()).toEqual([]);
+    expect(NodeFS.existsSync(`${file}.bad`)).toBe(true);
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 });

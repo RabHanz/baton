@@ -181,6 +181,14 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     not: ["commit_add"],
   },
   {
+    id: "standing-job-switch-off",
+    source:
+      "KIRO-1 review: changing one of his own jobs reaches job_update (or finds its id first)",
+    said: "switch off my morning CI check job",
+    first: ["job_update", "trust_show"],
+    not: ["job_create", "job_delete", "permission_off"],
+  },
+  {
     id: "remind-once-not-a-job",
     source: "KIRO-1: a one-off reminder stays a reminder, not a standing job",
     said: "remind me at 5 to call mum",

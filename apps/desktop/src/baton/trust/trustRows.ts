@@ -146,6 +146,8 @@ export interface StandingRow {
   readonly instruction?: string;
   /** His own job a device or another agent proposed: off until he switches it on. */
   readonly proposed?: boolean;
+  /** Who wrote its words; a device's are run as data until he rewrites them. */
+  readonly from?: "him" | "device";
 }
 
 const ranLine = (n: number) => `Ran ${n === 1 ? "once" : `${n} times`}.`;
@@ -190,7 +192,7 @@ const userJobRows = (j: StandingRow): ReadonlyArray<HomeControl> => [
     hint:
       j.proposed === true
         ? `A paired device or another agent proposed this. ${j.what} Switch it on to set it up; it runs as ${j.owner}.`
-        : `${j.what} ${j.owner}'s standing job, yours. ${ranLine(j.count)} Every run is one nobody is watching: anything that would act is held.`,
+        : `${j.what} ${j.owner}'s standing job${j.from === "device" ? ", in words a device wrote (run as data, not as yours, until you rewrite them)" : ", yours"}. ${ranLine(j.count)} It only reads and reports.`,
     kind: "toggle",
     on: j.on === true,
   },
@@ -490,10 +492,11 @@ export const describeTrust = (data: TrustData, now: number): string => {
       : `Standing permissions: ${data.grants.map((g) => `${g.title} (${CHANNEL_WORDS[g.channel] ?? g.channel})`).join("; ")}.`,
     `Standing jobs: ${
       data.standing
-        .filter((j) => j.on !== false)
+        // His own are all named, with their ids, so he can switch one on, off or remove it by voice.
+        .filter((j) => j.on !== false || j.kind === "user")
         .map(
           (j) =>
-            `${j.title} (${j.owner}, ${j.kind === "schedule" ? `${j.count} turns` : `ran ${j.count}`}${j.kind === "user" ? `, his own, id ${j.id}` : ""})`,
+            `${j.title} (${j.owner}, ${j.kind === "schedule" ? `${j.count} turns` : `ran ${j.count}`}${j.kind === "user" ? `, his own, id ${j.id}${j.proposed === true ? ", proposed" : j.on === false ? ", off" : ""}` : ""})`,
         )
         .join("; ") || "none on"
     }.`,

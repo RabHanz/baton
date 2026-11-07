@@ -1885,7 +1885,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const commitments = createCommitmentStore(input.stateDir, Date.now, undefined, () =>
     setTimeout(() => void syncCommitments(), COMMIT_SYNC_SOON_MS).unref(),
   );
-  const userJobStore = createUserJobStore(input.stateDir);
+  const userJobStore = createUserJobStore(input.stateDir, (why) =>
+    input.onNote?.("user_jobs_skipped", { why }),
+  );
   // The server copy is shared by his devices; it only follows while the window exists, since asking opens it.
   const commitmentSync = createCommitmentSync({
     store: commitments,
@@ -3935,30 +3937,48 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const userJobOp = (
     op: "user_job_save" | "user_job_update" | "user_job_delete",
     args: Readonly<Record<string, unknown>>,
+    /** From the Trust page, where he sees it: the only way a proposal is switched on. */
+    fromTrust = false,
   ): string => {
     const id = typeof args["id"] === "string" ? args["id"] : "";
     if (op === "user_job_save") {
-      const draft = args["job"] as Omit<UserJob, "on" | "proposed" | "id">;
+      const draft = args["job"] as Omit<UserJob, "on" | "proposed" | "id" | "from">;
       const proposed = args["proposed"] === true;
       const newId = userJobStore.nextId();
-      const added = userJobStore.add({ ...draft, id: newId, on: !proposed, proposed });
+      const added = userJobStore.add({
+        ...draft,
+        id: newId,
+        on: !proposed,
+        proposed,
+        from: proposed ? "device" : "him",
+      });
       if (!added.ok) return `Nothing was saved: ${added.why}`;
-      return proposed
-        ? `Proposed as ${newId}: it is off until he approves it on his Trust page. Say so; it does not run yet.`
-        : `Saved as ${newId}, ${whenText(draft.trigger)}. He can switch it off or remove it on the Trust page.`;
+      if (!proposed)
+        return `Saved as ${newId}, ${whenText(draft.trigger)}. He can switch it off or remove it on the Trust page.`;
+      // Every proposal is on the Record, whoever made it.
+      void input
+        .direct?.("baton.record.append", {
+          kind: "standing_job",
+          actor: "a paired device or agent",
+          subject: draft.title,
+          outcome: "proposed",
+          detail: `${whenText(draft.trigger)}: ${draft.instruction}`.slice(0, 2_000),
+        })
+        .catch(() => undefined);
+      return `Proposed as ${newId}: it is off until he approves it on his Trust page. Say so; it does not run yet.`;
     }
     if (op === "user_job_delete")
       return userJobStore.remove(id) ? `Removed ${id}.` : `There is no job ${id} of his.`;
     const patch = {
-      ...(typeof args["on"] === "boolean" ? { on: args["on"], proposed: false } : {}),
+      ...(typeof args["on"] === "boolean" ? { on: args["on"] } : {}),
       ...(typeof args["instruction"] === "string" && args["instruction"].trim() !== ""
         ? { instruction: args["instruction"].trim().slice(0, 1_000) }
         : {}),
     };
-    const next = userJobStore.update(id, patch);
-    return next === null
-      ? `There is no job ${id} of his.`
-      : `${next.title} is ${next.on ? "on" : "off"}: ${next.instruction}`;
+    const next = userJobStore.update(id, patch, { approve: fromTrust });
+    if (next === null) return `There is no job ${id} of his.`;
+    if ("refused" in next) return next.refused;
+    return `${next.title} is ${next.on ? "on" : "off"}: ${next.instruction}`;
   };
   const standingStore = createStandingStore(input.stateDir, () => {
     // The old switch's last brief day (`y-m-d`, local), so an upgrade after six does not brief twice.
@@ -4488,6 +4508,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           count: standingStore.load().runs.filter((r) => (r.id as string) === j.id).length,
           instruction: j.instruction,
           proposed: j.proposed,
+          from: j.from,
           ...(j.trigger.kind === "time" ? { missed: j.missed } : {}),
         })),
         ...(jobsCache ?? [])
@@ -5656,10 +5677,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       else if (act?.kind === "standing") {
         if (BUILT_INS.some((j) => j.id === act.id))
           standingStore.setOn(act.id as BuiltInId, act.on);
-      } else if (act?.kind === "userJob") userJobOp("user_job_update", { id: act.id, on: act.on });
+      } else if (act?.kind === "userJob")
+        userJobOp("user_job_update", { id: act.id, on: act.on }, true);
       else if (act?.kind === "userJobText")
-        userJobOp("user_job_update", { id: act.id, instruction: act.text });
-      else if (act?.kind === "userJobDelete") userJobOp("user_job_delete", { id: act.id });
+        userJobOp("user_job_update", { id: act.id, instruction: act.text }, true);
+      else if (act?.kind === "userJobDelete") userJobOp("user_job_delete", { id: act.id }, true);
       else if (act?.kind === "missed") {
         const job = BUILT_INS.find((j) => j.id === act.id);
         if (job?.trigger.kind === "time") standingStore.setMissed(job.id, act.missed);

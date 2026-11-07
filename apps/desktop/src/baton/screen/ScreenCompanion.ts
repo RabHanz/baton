@@ -26,7 +26,7 @@ import { createTransformStore } from "../writing/transformStore.ts";
 import { changedFrom, writeJsonFile } from "../writing/jsonStore.ts";
 import { PACK_FOLDER, readPack } from "../pack/packRows.ts";
 import { DEFAULT_ROUTING, parseRouting } from "@t3tools/baton-shared/costRouting";
-import { userJobCard, userJobFromArgs } from "@t3tools/baton-shared/userJobs";
+import { userJobCard, userJobFromArgs, whenText } from "@t3tools/baton-shared/userJobs";
 import {
   chooseTurnBrain,
   createTierMemory,
@@ -2452,7 +2452,13 @@ export const startScreenCompanion = (input: {
     args: Readonly<Record<string, unknown>>,
     proposal: boolean,
   ): Promise<string> => {
-    const made = userJobFromArgs(args, { owner: face.id, id: "", now: Date.now() });
+    const personas = readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas;
+    const made = userJobFromArgs(args, {
+      owner: face.id,
+      id: "",
+      now: Date.now(),
+      owners: personas.map((p) => p.id),
+    });
     if ("refused" in made) return `Nothing was saved: ${made.refused} Ask him for what is missing.`;
     const save = (proposed: boolean) =>
       actions?.jobs?.("user_job_save", { job: made.job, proposed }) ??
@@ -2461,12 +2467,12 @@ export const startScreenCompanion = (input: {
     const response = await askHandsFree(
       {
         title: `Set up "${made.job.title}"?`,
-        detail: `${userJobCard(made.job, made.job.owner === face.id ? face.name : made.job.owner)}\n\nIt runs by itself; every run is judged as one nobody is watching, and anything that would act is held. You can switch it off or remove it on the Trust page.`,
+        detail: `${userJobCard(made.job, personas.find((p) => p.id === made.job.owner)?.name ?? made.job.owner)}\n\nIt runs by itself; every run is judged as one nobody is watching, and anything that would act is held. You can switch it off or remove it on the Trust page.`,
         buttons: ["Set it up", "Not now"],
         cancel: 1,
         scoped: true,
       },
-      `Shall I set up ${made.job.title}? Yes or no.`,
+      `Shall I set up ${made.job.title}, ${whenText(made.job.trigger)}: ${made.job.instruction}? Yes or no.`,
     );
     input.onNote?.("user_job", { title: made.job.title, answer: response === 0 ? "yes" : "no" });
     if (response !== 0) return "He said no. Nothing was saved; say so in a few words.";

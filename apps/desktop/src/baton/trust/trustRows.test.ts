@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  describeTrust,
   lastUsed,
   parseTrustLogs,
   trustAction,
@@ -217,6 +218,19 @@ describe("trust page", () => {
       kind: "userJobDelete",
       id: "user:2",
     });
+    // trust_show names every one of his, with its id and whether it is off or proposed.
+    const spoken = describeTrust(
+      data({ standing: [mine, { ...mine, id: "user:3", proposed: false, on: false }] }),
+      NOW,
+    );
+    expect(spoken).toContain("id user:2, proposed");
+    expect(spoken).toContain("id user:3, off");
+    // An approved job in a device's words says so, so he knows they are run as data.
+    const approved = trustControls(
+      data({ standing: [{ ...mine, proposed: false, on: true, from: "device" as const }] }),
+      NOW,
+    ).find((r) => r.id === "trust.userjob:user:2");
+    expect(approved?.hint).toContain("words a device wrote");
   });
 
   it("offers quiet unless changed for an event job, and reads the switch", () => {
