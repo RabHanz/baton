@@ -51,7 +51,7 @@ it.effect("keeps each earlier wording with who and why, and a restore is a new v
 );
 
 it.effect(
-  "keeps the replaced wording when a newer statement supersedes it, and caps the history",
+  "a superseded item stays as itself, never copied into another's history; the history is capped",
   () =>
     Effect.gen(function* () {
       const memory = yield* fresh;
@@ -62,13 +62,16 @@ it.effect(
         source: "user",
         supersedes: old.id,
       });
-      assert.strictEqual((yield* memory.history(newer.id))[0]?.text, "He likes tabs");
+      assert.deepStrictEqual(yield* memory.history(newer.id), []);
+      // Forget the replaced one: its words are nowhere, not in the keeper's history either.
+      yield* memory.forget(old.id);
       for (let i = 0; i < MEMORY_VERSIONS_KEPT + 5; i += 1)
         yield* memory.edit(newer.id, { text: `He likes spaces, take ${i}` });
       const kept = yield* memory.history(newer.id);
       assert.strictEqual(kept.length, MEMORY_VERSIONS_KEPT);
-      // The oldest went first.
-      assert.isFalse(kept.some((v) => v.text === "He likes tabs"));
+      assert.isFalse(kept.some((v) => v.text.includes("tabs")));
+      // The oldest went first: the newest kept is the wording before the last edit.
+      assert.strictEqual(kept[0]!.text, `He likes spaces, take ${MEMORY_VERSIONS_KEPT + 3}`);
       // Forgotten means forgotten, history and all.
       yield* memory.forget(newer.id);
       assert.isTrue(
@@ -98,6 +101,11 @@ it.effect("a sync that changes the words keeps the ones it replaced", () =>
       onB.map((v) => [v.text, v.by]),
       [["Invoices go out monthly", "sync"]],
     );
+    // A change of kind alone is kept too.
+    yield* TestClock.adjust("1 minute");
+    yield* a.edit(item.id, { kind: "decision" });
+    yield* sync(a, b);
+    assert.strictEqual((yield* b.history(item.id))[0]?.kind, "fact");
   }).pipe(Effect.scoped, Effect.provideService(MemoryViewer, "server")),
 );
 
@@ -128,6 +136,17 @@ it.effect("walls apply to history as to the item", () => {
       (yield* Effect.flip(memory.history(walled.id, { agent: "operations" }))).reason,
       "no such memory",
     );
+    // A global item that supersedes the walled one carries none of its words into its own history.
+    const global = yield* memory.add({
+      kind: "fact",
+      text: "Keys rotate on a schedule",
+      source: "user",
+      supersedes: walled.id,
+    });
+    const asClient = yield* memory
+      .history(global.id)
+      .pipe(Effect.provideService(MemoryViewer, "client"));
+    assert.isFalse(asClient.some((v) => v.text.includes("shop key")));
     // An outside agent reads as a client: no persona, nothing walled.
     assert.include(
       (yield* Effect.flip(

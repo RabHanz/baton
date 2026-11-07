@@ -399,13 +399,8 @@ export const make = Effect.gen(function* () {
         // The new one first: on a tie in time it is still the later statement.
         const loser = winner(created, old).id === old.id ? created : old;
         const keeper = loser.id === old.id ? created : old;
-        // The replaced wording stays in the keeper's history: "what did this say before?"
-        yield* keepVersion(
-          { ...loser, id: keeper.id },
-          draft.source === "user" ? "him" : "consolidate",
-          "a newer statement replaced it",
-          at,
-        );
+        // No copy into the keeper's history: the replaced item stays, as itself, under "Replaced". A copy would carry a
+        // walled item's words into an unwalled one, outlive a forget of it, and show a model's draft as his to restore.
         yield* sql`
           UPDATE fabric_memory_items SET superseded_by = ${keeper.id}, updated_at = ${at}, received_at = ${at}, origin = ${origin}
           WHERE id = ${loser.id}
@@ -416,22 +411,23 @@ export const make = Effect.gen(function* () {
   });
 
   /** The wording an item had before a change, kept with who and why; only the newest MEMORY_VERSIONS_KEPT stay. */
+  /** The wording an item had before a change, kept with who and why; only the newest MEMORY_VERSIONS_KEPT stay. */
   const keepVersion = Effect.fn("BatonMemoryService.keepVersion")(function* (
     prior: MemoryItem,
     by: MemoryVersionBy,
     why: string,
     at: string,
   ) {
-    const top = yield* sql<{ v: number | null }>`
-        SELECT MAX(version) AS v FROM fabric_memory_versions WHERE item_id = ${prior.id}
-      `;
-    const version = (top[0]?.v ?? 0) + 1;
+    // One statement, so two changes at once cannot both take the same next number.
     yield* sql`
         INSERT INTO fabric_memory_versions (item_id, version, text, kind, at, by, why)
-        VALUES (${prior.id}, ${version}, ${prior.text}, ${prior.kind}, ${at}, ${by}, ${why})
+        SELECT ${prior.id}, COALESCE(MAX(version), 0) + 1, ${prior.text}, ${prior.kind}, ${at}, ${by}, ${why}
+        FROM fabric_memory_versions WHERE item_id = ${prior.id}
       `;
     yield* sql`
-        DELETE FROM fabric_memory_versions WHERE item_id = ${prior.id} AND version <= ${version - MEMORY_VERSIONS_KEPT}
+        DELETE FROM fabric_memory_versions WHERE item_id = ${prior.id} AND version <= (
+          SELECT MAX(version) FROM fabric_memory_versions WHERE item_id = ${prior.id}
+        ) - ${MEMORY_VERSIONS_KEPT}
       `;
   }, Effect.orDie);
 
@@ -814,7 +810,11 @@ export const make = Effect.gen(function* () {
       );
       if (decision === "ignore") continue;
       // The words it had here are kept when another server's change replaces them.
-      if (row[0] !== undefined && change.item !== null && change.item.text !== row[0].text)
+      if (
+        row[0] !== undefined &&
+        change.item !== null &&
+        (change.item.text !== row[0].text || change.item.kind !== row[0].kind)
+      )
         yield* keepVersion(fromRow(row[0]), "sync", "changed on another of his servers", at);
       yield* sql`DELETE FROM fabric_memory_items WHERE id = ${id}`.pipe(Effect.orDie);
       if (change.tombstone !== null) {
