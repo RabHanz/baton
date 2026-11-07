@@ -1,3 +1,8 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -47,8 +52,13 @@ describe("headphones or speakers, from the playback device", () => {
 
   it("compiles the reader once, into its own folder, and only loads it after that", () => {
     const script = readScript("C:\\Users\\user\\state's\\voice");
-    expect(script).toMatch(/-OutputAssembly \$dll/);
-    expect(script).toMatch(/if \(-not \(Test-Path -LiteralPath \$dll\)\)/);
+    // Built to a temporary file and moved into place; a DLL that will not load is deleted and built again.
+    expect(script).toMatch(/-OutputAssembly \$tmp/);
+    expect(script).toMatch(/Move-Item -Force -LiteralPath \$tmp -Destination \$dll/);
+    expect(script).toMatch(/if \(-not \(Test-Path -LiteralPath \$dll\)\) \{ Build \}/);
+    expect(script).toMatch(
+      /catch \{\s+Remove-Item -Force -LiteralPath \$dll[^}]*Build\s+Add-Type -LiteralPath \$dll/,
+    );
     expect(script).toContain("C:\\Users\\user\\state''s\\voice\\tessaya-output-");
   });
 
@@ -56,9 +66,13 @@ describe("headphones or speakers, from the playback device", () => {
     let clock = 0;
     const outs: Array<string | Error> = ["1", "3", "3", new Error("powershell")];
     let runs = 0;
+    const dir = NodePath.join(
+      NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "output-")),
+      "voice",
+    );
     const watch = createOutputWatch({
       platform: "win32",
-      dir: "x",
+      dir,
       everyMs: 1_000,
       now: () => clock,
       run: async () => {
@@ -67,6 +81,8 @@ describe("headphones or speakers, from the playback device", () => {
         return out ?? "";
       },
     });
+    // The reader's folder is made for it.
+    expect(NodeFS.existsSync(dir)).toBe(true);
     await watch.refresh();
     expect(watch.kind()).toBe("speakers");
     await watch.refresh();
@@ -74,13 +90,18 @@ describe("headphones or speakers, from the playback device", () => {
     clock = 1_000;
     await watch.refresh();
     expect(watch.kind()).toBe("headphones");
-    // Headphones on: every look reads again, so taking them off is seen at once.
-    await watch.refresh();
+    // Headphones on: every look reads again, so taking them off is seen at once, and until that look returns the
+    // old headphones answer counts as unknown (speakers).
+    const look = watch.refresh();
+    expect(watch.kind()).toBe(null);
+    await look;
     expect(runs).toBe(3);
+    expect(watch.kind()).toBe("headphones");
     await watch.refresh();
     expect(watch.kind()).toBe(null);
-    const mac = createOutputWatch({ platform: "darwin", dir: "x", run: async () => "3" });
+    const mac = createOutputWatch({ platform: "darwin", dir, run: async () => "3" });
     await mac.refresh();
     expect(mac.kind()).toBe(null);
+    NodeFS.rmSync(NodePath.dirname(dir), { recursive: true, force: true });
   });
 });

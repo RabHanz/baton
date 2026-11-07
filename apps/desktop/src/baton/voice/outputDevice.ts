@@ -6,6 +6,7 @@
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
+import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 export type OutputDevice = "auto" | "headphones" | "speakers";
@@ -53,11 +54,22 @@ export const readScript = (dir: string): string => {
       `tessaya-output-${NodeCrypto.createHash("sha256").update(SOURCE).digest("hex").slice(0, 12)}.dll`,
     )
     .replaceAll("'", "''");
+  // Built to a file of its own and moved into place, so a read that dies mid-build leaves no half DLL; one that
+  // will not load (damaged, or locked out) is deleted and built again rather than failing every read until a release.
   return `$dll = '${dll}'
-if (-not (Test-Path -LiteralPath $dll)) { Add-Type -TypeDefinition @'
+function Build {
+  $tmp = "$dll.$PID.tmp"
+  Add-Type -TypeDefinition @'
 ${SOURCE}
-'@ -OutputAssembly $dll }
-Add-Type -LiteralPath $dll
+'@ -OutputAssembly $tmp
+  Move-Item -Force -LiteralPath $tmp -Destination $dll
+}
+if (-not (Test-Path -LiteralPath $dll)) { Build }
+try { Add-Type -LiteralPath $dll } catch {
+  Remove-Item -Force -LiteralPath $dll -ErrorAction SilentlyContinue
+  Build
+  Add-Type -LiteralPath $dll
+}
 [TessayaOutput]::Get()`;
 };
 
@@ -106,8 +118,17 @@ export const createOutputWatch = (input: {
   let kind: "headphones" | "speakers" | null = null;
   let lastAt = -Infinity;
   let reading: Promise<void> | null = null;
+  if (input.platform === "win32") {
+    try {
+      NodeFS.mkdirSync(input.dir, { recursive: true });
+    } catch {
+      // The read then fails, and a failed read is unknown: speakers.
+    }
+  }
   return {
-    kind: () => kind,
+    // While a fresh look is on its way, a headphones answer may be old: she may be playing through speakers now,
+    // and taking her own voice for a cut-in is worse than a cut-in that waits a second.
+    kind: () => (reading !== null && kind === "headphones" ? null : kind),
     refresh: (): Promise<void> => {
       if (input.platform !== "win32") return Promise.resolve();
       if (reading !== null) return reading;
