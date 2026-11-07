@@ -18,14 +18,19 @@ import {
 } from "@t3tools/baton-contracts";
 import { buildLocalProviders, settingsFromEnv } from "@t3tools/baton-shared/cloud/build";
 import { serveCloudCall } from "@t3tools/baton-shared/cloud/hub";
+import type { CloudProvider } from "@t3tools/baton-shared/cloud/types";
 import { fileStores, nodeExec } from "@t3tools/baton-shared/cloud/nodeExec";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Schedule from "effect/Schedule";
 
 import * as ServerConfig from "../config.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import { BatonRecordService } from "./BatonRecordService.ts";
+
+// The Cloud page's own refresh, now the server's, so a task with no client watching still moves.
+const REFRESH = "1 minute";
 
 /** What a decision on a cloud task did, as the Record's outcome. */
 const DONE: Readonly<Record<string, string>> = {
@@ -34,6 +39,23 @@ const DONE: Readonly<Record<string, string>> = {
   approve: "approved",
   deny: "denied",
   apply: "applied",
+};
+
+/** Reads each running task's state, so it moves (and its points are counted) with no client asking. */
+export const refreshRunning = async (providers: {
+  readonly values: () => Iterable<CloudProvider>;
+}): Promise<number> => {
+  let read = 0;
+  for (const provider of providers.values()) {
+    const listed = await provider.list({});
+    if (!listed.ok) continue;
+    for (const request of listed.value) {
+      if (request.state !== "running" && request.state !== "approved") continue;
+      await provider.status(request.id);
+      read += 1;
+    }
+  }
+  return read;
 };
 
 export class BatonCloudService extends Context.Service<
@@ -71,6 +93,11 @@ export const layer = Layer.effect(
       },
     );
     const record = yield* Effect.serviceOption(BatonRecordService);
+    yield* Effect.promise(() => refreshRunning(providers)).pipe(
+      Effect.ignoreCause({ log: true }),
+      Effect.repeat(Schedule.spaced(REFRESH)),
+      Effect.forkScoped,
+    );
     return BatonCloudService.of({
       call: Effect.fn("BatonCloudService.call")(function* (
         input: BatonCloudCallInput,

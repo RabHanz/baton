@@ -7,7 +7,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import * as ServerConfig from "../config.ts";
-import { BatonCloudService, layer } from "./BatonCloudService.ts";
+import { BatonCloudService, layer, refreshRunning } from "./BatonCloudService.ts";
 import { BatonRecordService, type RecordAppend } from "./BatonRecordService.ts";
 
 const config = Layer.succeed(ServerConfig.ServerConfig, {
@@ -105,3 +105,34 @@ it.layer(layer.pipe(Layer.provide(config), Layer.provide(record)))("BatonCloudSe
     }),
   );
 });
+
+it.effect("reads only the running and approved tasks on each provider", () =>
+  Effect.promise(async () => {
+    const asked: string[] = [];
+    const provider = (requests: ReadonlyArray<{ id: string; state: string }>) =>
+      ({
+        list: async () => ({ ok: true, value: requests }),
+        status: async (id: string) => (asked.push(id), { ok: true, value: {} }),
+      }) as never;
+    const read = await refreshRunning(
+      new Map([
+        [
+          "codex",
+          provider([
+            { id: "L-1", state: "running" },
+            { id: "L-2", state: "done" },
+          ]),
+        ],
+        [
+          "claude",
+          provider([
+            { id: "L-3", state: "approved" },
+            { id: "L-4", state: "denied" },
+          ]),
+        ],
+      ]),
+    );
+    assert.strictEqual(read, 2);
+    assert.deepStrictEqual(asked, ["L-1", "L-3"]);
+  }),
+);

@@ -34,6 +34,13 @@ describe("a request answered by this machine's server while T3 is closed", () =>
     });
     // Another machine's job is placed by the window, which is connected to it.
     expect(deskCall({ kind: "job", op: "start", args: { runOn: "box" } })).toBeNull();
+    expect(deskCall({ kind: "cloud", op: "read", args: { op: "list" } })).toEqual({
+      method: "baton.cloud.read",
+      input: { op: "list" },
+    });
+    // A hub on another machine, and the list of machines, are the window's.
+    expect(deskCall({ kind: "cloud", op: "act", args: {}, environmentId: "box" })).toBeNull();
+    expect(deskCall({ kind: "cloud", op: "environments", args: {} })).toBeNull();
     expect(deskCall({ kind: "job", op: "handoff", args: { id: "w1", instance: "Codex" } })).toEqual(
       {
         method: "baton.job.handoff",

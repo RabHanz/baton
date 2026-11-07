@@ -23,12 +23,22 @@ const MEMORY_OPS = new Set([
 
 const COMMITMENT_OPS = new Set(["list", "upsert"]);
 const WEAVE_OPS = new Set(["send", "list"]);
+const CLOUD_OPS = new Set(["read", "act", "approve"]);
 export const deskCall = (body: {
   readonly kind: string;
   readonly op?: unknown;
   readonly args?: unknown;
+  readonly environmentId?: unknown;
 }): { readonly method: string; readonly input: unknown } | null => {
   const args = (body.args ?? {}) as Readonly<Record<string, unknown>>;
+  // Cloud tasks on this machine's own hub; a hub on another machine is reached through the window.
+  if (body.kind === "cloud") {
+    return typeof body.op === "string" &&
+      CLOUD_OPS.has(body.op) &&
+      (body.environmentId === undefined || body.environmentId === "")
+      ? { method: `baton.cloud.${body.op}`, input: args }
+      : null;
+  }
   if (body.kind === "memory") {
     return typeof body.op === "string" && MEMORY_OPS.has(body.op)
       ? { method: `baton.memory.${body.op}`, input: args }
