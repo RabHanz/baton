@@ -244,6 +244,21 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     },
   },
   {
+    id: "history-search-words",
+    source:
+      "MEM-7: past work across ventures goes to history_search by words; it takes no session id",
+    said: "what did we decide about the shop's pricing in past sessions?",
+    first: ["history_search", "memory_search"],
+    goal: "history_search",
+    maxCalls: 3,
+    goalArgs: ["pric"],
+    answers: {
+      memory_search: "Nothing in memory matches.",
+      history_search:
+        "2026-10-04T13:55  user  -home-ann-shop  11111111-2222-3333-4444-555555555555\n    We settled on twelve pounds a month for the shop plan",
+    },
+  },
+  {
     id: "lesson-wins-conflict",
     source:
       "KIRO-4b: his correction leads the recall block and wins over an older memory that disagrees",
