@@ -95,6 +95,8 @@ export const BatonFleet = Schema.Struct({
 export type BatonFleet = typeof BatonFleet.Type;
 
 export const BatonFleetInput = Schema.Struct({
+  /** For an outside agent or a linked environment: state and names only (fleetForOutside). */
+  forOutside: Schema.optionalKey(Schema.Boolean),
   /** Archived work is out of the fleet by default, as it is out of the list. */
   includeArchived: Schema.optionalKey(Schema.Boolean),
   /** Only work that cannot move without the user. The §33 top-level filter. */

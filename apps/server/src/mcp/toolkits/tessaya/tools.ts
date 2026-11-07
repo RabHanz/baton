@@ -6,6 +6,7 @@
 import {
   BatonCatalogListInput,
   BatonCatalogListResult,
+  BatonFleetResult,
   BatonJobListResult,
   BatonMemorySearchResult,
   BatonMemoryHistoryResult,
@@ -111,6 +112,18 @@ const RulesTool = Tool.make("tessaya_rules", {
     "List Tessaya's standing rules (when this happens, do that) and their recent firings.",
   parameters: OrchestrationRuleListInput,
   success: OrchestrationRuleListResult,
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+const FleetTool = Tool.make("tessaya_fleet", {
+  ...shared,
+  description:
+    "What is live on this computer right now: each piece of work with its state, every Herdr pane and every running Claude Code process. Use it to see what is running or waiting; `tessaya_sessions` lists past and present sessions to find one.",
+  // No `parameters`: Tool.EmptyParams serializes as a plain object, which every client accepts.
+  success: BatonFleetResult,
 })
   .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
   .annotate(Tool.Readonly, true)
@@ -238,6 +251,7 @@ export const TessayaToolkit = Toolkit.make(
   MemoryHistoryTool,
   RulesTool,
   SessionsTool,
+  FleetTool,
   AskTool,
   AskStatusTool,
   WeaveSendTool,

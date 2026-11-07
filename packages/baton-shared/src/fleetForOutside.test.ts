@@ -1,0 +1,84 @@
+import type { BatonFleet } from "@t3tools/baton-contracts";
+import { describe, expect, it } from "vite-plus/test";
+
+import { fleetForOutside } from "./fleetForOutside.ts";
+import { DEFAULT_OS_PACK } from "./osPack.ts";
+
+const said = "the deploy key is hunter2";
+const fleet = {
+  observedAt: "2026-11-07T10:00:00.000Z",
+  entries: [
+    {
+      workSessionId: "w1",
+      title: "Rotate the payroll keys",
+      projectId: "p-secret",
+      lifecycle: "active",
+      state: "running",
+      needsUser: false,
+      activeThreadId: "t1",
+      threads: [
+        {
+          threadId: "t1",
+          title: "Rotate the payroll keys",
+          state: "running",
+          providerInstanceId: null,
+          providerDriver: null,
+          branch: "fix/payroll",
+          worktreePath: "/home/dev/payroll",
+          lastActivityAt: null,
+        },
+      ],
+      adopted: [],
+      synopsis: { goal: said, currentAction: said, recentFindings: [], next: [said] },
+      updatedAt: "2026-11-07T10:00:00.000Z",
+    },
+    {
+      workSessionId: "w2",
+      title: "Tidy the README",
+      projectId: "p-shop",
+      lifecycle: "active",
+      state: "idle",
+      needsUser: false,
+      activeThreadId: null,
+      threads: [],
+      adopted: [],
+      synopsis: { goal: said },
+      updatedAt: "2026-11-07T10:00:00.000Z",
+    },
+  ],
+  herdr: [
+    {
+      label: "payroll pane",
+      project: { key: "dir:payroll", label: "Payroll" },
+      blockedPrompt: said,
+      cwd: "/home/dev/payroll",
+      foreground: said,
+    },
+  ],
+  claudeSessions: [
+    {
+      sessionId: "s1",
+      cwd: "/home/dev/payroll",
+      name: "keys",
+      project: { key: "dir:payroll", label: "Payroll" },
+      configDir: "/home/dev/.claude-work",
+    },
+  ],
+} as unknown as BatonFleet;
+
+describe("the fleet an outside agent reads", () => {
+  it("carries no words that were said, no folders, and a walled project's work only by its project's name", () => {
+    const pack = { ...DEFAULT_OS_PACK, walled: ["Payroll"] };
+    const titles: Record<string, string> = { "p-secret": "Payroll", "p-shop": "Shop" };
+    const out = fleetForOutside(fleet, pack, (id) => titles[id] ?? null);
+    const text = JSON.stringify(out);
+    expect(text).not.toContain("hunter2");
+    expect(text).not.toContain("/home/dev");
+    expect(text).not.toContain("Rotate the payroll keys");
+    expect(text).not.toContain("fix/payroll");
+    expect(text).not.toContain("payroll pane");
+    expect(text).not.toContain('keys"');
+    expect(out.entries.map((e) => e.title)).toEqual(["Payroll", "Tidy the README"]);
+    expect(out.entries.map((e) => e.state)).toEqual(["running", "idle"]);
+  });
+});
