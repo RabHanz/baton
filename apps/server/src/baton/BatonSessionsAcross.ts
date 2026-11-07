@@ -82,7 +82,8 @@ export const summariesAcross = (input: {
   const rows = groups.flatMap((group) => group.rows);
   return batonSessionSummaries(groups, account).map((summary, i) => ({
     ...summary,
-    access: access.get(rows[i]!.environmentId) ?? null,
+    // A row whose environment is not known is treated as the most restricted link, never as this server's.
+    access: access.has(rows[i]!.environmentId) ? access.get(rows[i]!.environmentId)! : "read-only",
   }));
 };
 
@@ -142,7 +143,11 @@ export const make = Effect.gen(function* () {
     const descriptor = yield* (yield* ServerEnvironment.ServerEnvironment).getDescriptor;
     const fleet = yield* FleetQuery.getFleet({});
     const engine = yield* BatonEngine;
-    const links = yield* (yield* PeerLinks.PeerLinks).list.pipe(Effect.orElseSucceed(() => []));
+    const peerLinks = yield* PeerLinks.PeerLinks;
+    // Linked environments switched off in settings are not read at all.
+    const links = (yield* peerLinks.enabled)
+      ? yield* peerLinks.list.pipe(Effect.orElseSucceed(() => []))
+      : [];
     const peers = yield* peerFleets(links);
     return {
       here: { environmentId: descriptor.environmentId, label: descriptor.label },
@@ -157,7 +162,8 @@ export const make = Effect.gen(function* () {
       unreachable: peers.unreachable,
     };
   }).pipe(Effect.provideContext(local), Effect.withSpan("BatonSessionsAcross.list"));
-  return BatonSessionsAcross.of({ list });
+  // Callers share one listing in flight and its answer for a few seconds, so a looping client cannot multiply peer calls.
+  return BatonSessionsAcross.of({ list: yield* Effect.cachedWithTTL(list, "5 seconds") });
 });
 
 export const layer = Layer.effect(BatonSessionsAcross, make);

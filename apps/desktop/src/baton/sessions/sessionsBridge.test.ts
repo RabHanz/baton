@@ -1,8 +1,12 @@
 import type { BatonSessionSummary } from "@t3tools/baton-contracts";
 import { expect, it, vi } from "vite-plus/test";
 
-vi.mock("electron", () => ({ ipcMain: { on: () => undefined } }));
+const ipc = vi.hoisted(() => new Map<string, (event: unknown, message: unknown) => void>());
+vi.mock("electron", () => ({
+  ipcMain: { on: (channel: string, handler: never) => void ipc.set(channel, handler) },
+}));
 
+import { BATON_SESSIONS_SNAPSHOT_CHANNEL } from "../channels.ts";
 import { createSessionsBridge } from "./sessionsBridge.ts";
 
 const summary = (key: string, over: Partial<BatonSessionSummary>): BatonSessionSummary => ({
@@ -45,13 +49,14 @@ it("with T3's window closed, lists from this machine's server and types only int
                 pane: { environmentId: "ro", pane: "s~3" },
               }),
             ],
-            unreachable: [],
+            unreachable: [{ environmentId: "st", label: "Studio" }],
           }
         : { delivered: true, detail: "" };
     },
   });
   await vi.advanceTimersByTimeAsync(5_000);
   expect(bridge.rows().map((row) => row.key)).toEqual(["laptop", "box", "shared"]);
+  expect(bridge.notes()).toEqual(["Studio isn't answering, so its sessions are not listed."]);
 
   expect(await bridge.act("n:laptop", "go on")).toBe("Sent.");
   expect(calls.at(-1)).toEqual({
@@ -64,4 +69,25 @@ it("with T3's window closed, lists from this machine's server and types only int
   );
   expect(calls.filter((call) => call.method === "baton.live.herdrSend")).toHaveLength(1);
   expect(ensureMainWindow).not.toHaveBeenCalled();
+});
+
+it("drops the window's rows as soon as the window closes and says the list is old when the server does not answer", async () => {
+  using _timers = { [Symbol.dispose]: () => vi.useRealTimers() };
+  vi.useFakeTimers();
+  let up = true;
+  const bridge = createSessionsBridge({
+    ensureMainWindow: () => Promise.reject(new Error("must not open")),
+    openMainWindow: () => undefined,
+    onChange: () => undefined,
+    mainWindowUp: async () => up,
+    direct: () => Promise.reject(new Error("down")),
+  });
+  ipc.get(BATON_SESSIONS_SNAPSHOT_CHANNEL)?.(null, [summary("pushed", {})]);
+  expect(bridge.rows().map((row) => row.key)).toEqual(["pushed"]);
+  up = false;
+  await vi.advanceTimersByTimeAsync(5_000);
+  expect(bridge.rows()).toEqual([]);
+  expect(bridge.notes()).toEqual([
+    "This computer's server did not answer, so these sessions may be out of date.",
+  ]);
 });

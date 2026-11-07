@@ -13,6 +13,7 @@ import {
   AuthBatonMemorySyncScope,
   AuthFilesystemReadScope,
   AuthOrchestrationOperateScope,
+  AuthAccessReadScope,
   AuthOrchestrationReadScope,
   BATON_ACCOUNT_WS_METHODS,
   BATON_ADOPTED_WS_METHODS,
@@ -108,7 +109,8 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_SESSIONS_WS_METHODS.reattach]: AuthOrchestrationOperateScope,
   [BATON_SESSIONS_WS_METHODS.kept]: AuthOrchestrationOperateScope,
   [BATON_SESSIONS_WS_METHODS.waiting]: AuthOrchestrationOperateScope,
-  [BATON_SESSIONS_WS_METHODS.across]: AuthOrchestrationReadScope,
+  // It names the linked environments, which upstream lists only behind access:read.
+  [BATON_SESSIONS_WS_METHODS.across]: [AuthOrchestrationReadScope, AuthAccessReadScope],
   // Cloud tasks: looking is a read; creating, approving or applying is operate.
   [BATON_CLOUD_WS_METHODS.read]: AuthOrchestrationReadScope,
   [BATON_CLOUD_WS_METHODS.act]: AuthOrchestrationOperateScope,

@@ -1,4 +1,5 @@
 import {
+  AuthAccessReadScope,
   AuthBatonCloudApproveScope,
   AuthBatonHandsHostScope,
   AuthBatonMemorySyncScope,
@@ -117,6 +118,9 @@ describe("the desktop's direct door while T3's window is closed", () => {
     expect(DESK_METHODS.has(BATON_JOB_WS_METHODS.jobPlace)).toBe(true);
     // The session list is a read; typing into a pane here needs the operate scope.
     expect(missingBatonScope(BATON_SESSIONS_WS_METHODS.across, [AuthOrchestrationReadScope])).toBe(
+      AuthAccessReadScope,
+    );
+    expect(missingBatonScope(BATON_SESSIONS_WS_METHODS.across, AuthStandardClientScopes)).toBe(
       null,
     );
     expect(missingBatonScope(BATON_LIVE_WS_METHODS.herdrSend, [AuthOrchestrationReadScope])).toBe(

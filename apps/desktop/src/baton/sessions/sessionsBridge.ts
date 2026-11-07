@@ -25,10 +25,13 @@ const ANSWER_MS = 4_000;
 const ATTEMPTS = 3;
 /** How often the closed-window list is read from this machine's server; each read asks every linked environment. */
 const DOOR_LIST_MS = 30_000;
+const WINDOW_LOOK_MS = 5_000;
 
 export interface SessionsBridge {
   readonly rows: () => ReadonlyArray<BatonSessionSummary>;
   readonly usage: () => ReadonlyArray<BatonUsageSummary>;
+  /** What the list cannot show right now, in plain sentences: a computer not answering, an old list. */
+  readonly notes: () => ReadonlyArray<string>;
   /** Open a session's thread (`text` null) or type to its pane. Resolves to a plain line. */
   readonly act: (id: string, text: string | null) => Promise<string>;
   /** Any request to the sidebar with its own wait; null when it did not answer in time. */
@@ -63,9 +66,14 @@ export const createSessionsBridge = (input: {
   let nextId = 0;
   const pending = new Map<number, (answer: { ok: boolean; detail: string }) => void>();
 
+  /** Where the rows came from: the window's push, or this machine's server once the window closed. */
+  let source: "window" | "door" = "window";
+  let notes: ReadonlyArray<string> = [];
   Electron.ipcMain.on(BATON_SESSIONS_SNAPSHOT_CHANNEL, (_event, message: unknown) => {
     if (!Array.isArray(message)) return;
     rows = message.filter(isRow);
+    source = "window";
+    notes = [];
     input.onChange();
   });
   Electron.ipcMain.on(BATON_USAGE_CHANNEL, (_event, message: unknown) => {
@@ -95,14 +103,33 @@ export const createSessionsBridge = (input: {
     if (!(await windowClosed())) return;
     const value = (await direct!("baton.sessions.across", {}).catch(() => null)) as {
       sessions?: unknown;
+      unreachable?: ReadonlyArray<{ label?: unknown }>;
     } | null;
-    if (!Array.isArray(value?.sessions)) return;
-    rows = value.sessions.filter(isRow);
+    if (!Array.isArray(value?.sessions)) {
+      // The window's rows cannot be acted on with it closed; the server's last answer stays, said to be old.
+      if (source === "window") rows = [];
+      notes = ["This computer's server did not answer, so these sessions may be out of date."];
+    } else {
+      rows = value.sessions.filter(isRow);
+      notes = (value.unreachable ?? []).flatMap((peer) =>
+        typeof peer.label === "string"
+          ? [`${peer.label} isn't answering, so its sessions are not listed.`]
+          : [],
+      );
+    }
+    source = "door";
     input.onChange();
   };
-  if (direct !== undefined) {
-    setTimeout(() => void readDoor(), 5_000).unref();
-    setInterval(() => void readDoor(), DOOR_LIST_MS).unref();
+  // A cheap look at the window every few seconds: the server is read at once when it closes, then every 30 s.
+  if (direct !== undefined && mainWindowUp !== undefined) {
+    let ticks = 0;
+    setInterval(() => {
+      ticks += 1;
+      void mainWindowUp().then((up) => {
+        if (!up && (source === "window" || ticks % (DOOR_LIST_MS / WINDOW_LOOK_MS) === 0))
+          void readDoor();
+      });
+    }, WINDOW_LOOK_MS).unref();
   }
 
   const ask = async (
@@ -128,6 +155,7 @@ export const createSessionsBridge = (input: {
   return {
     rows: () => rows,
     usage: () => usage,
+    notes: () => notes,
     request: (request, waitMs) => ask(request, waitMs),
     act: async (id, text) => {
       const row = rows.find((s) => id === `n:${s.key}`);
