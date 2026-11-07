@@ -33,6 +33,7 @@ import {
   type VoiceRouter,
   type WakeWordModel,
 } from "@t3tools/baton-voice";
+import type { CutIn } from "@t3tools/baton-shared/endOfTurn";
 import {
   applyContextSnapshot,
   emptyContextBus,
@@ -192,6 +193,8 @@ export interface BrainVoiceHook {
       readonly session?: string | null;
       /** The wake word that opened this window, which picks the persona; null for a hotkey. */
       readonly wake?: string | null;
+      /** He cut her off: what she had said by then. */
+      readonly cutIn?: CutIn | null;
     },
   ) => Promise<{ readonly kind: "handled" } | { readonly kind: "refused"; readonly reply: string }>;
 }
@@ -214,6 +217,7 @@ export const withBrainRoutes = (inner: VoiceRouter, brain: BrainVoiceHook): Voic
       session:
         focused.workSessionId === null ? null : `${focused.workSessionId} (${focused.evidence})`,
       wake: context.wake ?? null,
+      cutIn: context.cutIn ?? null,
     });
     return decision.kind === "refused"
       ? { kind: "refused", reply: decision.reply, reason: "high_risk" }

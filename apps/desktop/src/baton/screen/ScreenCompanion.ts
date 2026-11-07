@@ -43,6 +43,7 @@ import {
   tierBrains,
   type ManualBrain,
 } from "@t3tools/baton-shared/turnTier";
+import type { CutIn } from "@t3tools/baton-shared/endOfTurn";
 import { HOTKEY_PREFIX, hotkeyFor } from "../writing/transformRows.ts";
 import { redactFocusLabel } from "@t3tools/baton-shared/awareness";
 import { detectSecret } from "@t3tools/baton-shared/memory";
@@ -110,7 +111,13 @@ import { detectBrains } from "./brainDetect.ts";
 import { textIsFromConversation, type ConversationRoute } from "@t3tools/baton-shared/conversation";
 import { BATON_TOOL_PREFIX } from "@t3tools/baton-shared/operator";
 import { createMouseConsent, pointerMoved } from "../agent/pointerGuard.ts";
-import { createAgentGate, createTaint, type Gate } from "../agent/agentGate.ts";
+import {
+  createAgentGate,
+  createCutInMark,
+  createTaint,
+  stopsOnCutIn,
+  type Gate,
+} from "../agent/agentGate.ts";
 import { createOutsideSlot } from "../agent/outsideSlot.ts";
 import { createTurnLock, INTERRUPTED, labelPrompt } from "./turnLock.ts";
 import type { DesktopStateInput } from "../phone/desktopState.ts";
@@ -490,6 +497,8 @@ export interface ScreenCompanion {
       readonly wake?: string | null;
       /** A device's or agent's words, not his: always the assistant, whose gate asks. */
       readonly outside?: boolean;
+      /** He cut her off: what she had said by then. */
+      readonly cutIn?: CutIn | null;
     },
   ) => Promise<{ readonly kind: "handled" } | { readonly kind: "refused"; readonly reply: string }>;
   readonly setActions: (actions: AssistantActions) => void;
@@ -499,6 +508,8 @@ export interface ScreenCompanion {
   readonly active: () => boolean;
   /** Silences what is queued and what an answer has yet to say. */
   readonly hush: () => void;
+  /** He talked over her: hush, and a turn that is answering does nothing more (`stopsOnCutIn`). */
+  readonly cutIn: () => void;
   /** Registers or drops the transform shortcuts (Transforms is opt-in). */
   readonly setTransformHotkeys: (on: boolean) => void;
   /** The tray's Clear the screen, also what a spoken stop does. */
@@ -679,6 +690,8 @@ export const startScreenCompanion = (input: {
   const speech = queueSpeech(input.speak);
   /** Bumped when he silences it, so what an answer is still streaming stays unsaid. */
   let hushes = 0;
+  /** Cut-ins over her voice, against the assistant turn they cut (its turns run one at a time). */
+  const cutIns = createCutInMark();
   const hush = () => {
     hushes += 1;
     input.stopSpeech?.();
@@ -1063,6 +1076,20 @@ export const startScreenCompanion = (input: {
     spoken: string,
     yes = 0,
     noOnExpiry = false,
+    needs?: "cloud-approve",
+  ): Promise<number> => {
+    try {
+      return await askOnce(box, spoken, yes, noOnExpiry, needs);
+    } finally {
+      // He answers her question over her voice: that is his answer, not a cut-in that stops the turn.
+      cutIns.begin();
+    }
+  };
+  const askOnce = async (
+    box: Parameters<ReturnType<typeof createCompanionWindows>["ask"]>[0],
+    spoken: string,
+    yes: number,
+    noOnExpiry: boolean,
     needs?: "cloud-approve",
   ): Promise<number> => {
     // Every confirm, the gate's and the screen's, mouse, Chrome and plan alike, comes through here.
@@ -2525,7 +2552,7 @@ export const startScreenCompanion = (input: {
       () =>
         startBatonMcp({
           tools: withFailureGuard(buildBatonTools(toolHost), toolFailures),
-          gate: agentGate,
+          gate: stopsOnCutIn(agentGate, cutIns.since),
           scrub: (text) => vaultHost?.scrub(text) ?? text,
           onResult: ({ text, ...r }) => {
             const record = turns.current();
@@ -2545,8 +2572,11 @@ export const startScreenCompanion = (input: {
           env: claudeEnv(),
           platform: input.platform,
           timeoutMs: OPERATOR_TURN_MS,
-          gate: async (call) =>
-            call.tool.startsWith(BATON_TOOL_PREFIX) ? { allow: true as const } : agentGate(call),
+          gate: stopsOnCutIn(
+            async (call) =>
+              call.tool.startsWith(BATON_TOOL_PREFIX) ? { allow: true as const } : agentGate(call),
+            cutIns.since,
+          ),
           mcp: { url: mcp.url, token: mcp.token },
           chrome: settings.browserChrome,
           onTool: (call) => turns.current().tools.push(call.tool),
@@ -2605,6 +2635,7 @@ export const startScreenCompanion = (input: {
     lastTree = undefined;
   };
   const beginTurn = (said: string) => {
+    cutIns.begin();
     memory.beginTurn();
     agentTaint.reset(said);
     freshTurn();
@@ -2822,6 +2853,7 @@ export const startScreenCompanion = (input: {
     turn: {
       readonly onEnd?: () => void;
       readonly onCancel?: (stop: () => void) => void;
+      readonly cutIn?: CutIn | null;
     } = {},
   ) => {
     answering += 1;
@@ -2881,6 +2913,10 @@ export const startScreenCompanion = (input: {
         direct ? `(to the focused session) ${text}` : text,
         {
           outside,
+          // The persona who was speaking is named only when he woke another one to cut in.
+          ...(turn.cutIn == null
+            ? {}
+            : { cutIn: { ...turn.cutIn, by: turn.cutIn.by === woke ? null : turn.cutIn.by } }),
           window: windowLabel,
           session: focusedSession,
           project,
@@ -2962,6 +2998,7 @@ export const startScreenCompanion = (input: {
       session = null,
       wake = null,
       outside = false,
+      cutIn = null,
     }: Parameters<ScreenCompanion["said"]>[1],
     turn: {
       readonly onEnd?: () => void;
@@ -3020,7 +3057,7 @@ export const startScreenCompanion = (input: {
       if (outside) await agentTurn(text, started, direct, session, true, turn);
       else {
         if (turn.handed !== undefined) turn.handed.done = true;
-        void agentTurn(text, started, direct, session, false, turn);
+        void agentTurn(text, started, direct, session, false, { ...turn, cutIn });
       }
       return { kind: "handled" };
     }
@@ -3246,6 +3283,10 @@ export const startScreenCompanion = (input: {
     },
     active: () => runningMode() !== null,
     hush,
+    cutIn: () => {
+      if (answering > 0) cutIns.cut();
+      hush();
+    },
     dismiss,
     addressed: (wake) => {
       face = personaFor(readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas, {

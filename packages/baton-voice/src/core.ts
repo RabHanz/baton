@@ -18,7 +18,10 @@ import {
   JOIN_WITHIN_MS,
   WAIT_DEFAULT_MS,
   commitMs,
+  heardUntil,
   thinkAheadMs,
+  type CutIn,
+  type Playing,
 } from "@t3tools/baton-shared/endOfTurn";
 import { isAddressedFollowUp } from "@t3tools/baton-shared/followUp";
 import { isDismissPhrase } from "@t3tools/baton-shared/voiceTurn";
@@ -157,6 +160,8 @@ export interface BatonVoiceCore extends VoiceCore {
   readonly setSpeaking: (active: boolean) => void;
   /** What the player is about to play (16 kHz mono) and when it will sound, so his voice can be told from it. */
   readonly reference: (pcm: Int16Array, soundsAtMs: number) => void;
+  /** A sentence of hers starts to play: the `reference` audio after this is its, for where he cuts in. */
+  readonly playing: (text: string) => void;
   /**
    * A cue (a short sound of Baton's own) will play for this long: for that long the wake detector and
    * the segmenter are given silence instead of the microphone, so the cue can neither wake it nor
@@ -322,6 +327,7 @@ export const createVoiceCore = (input: {
   interface Flight {
     readonly text: string;
     readonly endAt: number;
+    readonly cutIn: CutIn | null;
     readonly abort: () => void;
   }
   let flight: Flight | null = null;
@@ -329,6 +335,7 @@ export const createVoiceCore = (input: {
   interface Held {
     readonly text: string;
     readonly endAt: number;
+    readonly cutIn: CutIn | null;
     releaseAt: number;
     /** When to start thinking out the reply (`thinkAhead`), and whether it has. */
     readonly thinkAt: number;
@@ -345,10 +352,11 @@ export const createVoiceCore = (input: {
     readonly bus: ContextBusState;
     readonly target: string | null;
     readonly wake: string | null;
+    readonly cutIn: CutIn | null;
     readonly go: Promise<() => Promise<RouteOutcome>>;
   } | null = null;
   const wakeOf = (text: string) => namedWake(text, timings.wakeWords ?? []) ?? addressee;
-  const thinkAhead = (text: string) => {
+  const thinkAhead = (text: string, cutIn: CutIn | null) => {
     ahead = null;
     const prepare = input.router?.prepare;
     if (prepare === undefined) return;
@@ -356,16 +364,21 @@ export const createVoiceCore = (input: {
     const [effect] = effects;
     if (effects.length !== 1 || effect?.kind !== "command") return;
     const wake = wakeOf(text);
-    const context = { bus, now: now(), mostRecentWorkSessionId: lastTarget, wake };
+    const context = { bus, now: now(), mostRecentWorkSessionId: lastTarget, wake, cutIn };
     const go = prepare(effect, context);
     // A discarded one fails quietly; a kept one fails where it is awaited.
     go.catch(() => undefined);
-    ahead = { effect, bus, target: lastTarget, wake, go };
+    ahead = { effect, bus, target: lastTarget, wake, cutIn, go };
   };
   let transcribing = 0;
   /** Where each segment still being recognised began, so held words wait for speech that may join them. */
   const recognising = new Set<number>();
-  let current: { readonly text: string; readonly endAt: number } = { text: "", endAt: 0 };
+  /** The words going to the router now, and the cut-in they answer (once: a later turn gets none). */
+  let current: { readonly text: string; readonly endAt: number; readonly cutIn: CutIn | null } = {
+    text: "",
+    endAt: 0,
+    cutIn: null,
+  };
   const waitMs = () => input.waitMs?.() ?? WAIT_DEFAULT_MS;
 
   const dismissNow = (text: string) => {
@@ -407,10 +420,13 @@ export const createVoiceCore = (input: {
       const dropped = new Promise<null>((resolve) => {
         abort = () => resolve(null);
       });
-      const mine: Flight = { text: current.text, endAt: current.endAt, abort };
+      const mine: Flight = { ...current, abort };
       if (turn) flight = mine;
       // "Tessaya, …" said in Freya's open window is for Tessaya, and so is what he says next without a name.
       if (turn) addressee = wakeOf(current.text);
+      // The turn after a cut-in carries on from her words.
+      const steer = turn ? current.cutIn : null;
+      if (turn) current = { text: current.text, endAt: current.endAt, cutIn: null };
       const early = effect.kind === "command" ? ahead : null;
       if (effect.kind === "command") ahead = null;
       const thought =
@@ -418,7 +434,8 @@ export const createVoiceCore = (input: {
         JSON.stringify(early.effect) === JSON.stringify(effect) &&
         early.bus === bus &&
         early.target === lastTarget &&
-        early.wake === addressee;
+        early.wake === addressee &&
+        early.cutIn === steer;
       const outcome = await Promise.race([
         thought
           ? // He may carry on while it is still being thought out: then it never acts.
@@ -428,6 +445,7 @@ export const createVoiceCore = (input: {
               now: now(),
               mostRecentWorkSessionId: lastTarget,
               wake: addressee,
+              cutIn: steer,
             }),
         ...(turn ? [dropped] : []),
       ]);
@@ -500,6 +518,9 @@ export const createVoiceCore = (input: {
     const parts = segment;
     const spoken = speechSamples;
     const overItself = barged;
+    // The cut-in belongs to the words said over her, and to nothing after them.
+    const note = overItself ? cutIn : null;
+    cutIn = null;
     barged = false;
     const fire = segmentFire;
     segmentFire = null;
@@ -547,6 +568,7 @@ export const createVoiceCore = (input: {
       consumed: false,
       /** Its own wake word was said: it starts a new turn, never the end of the last one. */
       woken: fire !== null,
+      cutIn: note,
     };
     transcribing += 1;
     recognising.add(turn.startAt);
@@ -606,7 +628,7 @@ export const createVoiceCore = (input: {
         (machine.mode === "command_window" || machine.mode === "conversation");
       const holding = Date.now();
       if (joinable && waitMs() > 0) {
-        const kept = await holdForMore(said, turn.endAt, turn.endAt - quietMs);
+        const kept = await holdForMore(said, turn.endAt, turn.endAt - quietMs, turn.cutIn);
         if (!kept) return;
       }
       lastTranscript = said;
@@ -617,7 +639,7 @@ export const createVoiceCore = (input: {
         recogniseMs,
         holdMs: Date.now() - holding,
       });
-      current = { text: said, endAt: turn.endAt };
+      current = { text: said, endAt: turn.endAt, cutIn: turn.cutIn };
       // Begun while the window was open: a slow recogniser (right after launch) must not let it close under these words.
       if (machine.deadline !== null && turn.startAt <= machine.deadline)
         await dispatch({ type: "keep_open", at: now() });
@@ -629,7 +651,13 @@ export const createVoiceCore = (input: {
 
   const readEarly = (
     cleaned: string,
-    turn: { startAt: number; prefix: string | null; consumed: boolean; woken: boolean },
+    turn: {
+      startAt: number;
+      prefix: string | null;
+      consumed: boolean;
+      woken: boolean;
+      cutIn: CutIn | null;
+    },
   ) => {
     if (
       cleaned === SET_ASIDE ||
@@ -648,21 +676,29 @@ export const createVoiceCore = (input: {
     const near = (endAt: number) => turn.startAt - endAt <= JOIN_WITHIN_MS;
     if (held !== null && near(held.endAt)) {
       turn.prefix = held.text;
+      turn.cutIn ??= held.cutIn;
       held.settle(false);
     } else if (flight !== null && near(flight.endAt)) {
       turn.prefix = flight.text;
+      turn.cutIn ??= flight.cutIn;
       flight.abort();
       flight = null;
     }
   };
 
   /** Wait out the end-of-turn pause for these words; false when later speech took them over. */
-  const holdForMore = (text: string, endAt: number, lastWordAt: number): Promise<boolean> =>
+  const holdForMore = (
+    text: string,
+    endAt: number,
+    lastWordAt: number,
+    cutIn: CutIn | null,
+  ): Promise<boolean> =>
     new Promise((resolve) => {
       const words = stripWake(text, timings.wakeWords);
       const mine: Held = {
         text,
         endAt,
+        cutIn,
         // commitMs is silence after his last word, and the segmenter has already waited out part of it.
         releaseAt: lastWordAt + commitMs(waitMs(), words),
         thinkAt: lastWordAt + thinkAheadMs(waitMs(), words),
@@ -787,6 +823,15 @@ export const createVoiceCore = (input: {
   let creditFrom = 0;
   /** A wake word cut in, and what he says next is being heard. Nothing may drop it. */
   let barged = false;
+  /**
+   * Her reply as it plays (`playing`), and what she had said when he cut in, for the words he says over her.
+   * `fresh`: the next sentence starts a new reply (set when one ends, read when the next plays, so a reply that
+   * starts while his words are still being heard keeps its first sentence).
+   */
+  let played: string[] = [];
+  let sounding: Playing | null = null;
+  let fresh = true;
+  let cutIn: CutIn | null = null;
   /** What the speaker did while his words were being heard, applied when they end. */
   let speakingLater: boolean | null = null;
   const setSpeaking = (active: boolean) => {
@@ -795,6 +840,7 @@ export const createVoiceCore = (input: {
       return;
     }
     if (active && !speaking) spokeFrom = samples;
+    if (!active) fresh = true;
     speaking = active;
     if (active) {
       // What was being heard is now mixed with Baton's own voice.
@@ -859,10 +905,15 @@ export const createVoiceCore = (input: {
     open = true,
   ) => {
     if (speaking || hearingItself()) {
+      // Only over her voice itself, not its echo after: then there is nothing of hers to carry on from.
+      const said = speaking ? heardUntil(played, sounding, Date.now()) : "";
+      cutIn = said === "" ? null : { said, by: addressee };
+      fresh = true;
       speaking = false;
       echoUntil = 0;
       barged = true;
       clearStop();
+      input.tts?.cancel?.();
       emit({ type: "barge_in" });
     }
     emit({
@@ -975,7 +1026,7 @@ export const createVoiceCore = (input: {
       // Probably the end: the reply is thought out while the pause runs, and kept only if he stays quiet.
       if (!held.thought && !busy && at >= held.thinkAt && at < held.releaseAt) {
         held.thought = true;
-        thinkAhead(held.text);
+        thinkAhead(held.text, held.cutIn);
       }
       if (at >= held.releaseAt && (!busy || at >= held.releaseAt + cap)) held.settle(true);
     }
@@ -1092,7 +1143,19 @@ export const createVoiceCore = (input: {
       currentTarget: machine.conversationTarget ?? lastTarget,
     }),
     setSpeaking,
-    reference: (pcm, soundsAtMs) => input.echo?.reference(pcm, soundsAtMs),
+    reference: (pcm, soundsAtMs) => {
+      input.echo?.reference(pcm, soundsAtMs);
+      if (sounding === null) return;
+      const from = sounding.from ?? soundsAtMs;
+      const until = Math.max(sounding.until, soundsAtMs + (pcm.length * 1000) / VOICE_SAMPLE_RATE);
+      sounding = { ...sounding, from, until };
+    },
+    playing: (text) => {
+      if (fresh) played = [];
+      else if (sounding !== null) played.push(sounding.text);
+      fresh = false;
+      sounding = { text, from: null, until: 0 };
+    },
     playingCue: (ms) => {
       cueUntil = Math.max(cueUntil, samples + msToSamples(ms));
     },
