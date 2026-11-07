@@ -34,6 +34,7 @@ import * as BatonRecordService from "./BatonRecordService.ts";
 import * as BatonWeaveBoxes from "./BatonWeaveBoxes.ts";
 import * as BatonCloudService from "./BatonCloudService.ts";
 import * as BatonSessionCatalogService from "./BatonSessionCatalogService.ts";
+import * as BatonSessionsAcross from "./BatonSessionsAcross.ts";
 import * as BatonWeaveService from "./BatonWeaveService.ts";
 import * as BatonCommitmentService from "./BatonCommitmentService.ts";
 import * as BatonMemoryLearning from "./BatonMemoryLearning.ts";
@@ -116,6 +117,12 @@ const servicesInner = IntentService.layer.pipe(
       ),
       BatonWeaveService.layer.pipe(
         Layer.provide(BatonWeaveBoxes.layer.pipe(Layer.provide(HerdrAdapter.layer))),
+      ),
+      // This server's live sessions and each linked environment's, for the desktop with T3's window closed (GEN-6).
+      BatonSessionsAcross.layer.pipe(
+        Layer.provide(AdoptedSessionService.layer.pipe(Layer.provide(HerdrAdapter.layer))),
+        Layer.provide(BatonEngine.layer),
+        Layer.provide(WorkSessionService.layer),
       ),
       BatonMemoryLearning.layer.pipe(Layer.provide(memoryLayer), Layer.provide(BatonOneShot.layer)),
       // Memory sync with his other servers on this server's own clock, not T3's window (GEN-6).

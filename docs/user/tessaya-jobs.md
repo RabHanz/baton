@@ -15,6 +15,7 @@ Say or type what you want done as a job ("fix the failing build in the shop proj
 - **Standing jobs** (Trust page) are the work that runs by itself: the morning brief, a look at a failed build, a reminder about a session waiting on you, a summary when a job finishes, every rule you set up ("when the build finishes, have Codex review it") and every job on a schedule. Each shows which persona runs it and how many times it has run. One runs unattended only where that persona may do it without asking (reading and reporting); anything else is held and logged. They run with T3's window closed, and each run is in what happened.
 - **Stop** ends a running turn; the job and its notes stay. **Retry** is offered only for a job that failed and has retries left, and says why not otherwise.
 - A job that a restart interrupted shows a Continue button.
+- **Sessions** lists every live session on this computer and on each computer its server is linked to, with T3's window open or closed. With the window closed, you can type only into this computer's sessions; open T3 to type into another computer's, so your words go over T3's own connection to it and never over a link, where they would arrive as another agent's. A computer linked read-only never takes typing.
 - **What needs me** (the Now page) ranks what to look at first: failures, questions, stalled work.
 
 ## Run on

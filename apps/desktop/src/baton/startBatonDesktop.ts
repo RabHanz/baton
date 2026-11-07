@@ -517,10 +517,14 @@ export const startBatonDesktop = Effect.gen(function* () {
       hands.start();
       Electron.app.on("will-quit", hands.stop);
     }
+    const t3Up = () =>
+      run(electronWindow.main).then((main) => main._tag === "Some" && !main.value.isDestroyed());
     const sessions = createSessionsBridge({
       ensureMainWindow: () => Effect.runPromiseWith(context)(desktopWindow.ensureMain),
       openMainWindow,
       onChange: () => voice?.refresh(),
+      direct,
+      mainWindowUp: t3Up,
     });
     // A second launch means "show me Tessaya". T3's own handler raises its main window first and slowly, so
     // Tessaya's window is raised after it, or the T3 window ends up on top.
@@ -542,8 +546,6 @@ export const startBatonDesktop = Effect.gen(function* () {
       onChange: () => voice?.refresh(),
     }));
     // Asking the sidebar opens T3's window: a background refresh only runs while it is already up, or a closed T3 comes back.
-    const t3Up = () =>
-      run(electronWindow.main).then((main) => main._tag === "Some" && !main.value.isDestroyed());
     const refreshIfT3Up = () =>
       void t3Up().then((up) => {
         if (up) void catalog.refresh();

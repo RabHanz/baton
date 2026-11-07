@@ -674,6 +674,8 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
 ).pipe(
   // Baton (vendor-patches/t3code/0002-server-hooks.patch): its services, on upstream's engine.
   Layer.provideMerge(BatonServerLayer.services),
+  // Baton's cross-environment session list reaches linked environments the way agents do (GEN-6).
+  Layer.provideMerge(PeerMcpClient.layer.pipe(Layer.provideMerge(PeerLinks.layer))),
   // The same memoized sink the runtime uses, for Baton's live-session threads (D83).
   Layer.provideMerge(RuntimeLayer.layerEventSink),
   Layer.provideMerge(layerOrchestrationApplication),

@@ -1,9 +1,9 @@
 // @effect-diagnostics globalTimers:off
 /**
- * Where the Sessions area gets its rows and sends its actions (D138). The sidebar in T3's window
- * already holds every live session across the connected environments; it pushes them here when
- * they change, so nothing is polled. Opening a thread and typing to a pane go back the same way,
- * through the sidebar's own handlers, so they take the paths a click in T3 would.
+ * Where the Sessions area gets its rows and sends its actions (D138). While T3's window is up, its sidebar pushes
+ * every live session across the connected environments when they change, and opening a thread or typing to a pane go
+ * back through the sidebar's own handlers, the paths a click in T3 takes. With the window closed, this machine's
+ * server lists its own sessions and each linked environment's (GEN-6), and only its own panes are typed into.
  */
 import type {
   BatonSessionRequest,
@@ -18,11 +18,13 @@ import {
   BATON_SESSIONS_SNAPSHOT_CHANNEL,
   BATON_USAGE_CHANNEL,
 } from "../channels.ts";
-import { requestFor, sendRefusal } from "./sessionRows.ts";
+import { closedWindowSend, requestFor, sendRefusal } from "./sessionRows.ts";
 
 const ANSWER_MS = 4_000;
 /** The window may still be loading when the first request goes out; the sidebar claims it late. */
 const ATTEMPTS = 3;
+/** How often the closed-window list is read from this machine's server; each read asks every linked environment. */
+const DOOR_LIST_MS = 30_000;
 
 export interface SessionsBridge {
   readonly rows: () => ReadonlyArray<BatonSessionSummary>;
@@ -52,6 +54,9 @@ export const createSessionsBridge = (input: {
   readonly ensureMainWindow: () => Promise<Electron.BrowserWindow>;
   readonly openMainWindow: () => void;
   readonly onChange: () => void;
+  /** This machine's own server, and whether T3's window is up; without them the window is the only source. */
+  readonly direct?: (method: string, input: unknown) => Promise<unknown>;
+  readonly mainWindowUp?: () => Promise<boolean>;
 }): SessionsBridge => {
   let rows: ReadonlyArray<BatonSessionSummary> = [];
   let usage: ReadonlyArray<BatonUsageSummary> = [];
@@ -81,6 +86,25 @@ export const createSessionsBridge = (input: {
     pending.get(id)?.({ ok: ok === true, detail: typeof detail === "string" ? detail : "" });
   });
 
+  const direct = input.direct;
+  const mainWindowUp = input.mainWindowUp;
+  const windowClosed = async () =>
+    direct !== undefined && mainWindowUp !== undefined && !(await mainWindowUp());
+  // The window's push stays the source while it is up; this never opens it.
+  const readDoor = async () => {
+    if (!(await windowClosed())) return;
+    const value = (await direct!("baton.sessions.across", {}).catch(() => null)) as {
+      sessions?: unknown;
+    } | null;
+    if (!Array.isArray(value?.sessions)) return;
+    rows = value.sessions.filter(isRow);
+    input.onChange();
+  };
+  if (direct !== undefined) {
+    setTimeout(() => void readDoor(), 5_000).unref();
+    setInterval(() => void readDoor(), DOOR_LIST_MS).unref();
+  }
+
   const ask = async (
     request: unknown,
     waitMs = ANSWER_MS,
@@ -109,6 +133,17 @@ export const createSessionsBridge = (input: {
       const row = rows.find((s) => id === `n:${s.key}`);
       const refused = text === null || row === undefined ? null : sendRefusal(row);
       if (refused !== null) return refused;
+      if (text !== null && row !== undefined && (await windowClosed())) {
+        const body = text.trim();
+        if (body.length === 0) return "Nothing to send.";
+        const call = closedWindowSend(row, body);
+        if (typeof call === "string") return call;
+        const sent = (await direct!(call.method, call.input).catch((error: unknown) => ({
+          delivered: false,
+          detail: error instanceof Error ? error.message : "Not sent.",
+        }))) as { delivered?: boolean; detail?: string };
+        return sent.delivered === true ? "Sent." : sent.detail || "Not sent.";
+      }
       const request = requestFor(rows, id, text);
       if (request === null)
         return text === null ? "That session has no thread to open." : "Nothing to send.";

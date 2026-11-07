@@ -5,6 +5,8 @@
  */
 import * as Schema from "effect/Schema";
 
+import { AuthMcpClientAccess } from "@t3tools/contracts";
+
 export const BATON_SESSIONS_WS_METHODS = {
   list: "baton.sessions.list",
   folders: "baton.sessions.folders",
@@ -17,7 +19,39 @@ export const BATON_SESSIONS_WS_METHODS = {
   reattach: "baton.sessions.reattach",
   kept: "baton.sessions.kept",
   waiting: "baton.sessions.waiting",
+  across: "baton.sessions.across",
 } as const;
+
+/** One live session as Baton's own window lists it (D138), built from the sidebar's project rows (baton-shared). */
+export const BatonSessionSummary = Schema.Struct({
+  key: Schema.String,
+  project: Schema.String,
+  session: Schema.String,
+  /** What a person calls the login; the window masks it until clicked. */
+  account: Schema.NullOr(Schema.String),
+  state: Schema.Literals(["working", "waiting", "idle"]),
+  /** Needs him: a question or an approval. */
+  urgent: Schema.Boolean,
+  box: Schema.String,
+  updatedAt: Schema.NullOr(Schema.String),
+  /** The T3 thread to open, when this session has one. */
+  thread: Schema.NullOr(Schema.Struct({ environmentId: Schema.String, threadId: Schema.String })),
+  /** The terminal pane text can be typed into, when it has one. */
+  pane: Schema.NullOr(Schema.Struct({ environmentId: Schema.String, pane: Schema.String })),
+  /** The access of the link it was listed over; null on the listing server itself, absent from the sidebar's push. */
+  access: Schema.optionalKey(Schema.NullOr(AuthMcpClientAccess)),
+});
+export type BatonSessionSummary = typeof BatonSessionSummary.Type;
+
+export const BatonSessionsAcrossInput = Schema.Struct({});
+export const BatonSessionsAcrossResult = Schema.Struct({
+  /** The listing server itself, so a client tells this computer's sessions and actions from another's. */
+  here: Schema.Struct({ environmentId: Schema.String, label: Schema.String }),
+  sessions: Schema.Array(BatonSessionSummary),
+  /** Linked environments that did not answer, so their sessions are missing rather than gone. */
+  unreachable: Schema.Array(Schema.Struct({ environmentId: Schema.String, label: Schema.String })),
+});
+export type BatonSessionsAcrossResult = typeof BatonSessionsAcrossResult.Type;
 
 export const BatonCatalogState = Schema.Literals(["running", "stopped", "resuming", "failed"]);
 export type BatonCatalogState = typeof BatonCatalogState.Type;

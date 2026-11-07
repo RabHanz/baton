@@ -28,6 +28,7 @@ import * as Schema from "effect/Schema";
 import { IsoDateTime, ThreadId, TrimmedNonEmptyString, TrimmedString } from "@t3tools/contracts";
 import { WorkSessionId } from "./workSession.ts";
 import type { BATON_PHONE_OPS } from "./phone.ts";
+import type { BatonSessionSummary } from "./sessionCatalog.ts";
 
 /**
  * Who reported a snapshot. §15's producer list, and the reason the bus keeps
@@ -202,24 +203,6 @@ export const describeInjection = (report: BatonInjectionReport): string => {
     ? "I cannot type into anything from here."
     : `I cannot type into anything from here: ${first.reason}`;
 };
-
-/** One live session as Baton's own window lists it (D138), built from the sidebar's own project rows. */
-export interface BatonSessionSummary {
-  readonly key: string;
-  readonly project: string;
-  readonly session: string;
-  /** What a person calls the login; the window masks it until clicked. */
-  readonly account: string | null;
-  readonly state: "working" | "waiting" | "idle";
-  /** Needs him: a question or an approval. */
-  readonly urgent: boolean;
-  readonly box: string;
-  readonly updatedAt: string | null;
-  /** The T3 thread to open, when this session has one. */
-  readonly thread: { readonly environmentId: string; readonly threadId: string } | null;
-  /** The terminal pane text can be typed into, when it has one. */
-  readonly pane: { readonly environmentId: string; readonly pane: string } | null;
-}
 
 /** One account's limits as T3 reports them, for the Usage tab. */
 export interface BatonUsageSummary {
