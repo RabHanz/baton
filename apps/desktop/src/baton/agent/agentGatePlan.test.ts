@@ -54,6 +54,15 @@ describe("a plan he approved", () => {
     expect(shell.asked).toHaveLength(1);
   });
 
+  it("judges the window type_text names, not the console in front", async () => {
+    // 0.1.65: "type hello world into notepad" with a console in front asked about a command line.
+    const r = rig(null, true);
+    await r.gate(call("type_text", { text: "hello world", why: "w", window: "Notepad" }));
+    expect(r.asked).toEqual([]);
+    await r.gate(call("type_text", { text: "dir", why: "w", window: "Windows PowerShell" }));
+    expect(r.asked).toHaveLength(1);
+  });
+
   it("covers a batch only when every step is covered, each judged alone", async () => {
     const r = rig(STEPS);
     r.taint.mark();

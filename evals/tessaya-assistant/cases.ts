@@ -285,6 +285,18 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     not: ["screen_capture", "click", "Bash", "PowerShell"],
   },
   {
+    id: "notepad-behind-console",
+    source:
+      "0.1.65 test-mic run: a console in front; the typing must name Notepad, not land in the command line",
+    said: "type hello world into notepad",
+    window: "powershell.exe: Windows PowerShell",
+    first: ["type_text"],
+    not: ["screen_capture", "click", "press_keys", "Bash", "PowerShell"],
+    goal: "type_text",
+    maxCalls: 1,
+    goalArgs: ["notepad"],
+  },
+  {
     id: "notepad-behind-chrome-path",
     source:
       "Learning v0: the same turn replayed with type_text's recorded answer; it must reach type_text in at most two calls",

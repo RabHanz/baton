@@ -266,6 +266,13 @@ const SHELL_APP =
 
 export const isShellWindow = (label: string): boolean => SHELL_APP.test(label);
 
+/** A window named by the model ("Notepad", "Windows PowerShell") that is a command line, or sounds like one. */
+export const namesShell = (name: string): boolean =>
+  isShellWindow(name) ||
+  /\b(?:cmd|command prompt|powershell|pwsh|terminal|console|bash|zsh|wsl|ubuntu|ssh|putty|wezterm|alacritty)\b/i.test(
+    name,
+  );
+
 /** Ctrl+V or Shift+Insert: keys that type whatever the clipboard holds. */
 export const isPasteKeys = (keys: ReadonlyArray<string>): boolean => {
   const set = new Set(keys.map((k) => k.toLowerCase()));
