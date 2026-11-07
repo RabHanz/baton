@@ -4278,18 +4278,17 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           signal.aborted ? Promise.reject(new Error("Ended.")) : startLook(offer, true),
         // The lead's standing job: kept on the Now page, and shown or said as the brief setting says.
         brief: async (signal) => {
+          const since =
+            standingStore
+              .load()
+              .runs.findLast((r) => r.id === "morning_brief" && r.outcome === "ran")?.at ??
+            now - 24 * 3_600_000;
           const text = morningBrief({
             jobs,
             findings,
-            // What the server's watch saw since the last brief, with no desktop up too (D1).
-            earlier: findingsFromRecord(
-              await recordNotes(
-                "watch",
-                100,
-                standingStore.load().runs.findLast((r) => r.id === "morning_brief")?.at ??
-                  now - 24 * 3_600_000,
-              ),
-            ),
+            // What the server's watch saw since the last brief that ran, with no desktop up too (D1).
+            earlier: findingsFromRecord(await recordNotes("watch", 100, since)),
+            since,
             now,
             guide: await guideNotes(),
             extra: briefExtra(),

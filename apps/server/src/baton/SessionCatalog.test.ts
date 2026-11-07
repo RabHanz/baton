@@ -319,7 +319,8 @@ describe("browsing", () => {
       died: (id) =>
         id === OLD || id === ID
           ? {
-              why: "auto-resume is off here",
+              // A reason that ends in a full stop gets no second one.
+              why: "auto-resume is off here.",
               at: Date.parse(id === OLD ? "2026-10-02T00:00:00.000Z" : "2026-10-30T00:00:00.000Z"),
             }
           : null,

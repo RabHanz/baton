@@ -231,7 +231,9 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
       source: "transcript",
       canResume: cwdOk,
       detail:
-        crashed === null ? detail : `${CRASHED}: ${crashed}.${detail === null ? "" : ` ${detail}`}`,
+        crashed === null
+          ? detail
+          : `${CRASHED}: ${crashed.replace(/\.+$/, "")}.${detail === null ? "" : ` ${detail}`}`,
       waiting: waiting.get(t.sessionId)?.length ?? 0,
       ...(crashed === null ? {} : { crashed: true }),
       ...(resumedThreads.has(t.sessionId) ? { threadId: resumedThreads.get(t.sessionId)! } : {}),
