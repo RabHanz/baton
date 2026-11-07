@@ -5,6 +5,8 @@
  * the route has open, and how to open one.
  */
 import { useAtomValue } from "@effect/atom-react";
+import * as Option from "effect/Option";
+import { AsyncResult } from "effect/reactivity";
 import {
   batonDesktopBridge,
   type BatonFleetEntry,
@@ -45,6 +47,8 @@ import { useBatonFleets } from "../../state/batonWorkSessions";
 import { batonWorkSessions } from "../../state/batonWorkSessions";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { authEnvironment } from "../../state/auth";
+import { environmentCatalog } from "../../connection/catalog";
+import { appAtomRegistry } from "../../rpc/atomRegistry";
 import { readPreparedConnection } from "../../state/session";
 import { sameSyncOrigin, syncFailureLine, syncPeerUrl } from "../../batonMemorySync";
 import { batonProjectKey } from "@t3tools/baton-shared/jobPlacement";
@@ -404,10 +408,15 @@ export function BatonSidebarSection(props: {
   };
   const onCloud = async (request: BatonCloudBridgeRequest): Promise<unknown> => {
     if (request.op === "environments") {
-      return fleet.environmentIds.map((id) => ({
-        id,
-        label: fleet.resolveEnvironmentLabel(id) ?? id,
-      }));
+      return fleet.environmentIds.map((id) => {
+        // Its supervisor's phase: connected, connecting, backoff, offline, blocked or available.
+        const state = AsyncResult.value(appAtomRegistry.get(environmentCatalog.stateAtom(id)));
+        return {
+          id,
+          label: fleet.resolveEnvironmentLabel(id) ?? id,
+          state: Option.isSome(state) ? state.value.phase : "unknown",
+        };
+      });
     }
     // Only an environment this window is actually connected to can be asked.
     const target = fleet.environmentIds.find((id) => id === request.environmentId) ?? primary;
