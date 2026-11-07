@@ -26,7 +26,13 @@ import { createTransformStore } from "../writing/transformStore.ts";
 import { changedFrom, writeJsonFile } from "../writing/jsonStore.ts";
 import { PACK_FOLDER, readPack } from "../pack/packRows.ts";
 import { DEFAULT_ROUTING, parseRouting } from "@t3tools/baton-shared/costRouting";
-import { userJobCard, userJobFromArgs, whenText } from "@t3tools/baton-shared/userJobs";
+import {
+  standingTurnText,
+  userJobCard,
+  userJobFromArgs,
+  whenText,
+} from "@t3tools/baton-shared/userJobs";
+import { standingGate } from "../agent/standingGate.ts";
 import {
   chooseTurnBrain,
   createTierMemory,
@@ -273,6 +279,16 @@ const SETTLED = 0.0001;
 /** Grey-level change that counts at thumbnail scale, where a line of text is a faint smudge. */
 const PIXEL = 8;
 
+/** One of his standing jobs to run (KIRO-1); `judge` is standingVerdict for its owner. */
+export interface StandingRunJob {
+  readonly title: string;
+  readonly instruction: string;
+  /** A device wrote the words and he never rewrote them: they are quoted as data, never run as his. */
+  readonly from: "him" | "device";
+  readonly tools: ReadonlyArray<string>;
+  readonly judge: (tool: string) => { readonly verdict: string; readonly why?: string };
+}
+
 /** What Baton can do beyond talking, supplied by the voice side. */
 /** The window he is using. */
 export interface AssistantFocus {
@@ -449,6 +465,11 @@ export interface ScreenCompanion {
     }) => Promise<HandsResult>;
   };
   /** Decide what was said and carry it out; a refusal comes back for the caller to say. */
+  /** One run of his own standing job, as an unattended device-kind turn; his turns stop it. */
+  readonly runStanding: (
+    job: StandingRunJob,
+    signal: AbortSignal,
+  ) => Promise<{ readonly status: "ok" | "error" | "cancelled"; readonly text: string }>;
   readonly said: (
     text: string,
     input: {
@@ -2609,7 +2630,7 @@ export const startScreenCompanion = (input: {
    * A device's or agent's ask gets a session of its own, started fresh each time: none of his conversation, presence,
    * missed turns or standing memory, so "repeat what you told him" has nothing to repeat. It costs a cold start.
    */
-  const outsideAgentOf = () => {
+  const outsideAgentOf = (standing?: StandingRunJob) => {
     const file = NodePath.join(
       input.stateDir,
       "screen",
@@ -2623,7 +2644,9 @@ export const startScreenCompanion = (input: {
           : actions.memory(op, args),
       notes,
       focusedWindow: gateWindow,
+      // A standing job's run has nobody to ask: an ask is a no.
       confirm: async (p) =>
+        standing === undefined &&
         (await askHandsFree(
           {
             title: p.title,
@@ -2637,17 +2660,28 @@ export const startScreenCompanion = (input: {
           p.noOnExpiry,
         )) === 0,
       record: (entry) =>
-        input.onAction?.({ by: "assistant", persona: "Tessaya, for a paired device", ...entry }),
+        input.onAction?.({
+          by: "assistant",
+          persona:
+            standing === undefined
+              ? "Tessaya, for a paired device"
+              : `Tessaya, for your standing job "${standing.title}"`,
+          ...entry,
+        }),
       jobProjects: async (id) => (await actions?.jobProjects?.(id)) ?? null,
     });
+    const gate: Gate = standing === undefined ? slot.gate : standingGate(slot.gate, standing);
     let mine: BatonMcp | null = null;
     const agent = createAssistantAgent({
       start: (systemPrompt, brain = leadBrain()) =>
         sessionStart(systemPrompt, brain, {
           host: slot.host,
-          gate: slot.gate,
+          gate,
           failures: new Map(),
-          wrap: slot.guard,
+          wrap:
+            standing === undefined
+              ? slot.guard
+              : (tools) => slot.guard(tools.filter((t) => standing.tools.includes(t.name))),
           keep: async (mcp) => {
             await mine?.close();
             // Cancelled while it was starting: the server that came up late goes at once.
@@ -2681,6 +2715,38 @@ export const startScreenCompanion = (input: {
           NodeFS.rmSync(file, { force: true });
         })()),
     };
+  };
+  /**
+   * One run of his own standing job (KIRO-1): a device's kind of turn (a fresh session, its own gate with taint on, the
+   * walled memory view, no vault), in the device's place in the lock so his turn stops it, and only the job's tools.
+   */
+  const runStanding = async (
+    job: StandingRunJob,
+    signal: AbortSignal,
+  ): Promise<{ readonly status: "ok" | "error" | "cancelled"; readonly text: string }> => {
+    if (run !== null)
+      return { status: "cancelled", text: "Held: a lesson, drive or look was running." };
+    const out = await turnLock.device(async (onCancel) => {
+      const once = outsideAgentOf(job);
+      const stop = () => void once.end();
+      onCancel(stop);
+      signal.addEventListener("abort", stop, { once: true });
+      try {
+        const reply = await once.say(standingTurnText(job), { window: null, session: null });
+        return { status: "ok" as const, text: reply };
+      } catch (error) {
+        return {
+          status: error instanceof SessionClosed ? ("cancelled" as const) : ("error" as const),
+          text: error instanceof Error ? error.message : String(error),
+        };
+      } finally {
+        signal.removeEventListener("abort", stop);
+        await once.end();
+      }
+    });
+    return out === INTERRUPTED
+      ? { status: "cancelled", text: "He started talking to Tessaya, so it stopped." }
+      : out;
   };
   /** His sentence goes to his session; a device's to a fresh one of its own, ended with the turn. */
   const sayFor = (
@@ -3124,6 +3190,7 @@ export const startScreenCompanion = (input: {
 
   return {
     said,
+    runStanding,
     setTransformHotkeys,
     memorySync,
     setActions: (next) => {

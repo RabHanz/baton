@@ -148,6 +148,11 @@ export interface StandingRow {
   readonly proposed?: boolean;
   /** Who wrote its words; a device's are run as data until he rewrites them. */
   readonly from?: "him" | "device";
+  /** His own job's last run: an error or a time-out gets "Ask why". */
+  readonly lastRun?: {
+    readonly status: "ok" | "error" | "timeout" | "cancelled";
+    readonly at: number;
+  };
 }
 
 const ranLine = (n: number) => `Ran ${n === 1 ? "once" : `${n} times`}.`;
@@ -205,6 +210,17 @@ const userJobRows = (j: StandingRow): ReadonlyArray<HomeControl> => [
     // Nothing to go back to: his own words are the only version.
     mine: false,
   },
+  ...(j.lastRun !== undefined && (j.lastRun.status === "error" || j.lastRun.status === "timeout")
+    ? [
+        {
+          id: `trust.userjobwhy:${j.id}`,
+          section: PLAYS,
+          label: `Its last run ${j.lastRun.status === "error" ? "failed" : "ran out of time"}`,
+          kind: "action" as const,
+          button: "Ask why",
+        },
+      ]
+    : []),
   {
     id: `trust.userjobdel:${j.id}`,
     section: PLAYS,
@@ -439,7 +455,8 @@ export type TrustAction =
   | { readonly kind: "quiet"; readonly id: string; readonly on: boolean }
   | { readonly kind: "userJob"; readonly id: string; readonly on: boolean }
   | { readonly kind: "userJobText"; readonly id: string; readonly text: string }
-  | { readonly kind: "userJobDelete"; readonly id: string };
+  | { readonly kind: "userJobDelete"; readonly id: string }
+  | { readonly kind: "userJobWhy"; readonly id: string };
 
 export const trustAction = (id: string, value: unknown): TrustAction | null => {
   if (id === "trust.filter") {
@@ -453,6 +470,8 @@ export const trustAction = (id: string, value: unknown): TrustAction | null => {
     return typeof value === "string" && value.trim() !== ""
       ? { kind: "userJobText", id: ut[1]!, text: value.trim().slice(0, 1_000) }
       : null;
+  const uw = /^trust\.userjobwhy:(user:\d+)$/.exec(id);
+  if (uw !== null) return { kind: "userJobWhy", id: uw[1]! };
   const ud = /^trust\.userjobdel:(user:\d+)$/.exec(id);
   if (ud !== null) return { kind: "userJobDelete", id: ud[1]! };
   const sj = /^trust\.(standing|rule):(.+)$/.exec(id);
