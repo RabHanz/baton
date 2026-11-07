@@ -8,6 +8,7 @@ An agent you connect to this computer's MCP URL, as described in [Outside agents
 - `tessaya_record`: what happened, who did it and for which project.
 - `tessaya_rules`: standing rules and when they last fired.
 - `tessaya_sessions`: the Claude Code sessions on this computer, by title and folder.
+- `tessaya_fleet`: what is live right now: each piece of work and its state, the Herdr panes and the running Claude Code processes.
 - `tessaya_memory_search`: what Tessaya remembers.
 - `tessaya_state`: how Tessaya is set up on your computer, one part at a time: settings, voice (including whether speech recognition is local or cloud), personas, skills, or diagnostics (versions, connections, recent error codes). Never a key, the vault or anything you said. It needs Tessaya's desktop app to be connected; to change a setting, an agent asks with `tessaya_ask`.
 

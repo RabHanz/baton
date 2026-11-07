@@ -1,4 +1,5 @@
 /* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
+// @effect-diagnostics nodeBuiltinImport:off
 /**
  * Handlers for `BatonRpcGroup` (the `fabric.*` methods). Mounted in `ws.ts` beside upstream's
  * handlers by `vendor-patches/t3code/0002-server-hooks.patch`; the domain lives in the services,
@@ -35,9 +36,11 @@ import {
   WorkSessionHandoffRefusedError,
   type WorkSessionHandoffInput,
 } from "@t3tools/baton-contracts";
+import { fleetForOutside } from "@t3tools/baton-shared/fleetForOutside";
 import { handoffTarget } from "@t3tools/baton-shared/jobPlacement";
 import { watchFleet } from "@t3tools/baton-shared/watch";
 import { type ModelSelection, ProviderInstanceId } from "@t3tools/contracts";
+import * as NodePath from "node:path";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
@@ -66,6 +69,7 @@ import { BatonRecordService } from "./BatonRecordService.ts";
 import { BatonMemoryService } from "./BatonMemoryService.ts";
 import { BatonMemorySync } from "./BatonMemorySync.ts";
 import * as JobFlow from "./BatonJobFlow.ts";
+import { readPack } from "./OperatingSystemPack.ts";
 import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts";
 import * as FleetQuery from "./FleetQuery.ts";
 import { herdrSend } from "./HerdrSend.ts";
@@ -358,7 +362,16 @@ export const makeHandlers = Effect.gen(function* () {
         ),
       ),
     [BATON_WS_METHODS.fleetGet]: (input) =>
-      run(Effect.map(FleetQuery.getFleet(input), (fleet) => ({ fleet }))),
+      run(
+        Effect.gen(function* () {
+          const fleet = yield* FleetQuery.getFleet(input);
+          if (input.forOutside !== true) return { fleet };
+          const projects = yield* Effect.flatMap(BatonEngine, (engine) => engine.projects);
+          const pack = readPack(NodePath.dirname((yield* ServerConfig.ServerConfig).dbPath));
+          const titles = new Map(projects.map((project) => [project.id as string, project.title]));
+          return { fleet: fleetForOutside(fleet, pack, (id) => titles.get(id) ?? null) };
+        }),
+      ),
     [BATON_WATCH_WS_METHODS.watchGet]: () =>
       run(
         Effect.gen(function* () {

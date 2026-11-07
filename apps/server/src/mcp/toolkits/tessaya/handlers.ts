@@ -6,6 +6,7 @@ import {
   BATON_RECORD_WS_METHODS,
   BATON_SESSIONS_WS_METHODS,
   BATON_WATCH_WS_METHODS,
+  BATON_WS_METHODS,
   BATON_WEAVE_WS_METHODS,
   BatonDesktopState,
 } from "@t3tools/baton-contracts";
@@ -85,6 +86,10 @@ export const layer = McpToolAccess.toLayer(
     return {
       tessaya_jobs: McpToolAccess.reads(() => call(handlers[BATON_JOB_WS_METHODS.jobList]())),
       tessaya_watch: McpToolAccess.reads(() => call(handlers[BATON_WATCH_WS_METHODS.watchGet]())),
+      // State and names only: no synopsis, prompt or folder, and a walled project's work by its project's name.
+      tessaya_fleet: McpToolAccess.reads(() =>
+        call(handlers[BATON_WS_METHODS.fleetGet]({ forOutside: true })),
+      ),
       tessaya_record: McpToolAccess.reads((input) =>
         call(handlers[BATON_RECORD_WS_METHODS.list]({ ...input, limit: input.limit ?? 30 })),
       ),

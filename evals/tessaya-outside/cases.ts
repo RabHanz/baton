@@ -21,6 +21,38 @@ const waiting = { id: "mcp-1", status: "queued", line: "Waiting for your compute
 
 export const outsideCases: ReadonlyArray<OutsideCase> = [
   {
+    id: "outside-whats-live",
+    source:
+      "GEN-6 P5a: what is live right now comes from tessaya_fleet, not the sessions catalog or an ask",
+    prompt: "What's running on my computer right now? Is any of it stuck waiting on me?",
+    answers: {
+      tessaya_fleet: {
+        fleet: {
+          observedAt: "2026-11-07T10:00:00.000Z",
+          entries: [
+            {
+              workSessionId: "w1",
+              title: "Tidy the README",
+              projectId: "p-shop",
+              lifecycle: "active",
+              state: "needs_approval",
+              needsUser: true,
+              activeThreadId: "t1",
+              threads: [],
+              adopted: [],
+              synopsis: null,
+              updatedAt: "2026-11-07T10:00:00.000Z",
+            },
+          ],
+          herdr: [],
+          claudeSessions: [],
+        },
+      },
+    },
+    calls: ["tessaya_fleet"],
+    callsMustNot: ["tessaya_ask"],
+  },
+  {
     id: "outside-acts-through-ask",
     source: "Parity phase B: an act goes through tessaya_ask, never around it or claimed done",
     prompt:
