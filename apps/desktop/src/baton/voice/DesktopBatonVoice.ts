@@ -2039,11 +2039,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const recordNotes = async (
     kind: string,
     limit: number,
+    since = Date.now() - 24 * 3_600_000,
   ): Promise<ReadonlyArray<BatonRecordEntry>> => {
     const value = (await input
       .direct?.("baton.record.list", {
         kind,
-        since: new Date(Date.now() - 24 * 3_600_000).toISOString(),
+        since: new Date(since).toISOString(),
         limit,
       })
       .catch(() => null)) as { entries?: ReadonlyArray<BatonRecordEntry> } | null | undefined;
@@ -4229,8 +4230,16 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         brief: async (signal) => {
           const text = morningBrief({
             jobs,
-            // What the server's watch saw overnight with no desktop up, though it has since cleared (D1).
-            findings: [...findings, ...findingsFromRecord(await recordNotes("watch", 100))],
+            findings,
+            // What the server's watch saw since the last brief, with no desktop up too (D1).
+            earlier: findingsFromRecord(
+              await recordNotes(
+                "watch",
+                100,
+                standingStore.load().runs.findLast((r) => r.id === "morning_brief")?.at ??
+                  now - 24 * 3_600_000,
+              ),
+            ),
             now,
             guide: await guideNotes(),
             extra: briefExtra(),

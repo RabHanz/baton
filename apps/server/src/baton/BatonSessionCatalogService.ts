@@ -410,9 +410,9 @@ export const layer = Layer.effect(
               ),
           }),
       autoResumed: (id) => autoResumedWithin(autoState, id, Date.now(), 2 * HOUR_MS),
-      crashed: (id) => {
+      died: (id) => {
         const o = outcomes.get(id);
-        return o === undefined || o.resumed ? null : (o.why ?? "unknown");
+        return o === undefined || o.resumed ? null : { why: o.why ?? "unknown", at: o.at };
       },
       kept: {
         read: () => keptAtStart,

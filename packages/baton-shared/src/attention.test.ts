@@ -55,14 +55,22 @@ describe("the morning brief", () => {
         job("Audit", "running", 30),
         job("Tax", "needs_you", 2),
       ],
-      // The same finding standing now and kept in the Record overnight is named once.
-      findings: [f("9", "failed"), f("9", "failed"), f("4", "stalled"), f("4", "stalled")],
+      findings: [f("9", "failed")],
       now: NOW,
     });
     expect(text).toBe(
-      "Good morning. Finished: Site. Failed: Work 9. Waiting for you: Tax. Still running: Audit. Looks stalled: Work 4.",
+      "Good morning. Finished: Site. Failed: Work 9. Waiting for you: Tax. Still running: Audit.",
     );
     expect(morningBrief({ jobs: [], findings: [], now: NOW })).toContain("Nothing happened");
+    // What the server's watch kept since the last brief: named as past when it cleared, once, by session.
+    expect(
+      morningBrief({
+        jobs: [],
+        findings: [f("1", "failed")],
+        earlier: [f("1", "failed"), f("2", "failed"), f("2", "failed"), f("3", "stalled")],
+        now: NOW,
+      }),
+    ).toBe("Good morning. Failed: Work 1. Failed overnight: Work 2. Stalled earlier: Work 3.");
   });
 
   it("carries the Record's note when a persona or the team passed the turn guide in the last day", () => {
