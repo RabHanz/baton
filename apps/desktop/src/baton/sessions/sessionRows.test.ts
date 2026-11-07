@@ -2,7 +2,7 @@ import type { BatonSessionSummary } from "@t3tools/baton-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  closedWindowSend,
+  doorSend,
   describeSession,
   findSession,
   maskAccount,
@@ -85,21 +85,20 @@ describe("the assistant's session tools", () => {
   it("types nothing into a session that waits on him, whatever its pane runs", () => {
     expect(sendRefusal(row("k", { state: "waiting", urgent: true }))).toContain("nothing was sent");
     expect(sendRefusal(row("k", { state: "waiting" }))).toBeNull();
-    expect(sendRefusal(row("k", { access: "read-only" }))).toBe(
-      "orbit is linked read-only, so nothing can be sent to it.",
-    );
+    // Another computer's session is typed into over T3's own session to it, so the link's access does not apply.
+    expect(sendRefusal(row("k", { access: "read-only" }))).toBeNull();
   });
-  it("with T3's window closed, types into this computer's panes only, through its server", () => {
+  it("types into this computer.s panes through its server, and never sends another computer.s over it", () => {
     const pane = (environmentId: string) => ({ environmentId, pane: "s~1" });
-    expect(closedWindowSend(row("k", { pane: pane("here"), access: null }), "go")).toEqual({
+    expect(doorSend(row("k", { pane: pane("here"), access: null }), "go")).toEqual({
       method: "baton.live.herdrSend",
       input: { pane: "s~1", text: "go" },
     });
     // His words never cross a link, where they would arrive as another agent's.
-    expect(
-      closedWindowSend(row("k", { pane: pane("box"), access: "full-access" }), "go"),
-    ).toContain("Open T3 to send to orbit");
-    expect(closedWindowSend(row("k"), "go")).toBe("Nothing to send.");
+    expect(doorSend(row("k", { pane: pane("box"), access: "full-access" }), "go")).toContain(
+      "Open T3 to send to orbit",
+    );
+    expect(doorSend(row("k"), "go")).toBe("Nothing to send.");
   });
   it("says what a session is doing from its row", () => {
     const now = Date.parse("2026-11-01T10:00:00Z");

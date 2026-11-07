@@ -130,3 +130,36 @@ it.effect("reports a peer that fails, times out or has expired, and still lists 
     assert.isFalse(fake.calls.some((call) => call.environmentId === "gone"));
   }),
 );
+
+it.effect("shows a linked server's work under the project and account that server resolved", () =>
+  Effect.sync(() => {
+    const entry = {
+      workSessionId: "w1",
+      title: "Fix login",
+      projectId: "p1",
+      lifecycle: "active",
+      state: "running",
+      needsUser: false,
+      activeThreadId: null,
+      threads: [],
+      adopted: [],
+      synopsis: null,
+      updatedAt: "2026-11-07T00:00:00.000Z",
+      project: { key: "github.com/x/shop", label: "Shop" },
+      account: "Work Max",
+    } as unknown as BatonFleet["entries"][number];
+    const [row] = summariesAcross({
+      environments: [
+        {
+          environmentId: EnvironmentId.make("box"),
+          label: "box",
+          fleet: { ...fleetOf(), entries: [entry] },
+          access: "full-access",
+        },
+      ],
+      projects: [],
+      providers: [],
+    });
+    assert.deepStrictEqual([row?.project, row?.account], ["Shop", "Work Max"]);
+  }),
+);

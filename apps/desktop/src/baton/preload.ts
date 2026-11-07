@@ -33,8 +33,6 @@ export function exposeBatonDesktopBridge(): void {
       ipcRenderer.on(Channels.BATON_VOICE_REQUEST_CHANNEL, listener);
       return () => ipcRenderer.removeListener(Channels.BATON_VOICE_REQUEST_CHANNEL, listener);
     },
-    setBatonSessions: (sessions) =>
-      ipcRenderer.send(Channels.BATON_SESSIONS_SNAPSHOT_CHANNEL, sessions),
     setBatonUsage: (usage) => ipcRenderer.send(Channels.BATON_USAGE_CHANNEL, usage),
     onBatonSessionRequest: (handler) => {
       const listener = (_event: Electron.IpcRendererEvent, message: unknown) => {

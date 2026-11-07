@@ -5,6 +5,7 @@ import type { ThreadStatusPill } from "./components/Sidebar.logic";
 export {
   batonSessionSummaries,
   buildBatonProjects,
+  paneWaiting,
   type BatonProjectGroup,
   type BatonSessionRow,
   type EnvironmentLive,

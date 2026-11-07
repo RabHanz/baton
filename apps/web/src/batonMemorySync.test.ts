@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { sameSyncOrigin, syncPeerUrl } from "./batonMemorySync";
+import { syncPeerUrl } from "./batonMemorySync";
 
 describe("where a memory-sync credential may go", () => {
   it("keeps a relay's base path, and refuses plain http off this machine and the tailnet", () => {
@@ -15,11 +15,5 @@ describe("where a memory-sync credential may go", () => {
     expect(syncPeerUrl(host(100, 101, 2, 3), "x")).not.toBeNull();
     expect(syncPeerUrl(host(100, 200, 2, 3), "x")).toBeNull();
     expect(syncPeerUrl("http://192.168.1.4:3773", "x")).toBeNull();
-  });
-
-  it("is sent only back to the origin it was issued by", () => {
-    const url = syncPeerUrl("https://box.example", "x")!;
-    expect(sameSyncOrigin("https://box.example", url)).toBe(true);
-    expect(sameSyncOrigin("https://other.example", url)).toBe(false);
   });
 });

@@ -19,7 +19,7 @@ import * as Schema from "effect/Schema";
 import { IsoDateTime, ProjectId, ThreadId, TrimmedNonEmptyString } from "@t3tools/contracts";
 import { ProviderDriverKind, ProviderInstanceId } from "@t3tools/contracts";
 import { AdoptedSessionCandidate } from "./adoptedSession.ts";
-import { ClaudeLiveSession } from "./liveSessions.ts";
+import { BatonProjectRef, ClaudeLiveSession } from "./liveSessions.ts";
 import { BatonSessionState } from "./sessionState.ts";
 import { WorkSessionSynopsis } from "./synopsis.ts";
 import { WorkSessionId, WorkSessionStatus } from "./workSession.ts";
@@ -76,6 +76,9 @@ export const BatonFleetEntry = Schema.Struct({
   adopted: Schema.Array(BatonFleetAdopted).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   synopsis: Schema.NullOr(WorkSessionSynopsis),
   updatedAt: IsoDateTime,
+  /** Resolved by the server that runs it, for a linked server, which cannot resolve another's projects or accounts. */
+  project: Schema.optionalKey(BatonProjectRef),
+  account: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 export type BatonFleetEntry = typeof BatonFleetEntry.Type;
 
@@ -97,6 +100,8 @@ export type BatonFleet = typeof BatonFleet.Type;
 export const BatonFleetInput = Schema.Struct({
   /** For an outside agent or a linked environment: state and names only (fleetForOutside). */
   forOutside: Schema.optionalKey(Schema.Boolean),
+  /** With forOutside, for a linked server: each entry's project and account are resolved, and accounts kept. */
+  forLinked: Schema.optionalKey(Schema.Boolean),
   /** Archived work is out of the fleet by default, as it is out of the list. */
   includeArchived: Schema.optionalKey(Schema.Boolean),
   /** Only work that cannot move without the user. The §33 top-level filter. */

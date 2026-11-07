@@ -99,10 +99,11 @@ export function buildBatonProjects(input: {
 
   for (const env of input.environments) {
     for (const entry of env.entries) {
-      const project = input.resolveWorkProject(env.environmentId, entry.projectId) ?? {
-        key: `t3:${env.environmentId}:${entry.projectId}`,
-        label: entry.title,
-      };
+      const project = input.resolveWorkProject(env.environmentId, entry.projectId) ??
+        entry.project ?? {
+          key: `t3:${env.environmentId}:${entry.projectId}`,
+          label: entry.title,
+        };
       add(project, {
         kind: "work",
         key: `work:${env.environmentId}:${entry.workSessionId}`,
@@ -180,6 +181,33 @@ export function buildBatonProjects(input: {
     }))
     .toSorted((a, b) => Number(b.urgent) - Number(a.urgent) || a.label.localeCompare(b.label));
 }
+
+/** Whether the session in this pane is waiting on a question or an approval now: keys typed there would answer it. */
+export const paneWaiting = (
+  groups: ReadonlyArray<BatonProjectGroup>,
+  environmentId: string,
+  pane: string,
+): boolean =>
+  groups.some((group) =>
+    group.rows.some(
+      (row) =>
+        row.kind !== "work" &&
+        row.environmentId === environmentId &&
+        row.pane === pane &&
+        row.urgent,
+    ),
+  );
+
+/** The account a work session runs under: its live thread's provider instance, by the name a person gave it. */
+export const workAccount = (
+  entry: BatonFleetEntry,
+  labelOf: (providerInstanceId: string) => string | null | undefined,
+): string | null => {
+  const instance = entry.threads.find(
+    (thread) => thread.threadId === entry.activeThreadId,
+  )?.providerInstanceId;
+  return (instance == null ? null : labelOf(instance)?.trim()) || null;
+};
 
 // The states from Baton's ladder, Claude Code and Herdr that need him, and those that are busy.
 const WAITING: ReadonlySet<string> = new Set(["needs_approval", "blocked", "needs_input"]);

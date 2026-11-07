@@ -43,7 +43,10 @@ export const BatonSessionSummary = Schema.Struct({
 });
 export type BatonSessionSummary = typeof BatonSessionSummary.Type;
 
-export const BatonSessionsAcrossInput = Schema.Struct({});
+export const BatonSessionsAcrossInput = Schema.Struct({
+  /** This server's own sessions only: cheap and fresh, for the desktop's quick refresh and its check before typing. */
+  hereOnly: Schema.optionalKey(Schema.Boolean),
+});
 export const BatonSessionsAcrossResult = Schema.Struct({
   /** The listing server itself, so a client tells this computer's sessions and actions from another's. */
   here: Schema.Struct({ environmentId: Schema.String, label: Schema.String }),

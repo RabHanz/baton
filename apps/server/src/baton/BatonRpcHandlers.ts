@@ -37,7 +37,8 @@ import {
   type WorkSessionHandoffInput,
 } from "@t3tools/baton-contracts";
 import { fleetForOutside } from "@t3tools/baton-shared/fleetForOutside";
-import { handoffTarget } from "@t3tools/baton-shared/jobPlacement";
+import { batonProjectKey, handoffTarget } from "@t3tools/baton-shared/jobPlacement";
+import { workAccount } from "@t3tools/baton-shared/batonProjects";
 import { watchFleet } from "@t3tools/baton-shared/watch";
 import { type ModelSelection, ProviderInstanceId } from "@t3tools/contracts";
 import * as NodePath from "node:path";
@@ -329,8 +330,8 @@ export const makeHandlers = Effect.gen(function* () {
           );
         }),
       ),
-    [BATON_SESSIONS_WS_METHODS.across]: () =>
-      run(Effect.flatMap(BatonSessionsAcross, (sessions) => sessions.list)),
+    [BATON_SESSIONS_WS_METHODS.across]: (input) =>
+      run(Effect.flatMap(BatonSessionsAcross, (sessions) => sessions.list(input))),
     [BATON_LIVE_WS_METHODS.herdrSend]: (input) =>
       run(Effect.flatMap(AdoptedSessionService, (adopted) => herdrSend(adopted, input))),
     // Settling a work session settles its threads in upstream too, so T3's own sidebar agrees.
@@ -373,7 +374,23 @@ export const makeHandlers = Effect.gen(function* () {
           const projects = yield* Effect.flatMap(BatonEngine, (engine) => engine.projects);
           const pack = readPack(NodePath.dirname((yield* ServerConfig.ServerConfig).dbPath));
           const titles = new Map(projects.map((project) => [project.id as string, project.title]));
-          return { fleet: fleetForOutside(fleet, pack, (id) => titles.get(id) ?? null) };
+          if (input.forLinked !== true)
+            return { fleet: fleetForOutside(fleet, pack, (id) => titles.get(id) ?? null) };
+          const byId = new Map(projects.map((project) => [project.id as string, project]));
+          const providers = yield* Effect.flatMap(
+            ProviderRegistry.ProviderRegistry,
+            (registry) => registry.getProviders,
+          );
+          const labels = new Map(providers.map((p) => [p.instanceId as string, p.displayName]));
+          return {
+            fleet: fleetForOutside(fleet, pack, (id) => titles.get(id) ?? null, {
+              project: (id) => {
+                const project = byId.get(id);
+                return project === undefined ? null : batonProjectKey(project);
+              },
+              account: (entry) => workAccount(entry, (id) => labels.get(id)),
+            }),
+          };
         }),
       ),
     [BATON_WATCH_WS_METHODS.watchGet]: () =>

@@ -106,23 +106,19 @@ export const describeSession = (row: BatonSessionSummary, now: number): string =
  * an approval, and keys typed there answer it; Herdr's own refusal only covers panes it knows run an agent.
  */
 export const sendRefusal = (row: BatonSessionSummary): string | null =>
-  row.access === "read-only"
-    ? `${row.box} is linked read-only, so nothing can be sent to it.`
-    : row.urgent
-      ? `${row.session} is waiting on a question or an approval in its terminal, so nothing was sent. Answer it there first, then send again.`
-      : null;
+  row.urgent
+    ? `${row.session} is waiting on a question or an approval in its terminal, so nothing was sent. Answer it there first, then send again.`
+    : null;
 
 /**
- * Typing into a row's pane with T3's window closed: this machine's own pane through its server, or why not. His words
- * reach another machine's session only over a real client session to it (T3's window), never over a link, where they
- * would arrive as another agent's.
+ * Typing into a row's pane through this machine's server, or why not. His words reach another machine's session only
+ * over a real client session to it (T3's window), never over a link, where they would arrive as another agent's.
  */
-export const closedWindowSend = (
+export const doorSend = (
   row: BatonSessionSummary,
   text: string,
 ): { readonly method: string; readonly input: unknown } | string => {
   if (row.pane === null) return "Nothing to send.";
-  // Only the door's list marks this computer's own rows (null); a row from the window's list could be anywhere.
   if (row.access !== null)
     return `Open T3 to send to ${row.box}; with its window closed, only this computer's sessions can be typed into.`;
   return { method: "baton.live.herdrSend", input: { pane: row.pane.pane, text } };
