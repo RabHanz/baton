@@ -25,6 +25,12 @@ export const BATON_ACCOUNT_WS_METHODS = {
   accountUse: "fabric.account.use",
   /** Move one thread to an account's provider instance (D95). Nothing else moves. */
   threadAccountUse: "fabric.account.useForThread",
+  /** Whether a thread moves to another account by itself when its account nears its limit. */
+  onLimit: "fabric.account.onLimit",
+  setOnLimit: "fabric.account.setOnLimit",
+  /** Whether automatic rotation leaves this thread on its account, and setting that. */
+  threadKept: "fabric.account.threadKept",
+  threadKeep: "fabric.account.threadKeep",
 } as const;
 
 export const BATON_DEFAULT_CLAUDE_INSTANCE = "claudeAgent";
@@ -84,7 +90,7 @@ export type BatonAccount = typeof BatonAccount.Type;
 
 /** Where the pool comes from, so a surface can say what it is driving. */
 // Legacy name (D71): "fabric" is a stored source value, so it is kept.
-export const BatonAccountPoolSource = Schema.Literals(["cswap", "fabric"]);
+export const BatonAccountPoolSource = Schema.Literals(["cswap", "fabric", "instances"]);
 export type BatonAccountPoolSource = typeof BatonAccountPoolSource.Type;
 
 export const BatonAccountPool = Schema.Struct({
@@ -128,6 +134,21 @@ export const BatonAccountUseInput = Schema.Struct({
 });
 export type BatonAccountUseInput = typeof BatonAccountUseInput.Type;
 
+/** "auto" moves a working thread to the instance with the most room; "ask" leaves it where it is. */
+export const BatonOnLimitSetting = Schema.Literals(["auto", "ask"]);
+export type BatonOnLimitSetting = typeof BatonOnLimitSetting.Type;
+
+export const BatonOnLimitInput = Schema.Struct({});
+export const BatonOnLimitResult = Schema.Struct({ policy: BatonOnLimitSetting });
+export type BatonOnLimitResult = typeof BatonOnLimitResult.Type;
+export const BatonSetOnLimitInput = Schema.Struct({ policy: BatonOnLimitSetting });
+export type BatonSetOnLimitInput = typeof BatonSetOnLimitInput.Type;
+
+export const BatonThreadKeptInput = Schema.Struct({ threadId: ThreadId });
+export const BatonThreadKeepInput = Schema.Struct({ threadId: ThreadId, keep: Schema.Boolean });
+export type BatonThreadKeepInput = typeof BatonThreadKeepInput.Type;
+export const BatonThreadKeepResult = Schema.Struct({ keep: Schema.Boolean });
+
 export const BatonAccountUseResult = Schema.Struct({
   rotation: BatonAccountRotation,
   pool: BatonAccountPool,
@@ -160,15 +181,19 @@ export function instanceForAccount(
   return account.active ? BATON_DEFAULT_CLAUDE_INSTANCE : null;
 }
 
-/** The account an instance runs as: its token's slot, else whatever cswap has active. */
+/**
+ * The cswap account an instance runs as: its token's slot, or whatever cswap has active for the default
+ * instance. Any other instance is unknown, so a token instance with no slot never borrows the active login's limits.
+ */
 export function accountForInstance<A extends Pick<BatonAccount, "key" | "active">>(
   instanceId: string,
   accounts: ReadonlyArray<A>,
 ): A | undefined {
   const key = BATON_CLAUDE_ACCOUNT_INSTANCES[instanceId];
-  return key === undefined
+  if (key !== undefined) return accounts.find((account) => account.key === key);
+  return instanceId === BATON_DEFAULT_CLAUDE_INSTANCE
     ? accounts.find((account) => account.active)
-    : accounts.find((account) => account.key === key);
+    : undefined;
 }
 
 /** When a spent account has quota again: the last of its full windows to reset. */

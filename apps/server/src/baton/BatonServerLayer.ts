@@ -19,9 +19,10 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import * as ServerConfig from "../config.ts";
-import { claudeAccountInstances } from "./ClaudeAccountInstances.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
+import { claudeAccountInstances } from "./ClaudeAccountInstances.ts";
 import * as AccountPoolService from "./AccountPoolService.ts";
+import * as AccountRotationPolicy from "./AccountRotationPolicy.ts";
 import * as AccountRotationReactor from "./AccountRotationReactor.ts";
 import * as AdoptedSessionService from "./AdoptedSessionService.ts";
 import * as BatonDatabase from "./BatonDatabase.ts";
@@ -58,14 +59,17 @@ import { adoptTessayaEnv } from "@t3tools/baton-shared/tessayaEnv";
 
 const readClaudeAccountInstances = Layer.effectDiscard(
   Effect.gen(function* () {
-    const settings = yield* ServerSettingsService;
-    const existing = Object.keys((yield* settings.getSettings).providerInstances);
-    setClaudeAccountInstances(
-      claudeAccountInstances(
-        (yield* HostProcess.Environment).BATON_CLAUDE_ACCOUNT_INSTANCES,
-        existing,
-      ),
+    const map = claudeAccountInstances(
+      (yield* HostProcess.Environment).BATON_CLAUDE_ACCOUNT_INSTANCES,
     );
+    setClaudeAccountInstances(map);
+    const ids = Object.keys((yield* (yield* ServerSettingsService).getSettings).providerInstances);
+    if (Object.keys(map).length === 0 && ids.some((id) => id.startsWith("claudeAgent_"))) {
+      yield* Effect.logWarning(
+        "Claude token instances exist but BATON_CLAUDE_ACCOUNT_INSTANCES is not set: their limits are unknown and none is a rotation target",
+        { instances: ids.filter((id) => id.startsWith("claudeAgent_")) },
+      );
+    }
   }),
 );
 
@@ -115,6 +119,7 @@ const servicesInner = IntentService.layer.pipe(
       BatonMemoryLearning.layer.pipe(Layer.provide(memoryLayer), Layer.provide(BatonOneShot.layer)),
       readClaudeAccountInstances,
       AccountPoolService.layer,
+      AccountRotationPolicy.layer,
       ThreadAccountMoves.layer.pipe(Layer.provide(BatonEngine.layer)),
       // The adapter is provided here so the one place that talks to another program stays
       // visible, and a machine without Herdr still gets a service that refuses by name.

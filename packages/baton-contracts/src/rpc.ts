@@ -60,6 +60,12 @@ import {
   BatonAccountRotationRefusedError,
   BatonAccountUseInput,
   BatonAccountUseResult,
+  BatonOnLimitInput,
+  BatonOnLimitResult,
+  BatonSetOnLimitInput,
+  BatonThreadKeepInput,
+  BatonThreadKeepResult,
+  BatonThreadKeptInput,
   BatonThreadAccountUseInput,
   BatonThreadAccountUseResult,
 } from "./accountPool.ts";
@@ -228,6 +234,30 @@ const WsBatonThreadAccountUseRpc = Rpc.make(BATON_ACCOUNT_WS_METHODS.threadAccou
     BatonAccountRotationFailedError,
     EnvironmentAuthorizationError,
   ]),
+});
+
+const WsBatonOnLimitRpc = Rpc.make(BATON_ACCOUNT_WS_METHODS.onLimit, {
+  payload: BatonOnLimitInput,
+  success: BatonOnLimitResult,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsBatonSetOnLimitRpc = Rpc.make(BATON_ACCOUNT_WS_METHODS.setOnLimit, {
+  payload: BatonSetOnLimitInput,
+  success: BatonOnLimitResult,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsBatonThreadKeptRpc = Rpc.make(BATON_ACCOUNT_WS_METHODS.threadKept, {
+  payload: BatonThreadKeptInput,
+  success: BatonThreadKeepResult,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsBatonThreadKeepRpc = Rpc.make(BATON_ACCOUNT_WS_METHODS.threadKeep, {
+  payload: BatonThreadKeepInput,
+  success: BatonThreadKeepResult,
+  error: EnvironmentAuthorizationError,
 });
 
 const WsBatonWorkSessionListRpc = Rpc.make(BATON_WS_METHODS.workSessionList, {
@@ -714,6 +744,10 @@ export const BatonRpcGroup = RpcGroup.make(
   WsBatonAccountPoolRpc,
   WsBatonAccountUseRpc,
   WsBatonThreadAccountUseRpc,
+  WsBatonOnLimitRpc,
+  WsBatonSetOnLimitRpc,
+  WsBatonThreadKeptRpc,
+  WsBatonThreadKeepRpc,
   WsBatonWorkSessionListRpc,
   WsBatonWorkSessionCreateRpc,
   WsBatonWorkSessionUpdateRpc,

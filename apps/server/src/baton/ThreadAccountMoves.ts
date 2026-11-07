@@ -55,6 +55,13 @@ export interface ThreadAccountMovesShape {
     readonly threadId: ThreadId;
     readonly instanceId: string;
   }) => Effect.Effect<BatonThreadAccountUseResult, ThreadAccountMoveError>;
+  /** Threads automatic rotation leaves alone: a move is already waiting, or he keeps them where they are. */
+  readonly held: Effect.Effect<ReadonlySet<string>>;
+  readonly kept: (threadId: ThreadId) => Effect.Effect<boolean>;
+  readonly keep: (input: {
+    readonly threadId: ThreadId;
+    readonly keep: boolean;
+  }) => Effect.Effect<boolean>;
 }
 
 export class ThreadAccountMoves extends Context.Service<
@@ -143,7 +150,28 @@ export const makeMoves = Effect.fn("ThreadAccountMoves.make")(function* (
     return instanceId === undefined ? Effect.void : applyWhenIdle(threadId, instanceId);
   };
 
-  return { request, settle, pendingThreadIds: () => [...pending.keys()] };
+  const keptRows = yield* sql<{ readonly thread_id: string }>`
+    SELECT thread_id FROM fabric_thread_account_keeps
+  `;
+  const keeps = new Set(keptRows.map((row) => row.thread_id));
+  const held = Effect.sync(() => new Set([...pending.keys(), ...keeps]));
+  const kept = (threadId: ThreadId) => Effect.sync(() => keeps.has(threadId));
+  const keep = Effect.fn("ThreadAccountMoves.keep")(function* (input: {
+    readonly threadId: ThreadId;
+    readonly keep: boolean;
+  }) {
+    if (input.keep) {
+      yield* sql`INSERT INTO fabric_thread_account_keeps (thread_id) VALUES (${input.threadId})
+          ON CONFLICT (thread_id) DO NOTHING`;
+      keeps.add(input.threadId);
+    } else {
+      yield* sql`DELETE FROM fabric_thread_account_keeps WHERE thread_id = ${input.threadId}`;
+      keeps.delete(input.threadId);
+    }
+    return input.keep;
+  }, Effect.orDie);
+
+  return { request, settle, held, kept, keep, pendingThreadIds: () => [...pending.keys()] };
 });
 
 export const layer = Layer.effect(
@@ -155,6 +183,11 @@ export const layer = Layer.effect(
     // Moves left waiting by a restart first, then every thread as it changes.
     yield* Effect.forEach(moves.pendingThreadIds(), moves.settle, { discard: true });
     yield* engine.changedThreads.pipe(Stream.runForEach(moves.settle), Effect.forkScoped);
-    return ThreadAccountMoves.of({ request: moves.request });
+    return ThreadAccountMoves.of({
+      request: moves.request,
+      held: moves.held,
+      kept: moves.kept,
+      keep: moves.keep,
+    });
   }),
 );

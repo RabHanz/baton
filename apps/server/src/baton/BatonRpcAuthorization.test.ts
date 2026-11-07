@@ -6,6 +6,7 @@ import {
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
   AuthStandardClientScopes,
+  BATON_ACCOUNT_WS_METHODS,
   BATON_CLOUD_WS_METHODS,
   BATON_JOB_WS_METHODS,
   BATON_MEMORY_WS_METHODS,
@@ -27,6 +28,7 @@ import {
   BATON_RPC_REQUIRED_SCOPES,
   DESK_METHODS,
   askSourceOf,
+  refusedAsDevice,
   layer as batonAuthorization,
   memoryViewerOf,
   missingBatonScope,
@@ -137,6 +139,26 @@ describe("who may write the Record", () => {
     expect(decodes({ kind: "standing_job", outcome: "held" })).toBe(true);
     expect(decodes({ kind: "assistant_turn", outcome: "approved" })).toBe(false);
     expect(decodes({ kind: "approval", outcome: "ran" })).toBe(false);
+  });
+});
+
+describe("who may change which account runs his work", () => {
+  it("is his desktop or a browser he paired, never a token's device", () => {
+    const standard = AuthStandardClientScopes;
+    const device = { method: "bearer-access-token", scopes: standard, subject: "x" } as const;
+    const his = {
+      method: "browser-session-cookie",
+      scopes: standard,
+      subject: "one-time-token",
+    } as const;
+    for (const method of [
+      BATON_ACCOUNT_WS_METHODS.setOnLimit,
+      BATON_ACCOUNT_WS_METHODS.threadKeep,
+    ]) {
+      expect(refusedAsDevice(method, device)).toBe(true);
+      expect(refusedAsDevice(method, his)).toBe(false);
+    }
+    expect(refusedAsDevice(BATON_ACCOUNT_WS_METHODS.onLimit, device)).toBe(false);
   });
 });
 

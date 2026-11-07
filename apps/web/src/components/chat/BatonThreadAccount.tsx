@@ -106,7 +106,9 @@ function AccountMenu({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
   if (shell === null || (!live && provider?.driver !== "claudeAgent")) return null;
 
   const accounts = Option.getOrNull(AsyncResult.value(pool))?.accounts ?? [];
-  const current = accountForInstance(shell.providerInstanceId, accounts);
+  const current = live
+    ? accounts.find((account) => account.active)
+    : accountForInstance(shell.providerInstanceId, accounts);
   if (current === undefined) return null;
   const running = threadRuntimeIsActive(shell.runtime);
   const now = Date.parse(`${nowMinute}:00Z`);
@@ -231,7 +233,7 @@ function LiveAnswerer({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
     instanceId: shell.providerInstanceId,
     model: shell.modelSelection.model,
     effort: typeof effort === "string" ? effort : null,
-    account: accountForInstance(shell.providerInstanceId, accounts)?.label ?? null,
+    account: accounts.find((account) => account.active)?.label ?? null,
   });
   return (
     <>

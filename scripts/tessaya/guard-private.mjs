@@ -55,14 +55,6 @@ const PRIVATE = [
 // file is still checked. Each is an operator step for the maintainer's own machines, not a
 // default for anyone else; the list only shrinks.
 const ALLOWED = {
-  "apps/server/src/baton/ClaudeAccountInstances.ts": [
-    /claudeAgent_(rabee|signzart)\b/g,
-    "compat table for the maintainer's two boxes until BATON_CLAUDE_ACCOUNT_INSTANCES is set on them (D135)",
-  ],
-  "apps/server/src/baton/ClaudeAccountInstances.test.ts": [
-    /claudeAgent_rabee\b/g,
-    "tests that compat table",
-  ],
   "scripts/tessaya/apply-release-branding.sh": [
     /dev\\?\.rabee\\?\.baton/g,
     "the installed app's id; it stays until the public release (D8), or existing installs stop upgrading",

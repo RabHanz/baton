@@ -34,8 +34,9 @@ import { BatonOneShot, BatonOneShotError } from "./BatonOneShot.ts";
 import { ProviderRegistry } from "../provider/ProviderRegistry.ts";
 import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
 import { AdoptedRuntimeAdapter, layer as adoptedSessionLayer } from "./AdoptedSessionService.ts";
-import { AccountPoolService } from "./AccountPoolService.ts";
 import { layer as intentExecutorLayer } from "./IntentExecutorLive.ts";
+import { AskSource } from "./BatonPhoneInbox.ts";
+import { ThreadAccountMoves } from "./ThreadAccountMoves.ts";
 import { BatonIntentService, layer as intentServiceLayer } from "./IntentService.ts";
 import { BatonOrchestrationReactor, OrchestrationEffectsService } from "./OrchestrationReactor.ts";
 import { layer as ruleServiceLayer, OrchestrationRuleService } from "./OrchestrationRuleService.ts";
@@ -82,10 +83,29 @@ const provider = {
   version: null,
   status: "ready",
   auth: { status: "authenticated" },
+  continuation: { groupKey: "claude:home:/home/dev/.claude" },
   checkedAt: "2026-09-18T05:00:00.000Z",
   models: [{ slug: "claude-sonnet", label: "Sonnet" }],
   slashCommands: [],
   skills: [],
+} as unknown as ServerProvider;
+
+/** Another account sharing claude-a's transcripts, so a thread can resume on it. */
+const optima = {
+  ...provider,
+  instanceId: ProviderInstanceId.make("claudeAgent_optima"),
+  displayName: "Optima",
+  usageLimits: {
+    checkedAt: "2026-09-18T05:00:00.000Z",
+    windows: [{ id: "five_hour", kind: "session", label: "Session", usedPercent: 10 }],
+  },
+} as unknown as ServerProvider;
+
+/** A third account whose limits nobody has read yet. */
+const sable = {
+  ...provider,
+  instanceId: ProviderInstanceId.make("claudeAgent_sable"),
+  displayName: "Sable",
 } as unknown as ServerProvider;
 
 interface Sent {
@@ -132,19 +152,12 @@ const textGenerationLayer = (reply: ModelReply, calls: Ref.Ref<ReadonlyArray<str
           )) as BatonOneShot["Service"]["run"],
   });
 
-/** Two accounts; `activated` records what the intent asked the pool to switch to. */
-const activated: Array<string> = [];
-const accountPoolLayer = Layer.mock(AccountPoolService)({
-  read: () =>
-    Effect.succeed({
-      accounts: [
-        { key: "4", label: "robin", active: true },
-        { key: "5", label: "optima", active: false },
-      ],
-    } as never),
-  activate: (input) => {
-    activated.push(input.key);
-    return Effect.succeed({} as never);
+/** `requested` records which thread the intent asked to move, and where. */
+const requested: Array<string> = [];
+const movesLayer = Layer.mock(ThreadAccountMoves)({
+  request: (input) => {
+    requested.push(`${input.threadId}->${input.instanceId}`);
+    return Effect.succeed({ instanceId: input.instanceId, timing: "now" as const });
   },
 });
 
@@ -203,8 +216,10 @@ const baseLayer = (
         changedThreads: Stream.empty,
       }),
     ),
-    Layer.provide(Layer.mock(ProviderRegistry)({ getProviders: Effect.succeed([provider]) })),
-    Layer.provide(accountPoolLayer),
+    Layer.provide(
+      Layer.mock(ProviderRegistry)({ getProviders: Effect.succeed([provider, optima, sable]) }),
+    ),
+    Layer.provide(movesLayer),
     Layer.provideMerge(SqlitePersistenceMemory),
   );
 
@@ -355,22 +370,48 @@ describe("a sentence the grammar cannot place (D50)", () => {
 });
 
 describe("the intent surface", () => {
-  it.effect("switches the account the sentence names, and refuses one it cannot find", () =>
+  it.effect(
+    "moves the focused work's threads to the account he names, and refuses one it cannot find",
+    () =>
+      run(() =>
+        Effect.gen(function* () {
+          requested.length = 0;
+          yield* givenWork;
+          const intents = yield* BatonIntentService;
+          const known = yield* intents.run({
+            text: "switch account to Optima",
+            focusedWorkSessionId: workSessionId,
+          });
+          assert.include(known.reply, "now runs as Optima");
+          assert.deepStrictEqual(requested, ["impl-thread->claudeAgent_optima"]);
+
+          // Asked by hand, an account whose limits are unread may still be chosen.
+          yield* intents.run({
+            text: "use the sable account",
+            focusedWorkSessionId: workSessionId,
+          });
+          assert.strictEqual(requested.at(-1), "impl-thread->claudeAgent_sable");
+
+          const unknown = yield* Effect.flip(
+            intents.run({ text: "use the nobody account", focusedWorkSessionId: workSessionId }),
+          );
+          assert.include(String(unknown), "There is no account called nobody");
+          assert.strictEqual(requested.length, 2);
+        }),
+      ).pipe(Effect.provideService(AskSource, "phone")),
+  );
+
+  it.effect("never moves work to another account for a token's device", () =>
     run(() =>
       Effect.gen(function* () {
+        requested.length = 0;
+        yield* givenWork;
         const intents = yield* BatonIntentService;
-        const known = yield* intents.run({
-          text: "switch account to Optima",
-          focusedWorkSessionId: null,
-        });
-        assert.include(known.reply, "now runs as optima");
-        assert.deepStrictEqual(activated, ["5"]);
-
-        const unknown = yield* Effect.flip(
-          intents.run({ text: "use the nobody account", focusedWorkSessionId: null }),
+        const refused = yield* Effect.flip(
+          intents.run({ text: "switch account to Optima", focusedWorkSessionId: workSessionId }),
         );
-        assert.include(String(unknown), "There is no account called nobody");
-        assert.deepStrictEqual(activated, ["5"]);
+        assert.include(String(refused), "needs him");
+        assert.strictEqual(requested.length, 0);
       }),
     ),
   );

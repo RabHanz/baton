@@ -56,5 +56,7 @@ describe("instance and account mapping", () => {
     ];
     expect(accountForInstance("claudeAgent_sablebox", accounts)?.key).toBe("6");
     expect(accountForInstance("claudeAgent", accounts)?.key).toBe("4");
+    // A token instance with no slot is unknown, never the active login (it would borrow its limits).
+    expect(accountForInstance("claudeAgent_unmapped", accounts)).toBeUndefined();
   });
 });
