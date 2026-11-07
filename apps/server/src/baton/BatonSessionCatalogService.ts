@@ -45,6 +45,7 @@ import { isTessayaOwnFolder } from "./ClaudeLiveSessions.ts";
 import {
   autoResumeAllowed,
   autoResumedWithin,
+  diedAgain,
   DEFAULT_GRACE_MS,
   MAX_AT_ONCE,
   noteLive,
@@ -463,12 +464,18 @@ export const layer = Layer.effect(
       for (const o of outcomesFromRecord(rows).toReversed()) outcomes.set(o.sessionId, o);
     }
     const noteOutcome = (
-      t: { sessionId: string; title: string; cwd: string | null },
+      t: { sessionId: string; title: string; cwd: string | null; lastActivityAt: string },
       resumed: boolean,
       why?: string,
     ) => {
       const was = outcomes.get(t.sessionId);
-      if (was !== undefined && was.resumed === resumed && was.why === why) return;
+      if (
+        was !== undefined &&
+        was.resumed === resumed &&
+        was.why === why &&
+        !diedAgain(was, t.lastActivityAt)
+      )
+        return;
       for (const [id, o] of outcomes)
         if (Date.now() - o.at > OUTCOME_MEMORY_MS) outcomes.delete(id);
       resumeLog({ event: resumed ? "auto-resumed" : "not-resumed", sessionId: t.sessionId, why });
@@ -521,7 +528,8 @@ export const layer = Layer.effect(
         // With resuming off, a tail is read only to report a session that was live and is not reported yet.
         if (
           !enabled &&
-          (autoState.seenLive[t.sessionId] === undefined || outcomes.has(t.sessionId))
+          (autoState.seenLive[t.sessionId] === undefined ||
+            (outcomes.has(t.sessionId) && !diedAgain(outcomes.get(t.sessionId), t.lastActivityAt)))
         )
           continue;
         const verdict = classifyTranscriptTail(await ports.readTail(t.file).catch(() => ""));

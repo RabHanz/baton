@@ -4,6 +4,7 @@ import {
   noteLive,
   autoResumeAllowed,
   classifyTranscriptTail,
+  diedAgain,
   emptyAutoResumeState,
   markStoppedOnPurpose,
   recordAutoResume,
@@ -132,5 +133,14 @@ describe("when the watchdog may resume a session", () => {
     expect(
       autoResumeAllowed({ ...base, now: base.now + 3_700_000, state, sessionId: "s1" }).resume,
     ).toBe(true);
+  });
+});
+
+describe("a death already reported", () => {
+  it("is new again once the session has run since it was noted", () => {
+    const at = Date.parse("2026-11-07T10:00:00.000Z");
+    expect(diedAgain(undefined, "2026-11-07T11:00:00.000Z")).toBe(false);
+    expect(diedAgain({ at }, "2026-11-07T09:59:00.000Z")).toBe(false);
+    expect(diedAgain({ at }, "2026-11-07T10:30:00.000Z")).toBe(true);
   });
 });

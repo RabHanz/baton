@@ -118,6 +118,12 @@ export const autoResumedWithin = (
   ms: number,
 ): boolean => (state.resumes[sessionId] ?? []).some((t) => now - t < ms);
 
+/** One already reported that has run since (resumed by hand) and stopped again: a new death to report. */
+export const diedAgain = (
+  was: { readonly at: number } | undefined,
+  lastActivityAt: string,
+): boolean => was !== undefined && Date.parse(lastActivityAt) > was.at;
+
 export const autoResumeAllowed = (input: {
   readonly sessionId: string;
   readonly verdict: TailVerdict;

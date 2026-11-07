@@ -71,6 +71,17 @@ describe("the morning brief", () => {
         now: NOW,
       }),
     ).toBe("Good morning. Failed: Work 1. Failed overnight: Work 2. Stalled earlier: Work 3.");
+    // Two sessions with one title are two; a brief days ago says so.
+    const same = (id: string) => ({ ...f(id, "failed"), title: "Deploy" }) as WatchFinding;
+    expect(
+      morningBrief({
+        jobs: [],
+        findings: [],
+        earlier: [same("7"), same("8"), same("8")],
+        since: NOW - 3 * 24 * 3_600_000,
+        now: NOW,
+      }),
+    ).toBe("Good morning. Failed since the last brief: Deploy, Deploy.");
   });
 
   it("carries the Record's note when a persona or the team passed the turn guide in the last day", () => {
