@@ -3147,6 +3147,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     onChange: (turn) => input.onPillState?.(turn.phase),
     ...(input.onPillDrag === undefined ? {} : { onDrag: input.onPillDrag }),
     onMoving: () => render(),
+    foreground: async () => (await sidecar?.foreground())?.window ?? null,
+    focusWindow: (window) => void sidecar?.focusWindow(window).catch(() => undefined),
   });
   let fullscreen = false;
   const restWanted = () =>
@@ -5324,7 +5326,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         label: "Move the pill",
         hint: "Unlocks the pill so you can drag it. Click the check mark above it, or press Esc, when it is where you want it. Move pill in the tray menu does the same.",
         kind: "action",
-        button: "Move",
+        button: pill.moving() ? "Lock" : "Move",
       },
       {
         id: "v.pillRest",
@@ -6193,7 +6195,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         input.extras?.notice(line);
         render();
       });
-    } else if (id === "v.pillMove") pill.setMoving(true);
+    } else if (id === "v.pillMove") pill.setMoving(!pill.moving());
     else if (id === "v.appearance") save({ appearance: parseAppearance(value) });
     else if (id === "v.palette") {
       save({ palette: parsePalette(value) });
