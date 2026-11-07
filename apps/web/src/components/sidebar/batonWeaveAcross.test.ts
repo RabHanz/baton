@@ -74,24 +74,43 @@ describe("weave across his connected computers", () => {
     expect(calls).toEqual([["e-office", "send", { to: "build", text: "hi" }]]);
   });
 
-  it("skips a computer that is not connected or not permitted, and stops on a timeout", async () => {
-    // Not in any list yet: each connected computer is asked in turn.
-    const refused = machines({
-      "e-here": { ok: false, reason: "not permitted", kind: "unreachable" },
-    });
-    expect(
-      await send(
-        "new-one",
-        [env("e-here", "Laptop", []), env("e-gone", "attic", null), env("e-office", "office", [])],
-        refused.call,
-      ),
-    ).toMatchObject({ weave: { environmentId: "e-office" } });
-    expect(refused.calls.map(([id]) => id)).toEqual(["e-here", "e-office"]);
-    const timedOut = machines({ "e-here": { ok: false, reason: "timed out", kind: "other" } });
+  it("a session name that looks like computer:name is that session, and a shared computer name is refused", async () => {
+    const { calls, call } = machines();
+    const here = env("e-here", "Laptop", ["dev:server"]);
+    const dev = env("e-dev", "dev", ["server"]);
+    await send("dev:server", [here, dev], call);
+    expect(calls).toEqual([["e-here", "send", { to: "dev:server", text: "hi" }]]);
     await expect(
-      send("new-one", [env("e-here", "Laptop", []), env("e-office", "office", [])], timedOut.call),
-    ).rejects.toThrow("timed out");
-    expect(timedOut.calls.map(([id]) => id)).toEqual(["e-here"]);
+      send("office:build", [here, env("e-a", "office", []), env("e-b", "office", [])], call),
+    ).rejects.toThrow('More than one computer is called "office". Nothing was sent.');
+  });
+
+  it("never tries a name on each computer: one in no list is refused unless the computer is named", async () => {
+    const { calls, call } = machines();
+    const here = env("e-here", "Laptop", ["api-v2"]);
+    const office = env("e-office", "office", []);
+    await expect(send("api", [here, office], call)).resolves.toMatchObject({
+      weave: { environmentId: "e-here", toLabel: "api-v2" },
+    });
+    await expect(send("worker", [here, office], call)).rejects.toThrow(
+      '"worker" isn\'t in any session list yet. Say computer:name.',
+    );
+    // Named, it goes there even before that computer's list has it.
+    await send("  office:worker  ", [here, office], call);
+    expect(calls.at(-1)).toEqual(["e-office", "send", { to: "worker", text: "hi" }]);
+  });
+
+  it("says when the named computer is not connected, and when the chosen one refuses", async () => {
+    const { calls, call } = machines({
+      "e-office": { ok: false, reason: "not permitted", kind: "unreachable" },
+    });
+    await expect(
+      send("attic:build", [env("e-here", "Laptop", []), env("e-attic", "attic", null)], call),
+    ).rejects.toThrow("attic isn't connected. Nothing was sent.");
+    await expect(
+      send("build", [env("e-here", "Laptop", []), env("e-office", "office", ["build"])], call),
+    ).rejects.toThrow("not permitted");
+    expect(calls).toEqual([["e-office", "send", { to: "build", text: "hi" }]]);
   });
 
   it("lists every connected computer's weaves together, newest first, naming another computer's sessions", async () => {

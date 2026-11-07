@@ -43,6 +43,15 @@ describe("weave rules", () => {
     // Two fit: said, and not "missing", so a client does not try its other computers.
     expect(resolveTarget("bui", list)).toEqual({ ok: false, why: expect.any(String) });
     expect(resolveTarget("nope", list)).toMatchObject({ ok: false, missing: true });
+    // A live session outside Herdr is labelled live:<name>, and its own name is still an exact match.
+    const live = [
+      { label: "live:build", alias: "build", pane: "live/1", state: "idle", agentKind: "claude" },
+      { label: "build-docs", pane: "here/2", state: "idle", agentKind: "claude" },
+    ];
+    expect(resolveTarget("build", live)).toMatchObject({
+      ok: true,
+      target: { label: "live:build" },
+    });
   });
 
   it("types only into an empty input; a draft or no prompt at all waits", () => {

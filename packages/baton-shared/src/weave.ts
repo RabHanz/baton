@@ -44,6 +44,8 @@ export interface Candidate {
   readonly pane: string;
   readonly state: string;
   readonly agentKind: string | null;
+  /** Another name it answers to exactly: a live session's own name, which its label prefixes with `live:`. */
+  readonly alias?: string;
 }
 
 /** An exact name wins; otherwise a name that is part of exactly one session's. Ambiguity is said, not guessed. */
@@ -55,7 +57,10 @@ export const resolveTarget = (
   | { readonly ok: false; readonly why: string; readonly missing?: true } => {
   const want = name.trim().toLowerCase();
   if (want === "") return { ok: false, why: "which session?" };
-  const exact = candidates.filter((c) => c.label.toLowerCase() === want || c.pane === name.trim());
+  const exact = candidates.filter(
+    (c) =>
+      c.label.toLowerCase() === want || c.alias?.toLowerCase() === want || c.pane === name.trim(),
+  );
   if (exact.length === 1) return { ok: true, target: exact[0]! };
   const part =
     exact.length > 1 ? exact : candidates.filter((c) => c.label.toLowerCase().includes(want));

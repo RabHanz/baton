@@ -236,6 +236,7 @@ export const make = Effect.gen(function* () {
     const all = seen.flatMap(({ box, found }) =>
       found.candidates.map((c) => ({
         label: box.name === "here" ? c.label : `${box.name}:${c.label}`,
+        ...(box.name === "here" ? {} : { alias: c.label }),
         pane: paneKey(box.name, c.location.pane),
         state: c.runtimeState,
         agentKind: c.agentKind,

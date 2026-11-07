@@ -72,6 +72,36 @@ const named = (
       };
 };
 
+/**
+ * Where a send goes. A session name on any connected computer is that session, even when it looks like
+ * `computer:name`. Otherwise a known computer's name in front picks that computer, sent as named even if its list
+ * has not caught up. Anything else must be in a list; a name is never tried on each computer in turn.
+ */
+const targetOf = (
+  to: string,
+  environments: ReadonlyArray<WeaveEnvironment>,
+  connected: ReadonlyArray<WeaveEnvironment>,
+): { readonly found: Found } | { readonly why: string } => {
+  const want = to.toLowerCase();
+  const isSession = connected.some((e) => (e.sessions ?? []).some((n) => n.toLowerCase() === want));
+  const computers = isSession
+    ? []
+    : environments.filter((e) => want.startsWith(`${e.label.toLowerCase()}:`));
+  if (computers.length > 1)
+    return { why: `More than one computer is called "${computers[0]!.label}". Nothing was sent.` };
+  const computer = computers[0];
+  if (computer !== undefined) {
+    if (computer.sessions === null)
+      return { why: `${computer.label} isn't connected. Nothing was sent.` };
+    return { found: { environment: computer, name: to.slice(computer.label.length + 1).trim() } };
+  }
+  return (
+    choose(to, connected) ?? {
+      why: `"${to}" isn't in any session list yet. Say computer:name.`,
+    }
+  );
+};
+
 export const weaveAcross = async (
   request: BatonWeaveBridgeRequest,
   /** This computer first. */
@@ -85,30 +115,13 @@ export const weaveAcross = async (
   const connected = environments.filter((e) => e.sessions !== null);
   const first = environments[0];
   if (request.op === "send") {
-    const to = String((request.args as { to?: unknown }).to ?? "");
-    // "office:build" names the computer, as weave_list shows a session on another one.
-    const prefixed = connected.find((e) =>
-      to.toLowerCase().startsWith(`${e.label.toLowerCase()}:`),
-    );
-    const chosen =
-      prefixed !== undefined
-        ? { found: { environment: prefixed, name: to.slice(prefixed.label.length + 1) } }
-        : choose(to, connected);
-    if (chosen !== null && "why" in chosen) throw new Error(chosen.why);
-    // Not in any list yet (a session that started a moment ago): each computer is asked in turn.
-    const targets =
-      chosen === null
-        ? connected.map((environment) => ({ environment, name: to }))
-        : [chosen.found];
-    let missing: string | null = null;
-    for (const { environment, name } of targets) {
-      const reply = await call(environment.id, "send", { ...request.args, to: name });
-      if (reply.ok) return named(environment, first, reply.value);
-      // A computer that refused before sending is skipped; anything else, a timeout included, may have been typed.
-      if (reply.kind === "other") throw new Error(reply.reason);
-      if (reply.kind === "missing") missing ??= reply.reason;
-    }
-    throw new Error(missing ?? "No connected computer has that session. Nothing was sent.");
+    const to = String((request.args as { to?: unknown }).to ?? "").trim();
+    const target = targetOf(to, environments, connected);
+    if ("why" in target) throw new Error(target.why);
+    const { environment, name } = target.found;
+    const reply = await call(environment.id, "send", { ...request.args, to: name });
+    if (reply.ok) return named(environment, first, reply.value);
+    throw new Error(reply.reason);
   }
   const replies = await Promise.all(
     connected.map(async (environment) => ({
