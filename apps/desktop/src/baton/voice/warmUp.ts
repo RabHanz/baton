@@ -178,6 +178,15 @@ export const holdFramesUntil = <T extends { pushAudio: (frame: Int16Array) => vo
   });
 };
 
+/** Calls made while a run is in flight share it, so a start asked for twice starts once. */
+export const oneAtATime = <T>(run: () => Promise<T>) => {
+  let job: Promise<T> | null = null;
+  return {
+    run: (): Promise<T> => (job ??= run().finally(() => (job = null))),
+    pending: () => job,
+  };
+};
+
 /** After start-up has settled: the window, T3 and the server are up, so the sidecar spawn does not stall them. */
 export const DICTATION_SETTLE_MS = 15_000;
 

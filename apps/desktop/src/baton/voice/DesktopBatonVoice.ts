@@ -430,7 +430,13 @@ import {
 } from "@t3tools/baton-shared/attention";
 import { contextFromLastInsert, fitInsertion } from "@t3tools/baton-shared/dictationFit";
 import { createLoginItemState, setLoginItem } from "./loginItem.ts";
-import { DICTATION_SETTLE_MS, dictationAtLaunch, holdFramesUntil, startWarmUp } from "./warmUp.ts";
+import {
+  DICTATION_SETTLE_MS,
+  dictationAtLaunch,
+  holdFramesUntil,
+  oneAtATime,
+  startWarmUp,
+} from "./warmUp.ts";
 import { makeTestAudioInput, type TestAudioEvent } from "./testAudio.ts";
 import { startVoiceLoop, type VoiceLoop } from "./voiceLoop.ts";
 import { createUserJobStore } from "../presence/userJobStore.ts";
@@ -3341,7 +3347,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   /** Each step of the voice start, in the turn log, so a start that stops says where. */
   const step = (name: string, fields: Readonly<Record<string, unknown>> = {}) =>
     input.onNote?.("voice_start", { step: name, ...fields });
-  const start = async () => {
+  // The engine is set only when the warm-up ends, so a second start in that window would build a second one.
+  const starting = oneAtATime(async () => {
     step("begin", {
       binary: binary !== null,
       enabled: settings.enabled,
@@ -3558,10 +3565,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         launchWarm = null;
         if (loop !== null) input.warmAssistant?.();
       }, LAUNCH_WARM_MS);
-  };
+  });
+  const start = starting.run;
   let launchWarm: ReturnType<typeof setTimeout> | null = null;
 
   const stop = async () => {
+    await starting.pending()?.catch(() => {});
     if (launchWarm !== null) clearTimeout(launchWarm);
     launchWarm = null;
     // Off mid-dictation: Esc is his again and the old window is forgotten, so no later wake acts there.
@@ -6370,6 +6379,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
 
   /** Wake words are fixed when the core is built, so a change rebuilds it. */
   const relisten = async () => {
+    await starting.pending()?.catch(() => {});
     if (loop !== null) await stop();
     await start().catch(failed);
   };

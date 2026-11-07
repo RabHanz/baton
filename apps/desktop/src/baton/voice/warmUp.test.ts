@@ -4,6 +4,7 @@ import {
   compactQuiet,
   dictationAtLaunch,
   holdFramesUntil,
+  oneAtATime,
   startWarmUp,
   warmUpVoice,
 } from "./warmUp.ts";
@@ -257,5 +258,28 @@ describe("when dictation loads at launch", () => {
     expect(dictationAtLaunch({ ...base, available: false })).toBe("never");
     expect(dictationAtLaunch({ ...base, modelPresent: false })).toBe("never");
     expect(dictationAtLaunch({ ...base, dictation: "wispr" })).toBe("never");
+  });
+});
+
+describe("starting the voice engine once", () => {
+  it("shares a start asked for again while the first is still warming, and allows a new one after", async () => {
+    let builds = 0;
+    let finish!: () => void;
+    const start = oneAtATime(async () => {
+      builds += 1;
+      await new Promise<void>((resolve) => (finish = resolve));
+    });
+    const first = start.run();
+    const second = start.run();
+    expect(second).toBe(first);
+    expect(start.pending()).toBe(first);
+    finish();
+    await first;
+    expect(start.pending()).toBeNull();
+    expect(builds).toBe(1);
+    const later = start.run();
+    finish();
+    await later;
+    expect(builds).toBe(2);
   });
 });
