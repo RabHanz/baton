@@ -66,7 +66,6 @@ const sample = async (c: AssistantCase): Promise<Sample> => {
             persona: {
               name: face.name,
               role: face.role,
-              introduce: !face.lead,
               ...(face.lead ? {} : { lead: "Tessaya" }),
             },
           }),
