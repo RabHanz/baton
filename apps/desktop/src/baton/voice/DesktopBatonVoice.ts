@@ -848,8 +848,12 @@ export interface VoiceCoreHooks {
   readonly waitMs: () => number;
   /** How long the command window and the conversation stay open. */
   readonly listening: () => { readonly commandWindowMs: number; readonly conversationMs: number };
-  /** The second check before a wake from sleep: was the wake word really said. */
-  readonly verifyWake: (pcm: Int16Array, word: string | null, score: number) => Promise<boolean>;
+  /** The second check before a wake: true heard the name, false did not, null did not check (off, or failed). */
+  readonly verifyWake: (
+    pcm: Int16Array,
+    word: string | null,
+    score: number,
+  ) => Promise<boolean | null>;
   /** The model is sure of this word past any doubt (see `wakeTrusted`). */
   readonly trustWake: (word: string, score: number) => boolean;
   /** Hears him over Baton's own voice through the speakers (docs/baton/BARGE_IN.md). */
@@ -3260,6 +3264,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             dictationHold.setTarget(sidecar.foreground().catch(() => null));
           // Before she answers, and after the target is read: he may have put headphones on since the last look.
           setImmediate(() => void output.refresh());
+          // He is already talking: no cue, which would sound over his words and blank them from the microphone.
+          if (event.heard === true) {
+            pill.on({ type: "wake", word: wordName(event.word) }, { silent: true });
+            return null;
+          }
           return { type: "wake", word: wordName(event.word) };
         case "speech_end":
           return null;
@@ -3495,15 +3504,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       speakerMode: () => speakerModeOf(settings.outputDevice, output.kind()),
       trustWake: (word, score) => wakeTrusted(settings.wakeWords, word, score),
       verifyWake: async (pcm, word, score) => {
-        // Unsure is a wake: the check only ever removes wakes it is sure were not the name.
-        if (!settings.verifyWake || word === null || sidecar === null) return true;
+        // Null is "not checked" (switched off, or it failed): a wake, but not one the recogniser confirmed.
+        if (!settings.verifyWake || word === null || sidecar === null) return null;
         try {
           const heard = await wakeStt(sidecar).transcribe(pcm);
           const ok = wakeWordHeard(heard, word);
           if (!ok) input.onNote?.("wake_check", { word, heard, score });
           return ok;
         } catch {
-          return true;
+          return null;
         }
       },
       vocabulary: async (text) => {
