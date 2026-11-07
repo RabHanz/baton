@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off
+// @effect-diagnostics nodeBuiltinImport:off globalDate:off
 /** His own standing jobs (KIRO-1), in user-jobs.json beside the built-ins' state; on this computer, as theirs are. */
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
@@ -88,6 +88,8 @@ export const createUserJobStore = (
         ...found,
         ...patch,
         ...(patch.on === true ? { proposed: false } : {}),
+        // Switched on now: a timed job whose time already passed today waits for tomorrow.
+        ...(patch.on === true && !found.on ? { enabledAt: Date.now() } : {}),
         ...(patch.instruction !== undefined ? { from: "him" as const } : {}),
       };
       write({ ...saved, jobs: saved.jobs.map((j) => (j.id === id ? next : j)) });

@@ -33,6 +33,7 @@ import {
   whenText,
 } from "@t3tools/baton-shared/userJobs";
 import { standingGate } from "../agent/standingGate.ts";
+import { runOnceItsTurn } from "../agent/standingRun.ts";
 import {
   chooseTurnBrain,
   createTierMemory,
@@ -469,7 +470,11 @@ export interface ScreenCompanion {
   readonly runStanding: (
     job: StandingRunJob,
     signal: AbortSignal,
-  ) => Promise<{ readonly status: "ok" | "error" | "cancelled"; readonly text: string }>;
+    timeoutMs: number,
+  ) => Promise<{
+    readonly status: "ok" | "error" | "timeout" | "cancelled";
+    readonly text: string;
+  }>;
   readonly said: (
     text: string,
     input: {
@@ -511,7 +516,8 @@ export interface ScreenCompanion {
   /** A reply from outside the assistant, shown in full when answers are written only. */
   readonly notice: (text: string) => void;
   /** An unprompted line: a card, and aloud when asked and spoken answers are on. */
-  readonly announce: (text: string, speak: boolean) => void;
+  /** Shown in full; when spoken, `spoken` is said instead of the whole text (a job's answer is only announced). */
+  readonly announce: (text: string, speak: boolean, spoken?: string) => void;
   /** Spoken answers are off. */
   readonly writtenOnly: () => boolean;
   readonly voice: () => PocketVoice | "system";
@@ -2722,27 +2728,45 @@ export const startScreenCompanion = (input: {
    */
   const runStanding = async (
     job: StandingRunJob,
+    /** The whole pass's budget: a job still waiting for its turn when it ends does not start. */
     signal: AbortSignal,
-  ): Promise<{ readonly status: "ok" | "error" | "cancelled"; readonly text: string }> => {
-    if (run !== null)
-      return { status: "cancelled", text: "Held: a lesson, drive or look was running." };
+    timeoutMs: number,
+  ): Promise<{
+    readonly status: "ok" | "error" | "timeout" | "cancelled";
+    readonly text: string;
+  }> => {
+    const busy = {
+      status: "cancelled" as const,
+      text: "Held: a lesson, drive or look was running.",
+    };
+    if (run !== null) return busy;
     const out = await turnLock.device(async (onCancel) => {
-      const once = outsideAgentOf(job);
-      const stop = () => void once.end();
-      onCancel(stop);
-      signal.addEventListener("abort", stop, { once: true });
-      try {
-        const reply = await once.say(standingTurnText(job), { window: null, session: null });
-        return { status: "ok" as const, text: reply };
-      } catch (error) {
-        return {
-          status: error instanceof SessionClosed ? ("cancelled" as const) : ("error" as const),
-          text: error instanceof Error ? error.message : String(error),
-        };
-      } finally {
-        signal.removeEventListener("abort", stop);
-        await once.end();
-      }
+      if (run !== null) return busy;
+      // Its time starts once it has the turn, not while it waited for his.
+      return runOnceItsTurn(signal, timeoutMs, async (timeout) => {
+        freshTurn();
+        const once = outsideAgentOf(job);
+        const stop = () => void once.end();
+        onCancel(stop);
+        timeout.addEventListener("abort", stop, { once: true });
+        signal.addEventListener("abort", stop, { once: true });
+        try {
+          const reply = await once.say(standingTurnText(job), { window: null, session: null });
+          return { status: "ok" as const, text: reply };
+        } catch (error) {
+          return {
+            status: timeout.aborted
+              ? ("timeout" as const)
+              : error instanceof SessionClosed
+                ? ("cancelled" as const)
+                : ("error" as const),
+            text: error instanceof Error ? error.message : String(error),
+          };
+        } finally {
+          signal.removeEventListener("abort", stop);
+          await once.end();
+        }
+      });
     });
     return out === INTERRUPTED
       ? { status: "cancelled", text: "He started talking to Tessaya, so it stopped." }
@@ -3237,9 +3261,9 @@ export const startScreenCompanion = (input: {
     notice: (text) => {
       if (text.trim().length > 0) linger("Tessaya", text);
     },
-    announce: (text, speak) => {
+    announce: (text, speak, spoken) => {
       if (text.trim().length === 0) return;
-      if (speak) say(text);
+      if (speak) say(spoken ?? text);
       linger("Tessaya", text);
     },
     writtenOnly: () => settings.output === "written",

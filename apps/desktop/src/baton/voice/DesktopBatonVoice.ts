@@ -867,7 +867,7 @@ export interface TrayExtras extends BrainVoiceHook {
   readonly setActions: (actions: AssistantActions) => void;
   readonly notice: (text: string) => void;
   /** An unprompted line: a card, and aloud when `speak` and spoken answers are on. */
-  readonly announce: (text: string, speak: boolean) => void;
+  readonly announce: (text: string, speak: boolean, spoken?: string) => void;
   /** Registers or drops the Transforms shortcuts. */
   readonly setTransformHotkeys?: (on: boolean) => void;
   readonly writtenOnly: () => boolean;
@@ -4031,47 +4031,77 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       standingRunning = false;
     }
   };
-  /** His own jobs that are due (KIRO-1), one at a time, each as an unattended turn judged by standingVerdict. */
-  const userJobPass = async (now: number, signals: UserJobSignals): Promise<void> => {
+  /** When each waiting session's wait began, kept while it waits: the wait's id stays the same from pass to pass. */
+  const waitStarts = new Map<string, number>();
+  let cappedNoted = "";
+  /**
+   * His own jobs that are due (KIRO-1), one at a time, each as an unattended turn judged by standingVerdict. The whole
+   * pass has 15 minutes, so the built-ins after it are never starved; each run has the standing-run limit.
+   */
+  const userJobPass = async (signals: UserJobSignals): Promise<void> => {
     const runStanding = input.extras?.runStanding;
     if (runStanding === undefined) return;
-    const due = dueUserJobs({
+    const { due, capped } = dueUserJobs({
       jobs: userJobStore.list(),
       runs: userJobStore.runs(),
-      now: new Date(now),
+      now: new Date(),
       startedAt: new Date(voiceStartedAt),
       signals,
     });
-    for (const { job, key } of due) {
-      const owner = ownerOf({ ...BUILT_INS[0]!, owner: job.owner });
-      // The same time limit as every standing run: one stuck job never holds the others.
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), STANDING_RUN_TIMEOUT_MS);
-      const result = await runStanding(
-        {
-          title: job.title,
-          instruction: job.instruction,
-          from: job.from,
-          tools: job.tools,
-          judge: (tool) => standingVerdict(tool, owner),
-        },
-        controller.signal,
-      ).finally(() => clearTimeout(timer));
-      const status = controller.signal.aborted ? "timeout" : result.status;
-      userJobStore.saveRun({ id: job.id, key, at: now, status, text: result.text.slice(0, 2_000) });
-      // "Tell me": his job's answer is shown, and said aloud outside quiet hours.
-      if (status === "ok")
-        input.extras?.announce(`${job.title}: ${result.text}`, !silenced(new Date(now)));
-      input.onNote?.("user_job_run", { id: job.id, status });
-      void input
-        .direct?.("baton.record.append", {
-          kind: "standing_job",
-          actor: owner.name,
-          subject: job.title,
-          outcome: status === "ok" ? "ran" : status === "cancelled" ? "held" : "failed",
-          detail: result.text.slice(0, 2_000),
-        })
-        .catch(() => undefined);
+    const day = new Date().toDateString();
+    if (capped.length > 0 && cappedNoted !== day) {
+      cappedNoted = day;
+      input.extras?.notice(
+        "Some of your own standing jobs reached today's limit of runs; they start again tomorrow.",
+      );
+      input.onNote?.("user_job_capped", { capped });
+    }
+    const pass = new AbortController();
+    const budget = setTimeout(() => pass.abort(), 15 * 60_000);
+    try {
+      for (const { job, key } of due) {
+        if (pass.signal.aborted) break;
+        const owner = ownerOf({ ...BUILT_INS[0]!, owner: job.owner });
+        const result = await runStanding(
+          {
+            title: job.title,
+            instruction: job.instruction,
+            from: job.from,
+            tools: job.tools,
+            judge: (tool) => standingVerdict(tool, owner),
+          },
+          pass.signal,
+          STANDING_RUN_TIMEOUT_MS,
+        );
+        const at = Date.now();
+        userJobStore.saveRun({
+          id: job.id,
+          key,
+          at,
+          status: result.status,
+          text: result.text.slice(0, 2_000),
+        });
+        // The answer is on screen and in the Record; aloud only that it is done, so read data never speaks for it.
+        if (result.status === "ok")
+          input.extras?.announce(
+            `${job.title}: ${result.text}`,
+            !silenced(new Date(at)),
+            `${job.title} is done; it's on screen.`,
+          );
+        input.onNote?.("user_job_run", { id: job.id, status: result.status });
+        void input
+          .direct?.("baton.record.append", {
+            kind: "standing_job",
+            actor: owner.name,
+            subject: job.title,
+            outcome:
+              result.status === "ok" ? "ran" : result.status === "cancelled" ? "held" : "failed",
+            detail: result.text.slice(0, 2_000),
+          })
+          .catch(() => undefined);
+      }
+    } finally {
+      clearTimeout(budget);
     }
     if (due.length > 0) render();
   };
@@ -4092,18 +4122,27 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       )?.jobs ?? [];
     const findings = await watchFindings();
     const ci = await ciRuns();
-    await userJobPass(now, {
-      waitingMinutes:
-        findings
-          .filter((f) => f.kind === "unanswered")
-          .reduce<number | null>((most, f) => Math.max(most ?? 0, f.minutes), null) ?? null,
-      buildFailed: triggersFromCi(ci, now).length > 0,
-      jobFinished: jobs.some(
-        (j) =>
-          j.group === "done" &&
-          j.phase === "approved" &&
-          now - Date.parse(j.lastActivityAt) < 2 * INITIATIVE_MS,
-      ),
+    const waiting = findings.filter((f) => f.kind === "unanswered");
+    for (const id of waitStarts.keys())
+      if (!waiting.some((f) => f.workSessionId === id)) waitStarts.delete(id);
+    for (const f of waiting)
+      if (!waitStarts.has(f.workSessionId))
+        waitStarts.set(f.workSessionId, now - f.minutes * 60_000);
+    await userJobPass({
+      waiting: waiting.map((f) => ({
+        id: f.workSessionId,
+        since: waitStarts.get(f.workSessionId)!,
+        minutes: f.minutes,
+      })),
+      failedBuilds: triggersFromCi(ci, now).map((t) => t.id),
+      finishedJobs: jobs
+        .filter(
+          (j) =>
+            j.group === "done" &&
+            j.phase === "approved" &&
+            now - Date.parse(j.lastActivityAt) < 2 * INITIATIVE_MS,
+        )
+        .map((j) => j.workSessionId),
     });
     if (!builtInsOn) return;
     const result = await runStandingJobs(

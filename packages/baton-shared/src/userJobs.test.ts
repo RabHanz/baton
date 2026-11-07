@@ -4,6 +4,9 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   DEFAULT_USER_JOB_TOOLS,
   dueUserJobs,
+  isUserJob,
+  USER_JOB_RUNS_PER_DAY,
+  USER_JOB_RUNS_PER_DAY_ALL,
   standingTurnText,
   MIN_EVENT_MINUTES,
   userJobCard,
@@ -116,47 +119,124 @@ describe("when his own jobs are due", () => {
     trigger: { kind: "time" as const, hour: 8, minute: 0, days: [] },
     missed: "once" as const,
   };
-  const none: UserJobSignals = { waitingMinutes: null, buildFailed: false, jobFinished: false };
+  const none: UserJobSignals = { waiting: [], failedBuilds: [], finishedJobs: [] };
+  type Runs = Parameters<typeof dueUserJobs>[0]["runs"];
+  const keys = (r: ReturnType<typeof dueUserJobs>) => r.due.map((d) => d.key);
 
-  it("runs a timed job once a day from its time, never before, never twice", () => {
-    const due = (now: Date, runs: Parameters<typeof dueUserJobs>[0]["runs"] = []) =>
+  it("runs a timed job once a day from its time, never before, never twice; a cancelled run does not use the day", () => {
+    const due = (now: Date, runs: Runs = []) =>
       dueUserJobs({ jobs: [morning], runs, now, startedAt: at(6), signals: none });
-    expect(due(at(7, 59))).toEqual([]);
-    const first = due(at(8, 1));
-    expect(first.map((d) => d.key)).toEqual(["user:1:2026-11-09"]);
-    expect(
-      due(at(9), [{ id: "user:1", key: first[0]!.key, at: 0, status: "ok", text: "" }]),
-    ).toEqual([]);
+    expect(keys(due(at(7, 59)))).toEqual([]);
+    expect(keys(due(at(8, 1)))).toEqual(["user:1:2026-11-09"]);
+    const ran = { id: "user:1", key: "user:1:2026-11-09", at: at(8, 1).getTime(), text: "" };
+    expect(keys(due(at(9), [{ ...ran, status: "ok" }]))).toEqual([]);
+    expect(keys(due(at(9), [{ ...ran, status: "cancelled" }]))).toEqual(["user:1:2026-11-09"]);
   });
 
-  it("keeps his missed-run choice when Tessaya started after the time, and leaves out a proposal or a day not his", () => {
+  it("keeps his missed-run choice, leaves out a proposal or a day not his, and starts a job set up after its time tomorrow", () => {
     const late = { jobs: [morning], runs: [], now: at(10), startedAt: at(9, 30), signals: none };
-    expect(dueUserJobs(late)).toHaveLength(1);
-    expect(dueUserJobs({ ...late, jobs: [{ ...morning, missed: "skip" }] })).toEqual([]);
-    expect(dueUserJobs({ ...late, jobs: [{ ...morning, proposed: true, on: false }] })).toEqual([]);
+    expect(keys(dueUserJobs(late))).toHaveLength(1);
+    expect(keys(dueUserJobs({ ...late, jobs: [{ ...morning, missed: "skip" }] }))).toEqual([]);
     expect(
-      dueUserJobs({
-        ...late,
-        jobs: [{ ...morning, trigger: { ...morning.trigger, days: ["sat"] } }],
-      }),
+      keys(dueUserJobs({ ...late, jobs: [{ ...morning, proposed: true, on: false }] })),
+    ).toEqual([]);
+    expect(
+      keys(
+        dueUserJobs({
+          ...late,
+          jobs: [{ ...morning, trigger: { ...morning.trigger, days: ["sat"] } }],
+        }),
+      ),
+    ).toEqual([]);
+    // Switched on at 9:00, after its 8:00: not today.
+    expect(
+      keys(dueUserJobs({ ...late, jobs: [{ ...morning, enabledAt: at(9).getTime() }] })),
     ).toEqual([]);
   });
 
-  it("runs an event job when its event holds, at most once per its minutes", () => {
+  it("runs once per event, however long the event lasts: the same failure on two passes 20 minutes apart is one run", () => {
+    const broken = {
+      ...base,
+      trigger: { kind: "event" as const, event: "build_failed" as const, minutes: 15 },
+      missed: "once" as const,
+    };
+    const signals = { ...none, failedBuilds: ["ci:tessaya:42"] };
+    const first = dueUserJobs({ jobs: [broken], runs: [], now: at(12), startedAt: at(6), signals });
+    expect(keys(first)).toEqual(["user:1:ci:tessaya:42"]);
+    const runs: Runs = [
+      { id: "user:1", key: keys(first)[0]!, at: at(12).getTime(), status: "ok", text: "" },
+    ];
+    expect(
+      keys(dueUserJobs({ jobs: [broken], runs, now: at(12, 20), startedAt: at(6), signals })),
+    ).toEqual([]);
+    // A new failure is a new event, after the floor.
+    const next = { ...none, failedBuilds: ["ci:tessaya:42", "ci:tessaya:43"] };
+    expect(
+      keys(dueUserJobs({ jobs: [broken], runs, now: at(12, 20), startedAt: at(6), signals: next })),
+    ).toEqual(["user:1:ci:tessaya:43"]);
+    expect(
+      keys(dueUserJobs({ jobs: [broken], runs, now: at(12, 10), startedAt: at(6), signals: next })),
+    ).toEqual([]);
+  });
+
+  it("waits for a session to have waited his minutes, once per wait", () => {
     const waiting = {
       ...base,
       trigger: { kind: "event" as const, event: "session_waiting" as const, minutes: 20 },
       missed: "once" as const,
     };
-    const now = at(12);
-    const run = (signals: typeof none, runs: Parameters<typeof dueUserJobs>[0]["runs"] = []) =>
-      dueUserJobs({ jobs: [waiting], runs, now, startedAt: at(6), signals });
-    expect(run({ ...none, waitingMinutes: 19 })).toEqual([]);
-    expect(run({ ...none, waitingMinutes: 25 })).toHaveLength(1);
-    const recent = [
-      { id: "user:1", key: "k", at: now.getTime() - 10 * 60_000, status: "ok" as const, text: "" },
-    ];
-    expect(run({ ...none, waitingMinutes: 25 }, recent)).toEqual([]);
+    const run = (minutes: number) =>
+      dueUserJobs({
+        jobs: [waiting],
+        runs: [],
+        now: at(12),
+        startedAt: at(6),
+        signals: { ...none, waiting: [{ id: "s1", since: 1, minutes }] },
+      });
+    expect(keys(run(19))).toEqual([]);
+    expect(keys(run(25))).toEqual(["user:1:wait:s1:1"]);
+  });
+
+  it("holds a job back at its daily cap, and every job at the cap for all of them", () => {
+    const broken = {
+      ...base,
+      trigger: { kind: "event" as const, event: "build_failed" as const, minutes: 15 },
+      missed: "once" as const,
+    };
+    const runs = (n: number, id = "user:1"): Runs =>
+      Array.from({ length: n }, (_, i) => ({
+        id,
+        key: `${id}:x${i}`,
+        at: at(1).getTime(),
+        status: "ok" as const,
+        text: "",
+      }));
+    const signals = { ...none, failedBuilds: ["ci:new"] };
+    const mine = dueUserJobs({
+      jobs: [broken],
+      runs: runs(USER_JOB_RUNS_PER_DAY),
+      now: at(12),
+      startedAt: at(6),
+      signals,
+    });
+    expect(mine).toEqual({ due: [], capped: ["user:1"] });
+    const all = dueUserJobs({
+      jobs: [{ ...broken, id: "user:2" }],
+      runs: runs(USER_JOB_RUNS_PER_DAY_ALL, "user:9"),
+      now: at(12),
+      startedAt: at(6),
+      signals,
+    });
+    expect(all.capped).toEqual(["user:2"]);
+  });
+
+  it("re-checks a stored job's tools and pace when it is read back", () => {
+    const stored = { ...morning, from: "him" as const };
+    expect(isUserJob(stored)).toBe(true);
+    expect(isUserJob({ ...stored, tools: ["type_text"] })).toBe(false);
+    expect(
+      isUserJob({ ...stored, trigger: { kind: "event", event: "build_failed", minutes: 1 } }),
+    ).toBe(false);
   });
 });
 
