@@ -61,11 +61,12 @@ function Build {
   $tmp = "$dll.$PID.tmp"
   Add-Type -TypeDefinition @'
 ${SOURCE}
-'@ -OutputAssembly $tmp
+'@ -OutputAssembly $tmp -ErrorAction Stop
   Move-Item -Force -LiteralPath $tmp -Destination $dll
+  Remove-Item -Force -LiteralPath $tmp -ErrorAction SilentlyContinue
 }
 if (-not (Test-Path -LiteralPath $dll)) { Build }
-try { Add-Type -LiteralPath $dll } catch {
+try { Add-Type -LiteralPath $dll -ErrorAction Stop } catch {
   Remove-Item -Force -LiteralPath $dll -ErrorAction SilentlyContinue
   Build
   Add-Type -LiteralPath $dll

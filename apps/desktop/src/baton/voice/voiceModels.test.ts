@@ -6,7 +6,7 @@ import * as NodePath from "node:path";
 
 import { describe, expect, it } from "vite-plus/test";
 
-import { ensureModel, modelPresent } from "./voiceModels.ts";
+import { ensureModel, modelPresent, PARAKEET_FAST_MODEL, wakeModelFor } from "./voiceModels.ts";
 
 const bytes = Buffer.from("parakeet");
 const model = (sha256: string) => ({
@@ -112,5 +112,24 @@ describe("ensureModel", () => {
     expect(modelPresent(dir, model(good))).toBe(false);
     NodeFS.writeFileSync(NodePath.join(dir, "m.gguf"), bytes);
     expect(modelPresent(dir, model(good))).toBe(true);
+  });
+});
+
+describe("the wake path's model", () => {
+  it.each([
+    // [his languages, his dictation model, the model the wake path asks for (null: dictation's)]
+    [["en"], "v3", PARAKEET_FAST_MODEL],
+    [["en-GB"], "v3", PARAKEET_FAST_MODEL],
+    [["EN", "en-US"], "v3", PARAKEET_FAST_MODEL],
+    [["en", "de"], "v3", null],
+    [["fr"], "v3", null],
+    // None set: nothing says it is only English.
+    [[], "v3", null],
+    // Dictation already on the fast model: the wake path shares it, and is never moved back to v3.
+    [["en"], "fast", null],
+    [[], "fast", null],
+    [["de"], "fast", null],
+  ] as const)("%j with %s dictation asks for %o", (languages, speechModel, model) => {
+    expect(wakeModelFor(languages, speechModel)).toBe(model);
   });
 });

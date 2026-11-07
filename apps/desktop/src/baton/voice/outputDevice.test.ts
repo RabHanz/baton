@@ -53,8 +53,12 @@ describe("headphones or speakers, from the playback device", () => {
   it("compiles the reader once, into its own folder, and only loads it after that", () => {
     const script = readScript("C:\\Users\\user\\state's\\voice");
     // Built to a temporary file and moved into place; a DLL that will not load is deleted and built again.
-    expect(script).toMatch(/-OutputAssembly \$tmp/);
-    expect(script).toMatch(/Move-Item -Force -LiteralPath \$tmp -Destination \$dll/);
+    // A failed load must throw into the catch, and a temporary file left by a failed move is cleared.
+    expect(script).toMatch(/-OutputAssembly \$tmp -ErrorAction Stop/);
+    expect(script).toMatch(
+      /Move-Item -Force -LiteralPath \$tmp -Destination \$dll\s+Remove-Item -Force -LiteralPath \$tmp/,
+    );
+    expect(script).toMatch(/try \{ Add-Type -LiteralPath \$dll -ErrorAction Stop \} catch/);
     expect(script).toMatch(/if \(-not \(Test-Path -LiteralPath \$dll\)\) \{ Build \}/);
     expect(script).toMatch(
       /catch \{\s+Remove-Item -Force -LiteralPath \$dll[^}]*Build\s+Add-Type -LiteralPath \$dll/,

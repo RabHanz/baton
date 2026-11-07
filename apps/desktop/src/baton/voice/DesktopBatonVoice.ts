@@ -368,7 +368,13 @@ import {
 } from "./dictationRewriter.ts";
 import { mouseHookConfig } from "../bindings/inputConfig.ts";
 import { VOICE_HOTKEYS } from "./voiceActivation.ts";
-import { ensureModel, modelPresent, PARAKEET_FAST_MODEL, PARAKEET_MODEL } from "./voiceModels.ts";
+import {
+  ensureModel,
+  modelPresent,
+  PARAKEET_FAST_MODEL,
+  PARAKEET_MODEL,
+  wakeModelFor,
+} from "./voiceModels.ts";
 import { hudView, utteranceCaption } from "./voiceHud.ts";
 import { createCpuLoad, loadBefore } from "./cpuLoad.ts";
 import { createRecogniserPriority, type RecogniserPriority } from "./recogniserPriority.ts";
@@ -3343,6 +3349,42 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const speechModel = () =>
     settings.speechModel === "fast" ? PARAKEET_FAST_MODEL : PARAKEET_MODEL;
 
+  /** Fetched once a session, quietly, the first time the wake path wants a model dictation does not use. */
+  let wakeModelFetched = false;
+  /** It would not load: dictation's model hears him for the rest of this session. */
+  let wakeModelBroken = false;
+  /**
+   * The model file the wake path recognises with (LAT-1): the fast English one when he speaks only English, while
+   * dictation keeps his choice. Null means dictation's, as it is until that model is on disk.
+   */
+  const wakeModelPath = (): string | null => {
+    const model = wakeModelFor(settings.languages, settings.speechModel);
+    if (model === null || wakeModelBroken) return null;
+    if (modelPresent(modelsDir, model)) return NodePath.join(modelsDir, model.file);
+    if (!wakeModelFetched) {
+      wakeModelFetched = true;
+      void ensureModel({ dir: modelsDir, model, onProgress: () => {}, attempts: 1 }).catch(
+        (error: unknown) =>
+          input.onNote?.("wake_model", {
+            file: model.file,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+      );
+    }
+    return null;
+  };
+  const wakeModelFailed = (file: string, error: unknown) => {
+    wakeModelBroken = true;
+    input.onNote?.("wake_model", {
+      file: NodePath.basename(file),
+      error: error instanceof Error ? error.message : String(error),
+      fallback: "dictation",
+    });
+  };
+  /** The wake path's recogniser over the sidecar, on its own model (`wakeModelPath`). */
+  const wakeStt = (on: DictationSidecar) =>
+    makeSidecarStt(on, undefined, undefined, undefined, wakeModelPath, wakeModelFailed);
+
   /** One at a time; if the choice changed while it ran, the one now chosen is fetched next. */
   const loadSpeechModel = (): Promise<string> => {
     modelJob ??= (async () => {
@@ -3429,9 +3471,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           });
         },
         recognise,
+        wakeModelPath,
+        wakeModelFailed,
       ),
       // The stop listener hears the room while she talks over speakers: it never leaves this computer.
-      stopStt: makeSidecarStt(sidecar),
+      stopStt: wakeStt(sidecar),
       onEvent: onCoreEvent,
       waitMs: () => clampWait(settings.waitMs),
       listening: () => ({
@@ -3449,7 +3493,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         // Unsure is a wake: the check only ever removes wakes it is sure were not the name.
         if (!settings.verifyWake || word === null || sidecar === null) return true;
         try {
-          const heard = await makeSidecarStt(sidecar).transcribe(pcm);
+          const heard = await wakeStt(sidecar).transcribe(pcm);
           const ok = wakeWordHeard(heard, word);
           if (!ok) input.onNote?.("wake_check", { word, heard, score });
           return ok;
@@ -3500,7 +3544,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           step("speech-model-ready", { loadMs, sinceWarmStartMs: Date.now() - warmStarted });
           speechLoadMs = 0;
         }
-        return makeSidecarStt(warmSidecar).transcribe(pcm);
+        return wakeStt(warmSidecar).transcribe(pcm);
       },
       settled: () => warming.idle(),
       onStage: (ready) => {

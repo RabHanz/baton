@@ -160,7 +160,8 @@ export interface DictationSidecar {
   readonly toggle: () => void;
   readonly cancel: () => void;
   readonly devices: () => Promise<ReadonlyArray<SidecarDevice>>;
-  readonly transcribe: (wavPath: string) => Promise<string>;
+  /** `model`: a model file of its own (the wake path's); dictation's when absent or null. */
+  readonly transcribe: (wavPath: string, model?: string | null) => Promise<string>;
   /** Loads the speech model now. Resolves with the load time in ms; waits as long as the load shows progress. */
   readonly preload: () => Promise<number>;
   readonly paste: (text: string) => Promise<void>;
@@ -275,6 +276,8 @@ export const startDictationSidecar = (input: {
     readonly inferMs: number;
     readonly loadMs: number;
     readonly roundTripMs: number;
+    /** The model file that recognised it; null from a sidecar too old to say. */
+    readonly model: string | null;
   }) => void;
 }): DictationSidecar => {
   let child: NodeChildProcess.ChildProcessWithoutNullStreams | null = null;
@@ -406,6 +409,7 @@ export const startDictationSidecar = (input: {
             inferMs: Number(event["inferMs"] ?? 0),
             loadMs: Number(event["loadMs"] ?? 0),
             roundTripMs: Date.now() - sentAt,
+            model: typeof event["model"] === "string" ? event["model"] : null,
           });
         return settle(
           event["id"] as number,
@@ -449,11 +453,14 @@ export const startDictationSidecar = (input: {
         deviceWaiters.push(resolve);
         send({ cmd: "devices" });
       }),
-    transcribe: async (wav) => {
+    transcribe: async (wav, model) => {
       const pid = child?.pid;
       if (pid !== undefined) input.recognising?.(pid, true);
       try {
-        return await call<string>({ cmd: "transcribe", wav }, true);
+        return await call<string>(
+          { cmd: "transcribe", wav, ...(model == null ? {} : { model }) },
+          true,
+        );
       } finally {
         if (pid !== undefined) input.recognising?.(pid, false);
       }
@@ -499,6 +506,10 @@ export const makeSidecarStt = (
   onOutside?: (code: string) => void,
   /** His cloud recogniser when he chose one: it gets the clip and falls back to `local` itself. */
   recognise?: (wav: Uint8Array, audioMs: number, local: () => Promise<string>) => Promise<string>,
+  /** The model file to recognise with, read for each clip; dictation's when it gives null. */
+  model?: () => string | null,
+  /** That model failed (it would not load): told once per failure, and the clip is heard by dictation's instead. */
+  onModelFailed?: (file: string, error: unknown) => void,
 ): SttProvider => ({
   name: "parakeet",
   transcribe: async (pcm) => {
@@ -507,7 +518,14 @@ export const makeSidecarStt = (
     try {
       const wav = encodeWav(pcm);
       await NodeFSP.writeFile(file, wav);
-      const local = () => sidecar.transcribe(file);
+      const own = model?.() ?? null;
+      const local = () =>
+        own === null
+          ? sidecar.transcribe(file)
+          : sidecar.transcribe(file, own).catch((error: unknown) => {
+              onModelFailed?.(own, error);
+              return sidecar.transcribe(file);
+            });
       const text = await (recognise === undefined
         ? local()
         : recognise(wav, pcm.length / 16, local));
