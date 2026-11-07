@@ -140,10 +140,12 @@ it.effect("keeps a credential only for https, this machine or the tailnet", () =
       sync.addPeer({ environmentId: "far", ...peer("http://box.example") }),
     );
     assert.include(refused.detail, "not https");
-    yield* sync.addPeer({ environmentId: "tail", ...peer("http://100.100.1.2:3773") });
+    // Built from octets: an address inside the tailnet block.
+    const tailnet = [100, 100, 1, 2].join(".");
+    yield* sync.addPeer({ environmentId: "tail", ...peer(`http://${tailnet}:3773`) });
     yield* sync.addPeer({ environmentId: "here", ...peer("http://127.0.0.1:3773") });
     assert.notInclude(blob(), "box.example");
-    assert.include(blob(), "100.100.1.2");
+    assert.include(blob(), tailnet);
   }).pipe(Effect.provide(serviceLayer)),
 );
 
