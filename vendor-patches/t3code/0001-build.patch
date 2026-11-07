@@ -457,7 +457,7 @@ index 02f19b07b4531a4cd2760c99e642f694f56ab138..7244389061b6f0f7a953345b7b6369fa
 +  assert.include(batonSidecarBuild("mac", "x64")[0]!.cmake, "CMAKE_OSX_ARCHITECTURES=x86_64");
 +});
 diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
-index 599c6b809a18ff4ce320c9780c87bd244d94dad3..40f55c891e6a237428abd7a16841283ae4770c8d 100644
+index 599c6b809a18ff4ce320c9780c87bd244d94dad3..542b408ede7854e8b3d92c5283f5fb74f86d8bf9 100644
 --- a/scripts/build-desktop-artifact.ts
 +++ b/scripts/build-desktop-artifact.ts
 @@ -15,6 +15,7 @@ import {
@@ -549,9 +549,9 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..40f55c891e6a237428abd7a16841283a
 +    from: "apps/desktop/resources/tessaya",
 +    to: "tessaya",
 +  },
-+  // The bundled server's memory recall model (MEM-13); fetched by scripts/tessaya/fetch-memory-model.mjs before a build.
++  // The bundled server's memory recall model (MEM-13); fetched by scripts/tessaya/fetch-memory-model.mjs, staged below.
 +  {
-+    from: "apps/server/resources/memory-model",
++    from: "apps/desktop/prod-resources/memory-model",
 +    to: "memory-model",
 +  },
  ] as const;
@@ -778,6 +778,18 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..40f55c891e6a237428abd7a16841283a
    if (options.platform === "linux") {
      for (const backend of ["kde", "hyprland"] as const)
        yield* stageLinuxCaptureHelper({
+@@ -3804,6 +4036,11 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
+   // electron-builder is filtering out stageResourcesDir directory in the AppImage for production
+   const stageProdResourcesDir = path.join(stageAppDir, "apps/desktop/prod-resources");
+   yield* fs.copy(stageResourcesDir, stageProdResourcesDir);
++  // Extra resources resolve inside the stage; the memory model lives with the server, so it is copied in.
++  yield* fs.copy(
++    path.join(repoRoot, "apps/server/resources/memory-model"),
++    path.join(stageProdResourcesDir, "memory-model"),
++  );
+ 
+   const configuredMacPasskeySigning =
+     options.platform === "mac" && options.signed
 diff --git a/scripts/lib/cli-external-packages.test.ts b/scripts/lib/cli-external-packages.test.ts
 index 7ea1c3968452e310254ecf4088e873289e79406d..afc16423104662783bb841ffa4358539c7aa90cd 100644
 --- a/scripts/lib/cli-external-packages.test.ts

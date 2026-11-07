@@ -1140,9 +1140,9 @@ export const DESKTOP_EXTRA_RESOURCES = [
     from: "apps/desktop/resources/tessaya",
     to: "tessaya",
   },
-  // The bundled server's memory recall model (MEM-13); fetched by scripts/tessaya/fetch-memory-model.mjs before a build.
+  // The bundled server's memory recall model (MEM-13); fetched by scripts/tessaya/fetch-memory-model.mjs, staged below.
   {
-    from: "apps/server/resources/memory-model",
+    from: "apps/desktop/prod-resources/memory-model",
     to: "memory-model",
   },
 ] as const;
@@ -4036,6 +4036,11 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
   // electron-builder is filtering out stageResourcesDir directory in the AppImage for production
   const stageProdResourcesDir = path.join(stageAppDir, "apps/desktop/prod-resources");
   yield* fs.copy(stageResourcesDir, stageProdResourcesDir);
+  // Extra resources resolve inside the stage; the memory model lives with the server, so it is copied in.
+  yield* fs.copy(
+    path.join(repoRoot, "apps/server/resources/memory-model"),
+    path.join(stageProdResourcesDir, "memory-model"),
+  );
 
   const configuredMacPasskeySigning =
     options.platform === "mac" && options.signed
