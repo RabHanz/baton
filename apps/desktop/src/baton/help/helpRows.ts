@@ -120,6 +120,7 @@ export const INTERNAL = new Set([
   "vault_save_pending",
   "memory_pin",
   "memory_used",
+  "memory_history",
   "remember_target",
   "wait",
 ]);

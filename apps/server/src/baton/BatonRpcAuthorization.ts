@@ -115,6 +115,7 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_MEMORY_WS_METHODS.list]: AuthOrchestrationReadScope,
   [BATON_MEMORY_WS_METHODS.search]: AuthOrchestrationReadScope,
   [BATON_MEMORY_WS_METHODS.used]: AuthOrchestrationReadScope,
+  [BATON_MEMORY_WS_METHODS.history]: AuthOrchestrationReadScope,
   [BATON_MEMORY_WS_METHODS.export]: AuthOrchestrationReadScope,
   // Reads files from any folder on this machine and writes memory: both permissions, or a narrowed
   // pairing reads what upstream's filesystem:read keeps from it.
@@ -132,6 +133,7 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_MEMORY_WS_METHODS.syncPush]: AuthBatonMemorySyncScope,
   [BATON_MEMORY_WS_METHODS.add]: AuthOrchestrationOperateScope,
   [BATON_MEMORY_WS_METHODS.edit]: AuthOrchestrationOperateScope,
+  [BATON_MEMORY_WS_METHODS.restore]: AuthOrchestrationOperateScope,
   [BATON_MEMORY_WS_METHODS.pin]: AuthOrchestrationOperateScope,
   [BATON_MEMORY_WS_METHODS.forget]: AuthOrchestrationOperateScope,
   [BATON_MEMORY_WS_METHODS.accept]: AuthOrchestrationOperateScope,
@@ -207,6 +209,8 @@ export const DESK_METHODS: ReadonlySet<string> = new Set([
       "accept",
       "recall",
       "used",
+      "history",
+      "restore",
       "export",
       "learn",
     ] as const

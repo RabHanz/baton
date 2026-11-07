@@ -480,6 +480,21 @@ export const makeHandlers = Effect.gen(function* () {
           Effect.map(memory.add(input), (item) => ({ item })),
         ),
       ),
+    [BATON_MEMORY_WS_METHODS.history]: (input) =>
+      run(
+        Effect.flatMap(BatonMemoryService, (memory) =>
+          Effect.map(
+            memory.history(input.id, { agent: input.agent, admin: input.admin }),
+            (versions) => ({ versions }),
+          ),
+        ),
+      ),
+    [BATON_MEMORY_WS_METHODS.restore]: (input) =>
+      run(
+        Effect.flatMap(BatonMemoryService, (memory) =>
+          Effect.map(memory.restore(input.id, input.version), (item) => ({ item })),
+        ),
+      ),
     [BATON_MEMORY_WS_METHODS.edit]: (input) =>
       run(
         Effect.flatMap(BatonMemoryService, (memory) =>

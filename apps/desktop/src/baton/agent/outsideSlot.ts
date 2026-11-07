@@ -78,6 +78,8 @@ export const createOutsideSlot = (input: {
     forget: (id) => memory.forget(id),
     pin: (id, pinned) => memory.pin(id, pinned),
     used: () => memory.used(),
+    // The device's walled view: a walled item has no history to it.
+    memoryHistory: (id) => memory.history(id),
     type: async (text, window) => {
       for (let at = 0; at < text.length; at += TYPE_CHUNK) {
         if (closed) return STOPPED;

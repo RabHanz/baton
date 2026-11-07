@@ -10,6 +10,7 @@ import {
   type MemoryClient,
   type MemoryHit,
   type MemoryItem,
+  type MemoryVersion,
 } from "@t3tools/baton-shared/memory";
 
 import type { NotesStore } from "./memoryNotes.ts";
@@ -141,6 +142,22 @@ export const createDesktopMemory = (input: {
       return out.items.length === 0
         ? "That answer did not draw on any memory."
         : out.items.map((i) => `- ${i.text} (${i.kind})`).join("\n");
+    },
+    /** An item's earlier wordings, as this persona may see it: walls hold here as for the item. */
+    history: async (id: string): Promise<string> => {
+      const out = await ask<{ versions: ReadonlyArray<MemoryVersion> }>("history", {
+        id,
+        ...agent(),
+      });
+      if (out === null) return "Memory is not reachable.";
+      return out.versions.length === 0
+        ? "It has not been changed."
+        : out.versions
+            .map(
+              (v) =>
+                `- version ${v.version}, ${v.at.slice(0, 10)}, by ${v.by} (${v.why}): ${v.text}`,
+            )
+            .join("\n");
     },
     /** After a turn: fire and forget, never read aloud and never in the way. */
     learn: (

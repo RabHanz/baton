@@ -184,7 +184,8 @@ function memoryRow(c) {
   if (c.held) { const keep = $('button', 'btn primary', 'Keep'); keep.onclick = () => set('m.accept:' + id, null); acts.appendChild(keep); }
   else if (c.section !== 'Replaced') {
     const pin = $('button', 'btn quiet', c.pinned ? 'Unpin' : 'Pin'); pin.setAttribute('aria-pressed', String(c.pinned)); pin.onclick = () => set('m.pin:' + id, !c.pinned);
-    const ed = $('button', 'btn quiet', 'Edit'); ed.onclick = () => { memEditing.add(c.id); render(); }; acts.append(pin, ed);
+    const ed = $('button', 'btn quiet', 'Edit'); ed.onclick = () => { memEditing.add(c.id); render(); };
+    const hi = $('button', 'btn quiet', 'History'); hi.onclick = () => set('m.history:' + id, null); acts.append(pin, ed, hi);
   }
   const fg = $('button', 'btn quiet', c.held ? 'Dismiss' : 'Forget'); fg.onclick = () => set('m.forget:' + id, null); acts.appendChild(fg);
   r.appendChild(acts); wrap.appendChild(r); return wrap;

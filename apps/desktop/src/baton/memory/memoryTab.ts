@@ -7,7 +7,7 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import type { MemoryItem } from "@t3tools/baton-shared/memory";
+import type { MemoryItem, MemoryVersion } from "@t3tools/baton-shared/memory";
 
 import type { HomeControl } from "../home/batonHome.ts";
 import type { MemoryCall } from "./memoryClient.ts";
@@ -37,6 +37,19 @@ export const createMemoryTab = (input: {
   let loading = false;
   let pullOn = false;
   let peers: ReadonlyArray<SyncPeer> = [];
+  let history: { readonly id: string; readonly versions: ReadonlyArray<MemoryVersion> } | null =
+    null;
+  const loadHistory = async (id: string): Promise<void> => {
+    try {
+      const out = (await input.call("history", { id, admin: true })) as {
+        versions?: ReadonlyArray<MemoryVersion>;
+      } | null;
+      history = { id, versions: out?.versions ?? [] };
+    } catch (error) {
+      status = reason(error);
+    }
+    input.refresh();
+  };
 
   const load = async (): Promise<void> => {
     if (loading) return;
@@ -157,6 +170,22 @@ export const createMemoryTab = (input: {
         .run()
         .then((line) => void (status = line))
         .then(load);
+    } else if ((target = memoryIdOf(id, "m.history")) !== null) {
+      // The same button closes it.
+      if (history?.id === target) {
+        history = null;
+        input.refresh();
+      } else void loadHistory(target);
+    } else if ((target = memoryIdOf(id, "m.restore")) !== null) {
+      const at = target.lastIndexOf(":");
+      const itemId = target.slice(0, at);
+      const version = Number(target.slice(at + 1));
+      if (itemId === "" || !Number.isInteger(version)) return true;
+      void run(
+        "restore",
+        { id: itemId, version },
+        `Restored version ${version} as the newest.`,
+      ).then(() => loadHistory(itemId));
     } else if ((target = memoryIdOf(id, "m.edit")) !== null) {
       void run("edit", { id: target, text }, "Saved.");
     } else if ((target = memoryIdOf(id, "m.pin")) !== null) {
@@ -190,6 +219,7 @@ export const createMemoryTab = (input: {
             peers,
             pullOn,
             status,
+            history,
           }),
   };
 };

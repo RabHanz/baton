@@ -367,6 +367,8 @@ export interface BatonMemoryBridgeRequest {
     | "accept"
     | "recall"
     | "used"
+    | "history"
+    | "restore"
     | "export"
     | "learn"
     | "import"
