@@ -246,10 +246,12 @@ export const withPreempt = (
       ? {}
       : {
           prepare: async (effect, context) => {
-            const go = await prepare(effect, context);
+            // A failed read must not lose a dictionary command: the preempt runs first, at go.
+            const go = prepare(effect, context);
+            go.catch(() => undefined);
             return async () => {
               const reply = await preempt(effect.text);
-              return reply === null ? go() : answered(reply);
+              return reply === null ? (await go)() : answered(reply);
             };
           },
         }),

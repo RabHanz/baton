@@ -421,7 +421,8 @@ export const createVoiceCore = (input: {
         early.wake === addressee;
       const outcome = await Promise.race([
         thought
-          ? early.go.then((go) => go())
+          ? // He may carry on while it is still being thought out: then it never acts.
+            early.go.then((go) => (flight === mine ? go() : null))
           : input.router.route(effect, {
               bus,
               now: now(),
