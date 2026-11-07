@@ -73,6 +73,7 @@ import { readPack } from "./OperatingSystemPack.ts";
 import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts";
 import * as FleetQuery from "./FleetQuery.ts";
 import { herdrSend } from "./HerdrSend.ts";
+import { BatonSessionsAcross } from "./BatonSessionsAcross.ts";
 import { BatonIntentService } from "./IntentService.ts";
 import { liveAdopt, liveAttach, liveSetModel } from "./LiveActions.ts";
 import { setModelResumingStopped } from "@t3tools/baton-shared/liveModel";
@@ -104,6 +105,7 @@ export type BatonServices =
   | BatonWeaveService
   | BatonCloudService
   | BatonSessionCatalogService
+  | BatonSessionsAcross
   | BatonMemoryLearning
   | ServerConfig.ServerConfig
   | ScheduledTaskService
@@ -327,6 +329,8 @@ export const makeHandlers = Effect.gen(function* () {
           );
         }),
       ),
+    [BATON_SESSIONS_WS_METHODS.across]: () =>
+      run(Effect.flatMap(BatonSessionsAcross, (sessions) => sessions.list)),
     [BATON_LIVE_WS_METHODS.herdrSend]: (input) =>
       run(Effect.flatMap(AdoptedSessionService, (adopted) => herdrSend(adopted, input))),
     // Settling a work session settles its threads in upstream too, so T3's own sidebar agrees.

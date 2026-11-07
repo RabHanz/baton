@@ -1,6 +1,6 @@
 /**
  * The fleet as an outside agent or a linked environment reads it (GEN-6): what is live and its state, never what was
- * said. No synopsis, no pane's blocked prompt, no folders; a walled project's work shows only its project's name.
+ * said. No synopsis, no pane's blocked prompt, no folders, no account names; a walled project's work shows only its project's name.
  */
 import type { BatonFleet, BatonProjectRef } from "@t3tools/baton-contracts";
 
@@ -49,7 +49,12 @@ export const fleetForOutside = (
           claudeSessions: fleet.claudeSessions.map((session) => {
             const project = refLabel(session.project);
             const { configDir: _home, ...rest } = session;
-            return { ...rest, cwd: project ?? "-", name: walled(project) ? project : session.name };
+            return {
+              ...rest,
+              cwd: project ?? "-",
+              name: walled(project) ? project : session.name,
+              account: null,
+            };
           }),
         }),
   };

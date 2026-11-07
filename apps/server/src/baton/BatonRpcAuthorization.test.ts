@@ -1,4 +1,5 @@
 import {
+  AuthAccessReadScope,
   AuthBatonCloudApproveScope,
   AuthBatonHandsHostScope,
   AuthBatonMemorySyncScope,
@@ -9,9 +10,11 @@ import {
   BATON_ACCOUNT_WS_METHODS,
   BATON_CLOUD_WS_METHODS,
   BATON_JOB_WS_METHODS,
+  BATON_LIVE_WS_METHODS,
   BATON_MEMORY_WS_METHODS,
   BATON_PHONE_WS_METHODS,
   BATON_RECORD_WS_METHODS,
+  BATON_SESSIONS_WS_METHODS,
   BatonRecordAppendInput,
   AuthGrantScopes,
   BatonRpcScopeAuthorization,
@@ -113,6 +116,17 @@ describe("the desktop's direct door while T3's window is closed", () => {
     // A job starts only by placement, which picks the project and worker on this server.
     expect(DESK_METHODS.has(BATON_JOB_WS_METHODS.jobStart)).toBe(false);
     expect(DESK_METHODS.has(BATON_JOB_WS_METHODS.jobPlace)).toBe(true);
+    // The session list is a read; typing into a pane here needs the operate scope.
+    expect(missingBatonScope(BATON_SESSIONS_WS_METHODS.across, [AuthOrchestrationReadScope])).toBe(
+      AuthAccessReadScope,
+    );
+    expect(missingBatonScope(BATON_SESSIONS_WS_METHODS.across, AuthStandardClientScopes)).toBe(
+      null,
+    );
+    expect(missingBatonScope(BATON_LIVE_WS_METHODS.herdrSend, [AuthOrchestrationReadScope])).toBe(
+      AuthOrchestrationOperateScope,
+    );
+    expect(DESK_METHODS.has(BATON_LIVE_WS_METHODS.herdrSend)).toBe(true);
     // The folder is on this machine, and only the desktop app's own session holds the scope to read it.
     expect(DESK_METHODS.has(BATON_MEMORY_WS_METHODS.import)).toBe(true);
     expect(missingBatonScope(BATON_MEMORY_WS_METHODS.import, AuthStandardClientScopes)).toBe(

@@ -834,7 +834,7 @@ index dc67bd9387e04b91fa61d34ea47929c056256796..93263b7b064ba3389f92c2f5935bd6a2
    return AgentSessionScanner.of({ scan, recentThreads });
  });
 diff --git a/apps/server/src/server.ts b/apps/server/src/server.ts
-index 5c9ab9c433ffc56e8536f7d0b3ce7da440777ad2..3a7d3fb4970e41f1f3ccc29a09751ee02c76c81a 100644
+index 5c9ab9c433ffc56e8536f7d0b3ce7da440777ad2..3cc3f526e25fdec86271f8d6fdda3a822d57017d 100644
 --- a/apps/server/src/server.ts
 +++ b/apps/server/src/server.ts
 @@ -6,6 +6,7 @@ import * as AssetSigner from "./assets/AssetSigner.ts";
@@ -854,7 +854,7 @@ index 5c9ab9c433ffc56e8536f7d0b3ce7da440777ad2..3a7d3fb4970e41f1f3ccc29a09751ee0
  import * as PeerForwarding from "./peer/PeerForwarding.ts";
  import * as RemoteDelegation from "./peer/RemoteDelegation.ts";
  import * as PeerLinkRequests from "./peer/PeerLinkRequests.ts";
-@@ -667,7 +670,12 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
+@@ -667,7 +670,14 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
    layerProviderInstallationRefresh,
    ReplayMarkers.layer,
    Layer.effectDiscard(ProjectSettingsOverrideSweep.sweep),
@@ -862,12 +862,14 @@ index 5c9ab9c433ffc56e8536f7d0b3ce7da440777ad2..3a7d3fb4970e41f1f3ccc29a09751ee0
  ).pipe(
 +  // Baton (vendor-patches/t3code/0002-server-hooks.patch): its services, on upstream's engine.
 +  Layer.provideMerge(BatonServerLayer.services),
++  // Baton's cross-environment session list reaches linked environments the way agents do (GEN-6).
++  Layer.provideMerge(PeerMcpClient.layer.pipe(Layer.provideMerge(PeerLinks.layer))),
 +  // The same memoized sink the runtime uses, for Baton's live-session threads (D83).
 +  Layer.provideMerge(RuntimeLayer.layerEventSink),
    Layer.provideMerge(layerOrchestrationApplication),
    Layer.provideMerge(RuntimeLayer.layerEventInfrastructure),
    Layer.provideMerge(Layer.merge(ProjectStore.layer, ThreadSearch.layer)),
-@@ -781,11 +789,18 @@ const layerMakeRoutes = Layer.mergeAll(
+@@ -781,11 +791,18 @@ const layerMakeRoutes = Layer.mergeAll(
      GuestHttp.layer,
      DeviceHubProxy.layer,
      ServerBrowserStream.routeLayer,

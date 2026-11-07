@@ -4835,6 +4835,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           : jobControls(jobsCache)),
       ...at("catalog"),
       ...(input.catalog?.controls() ?? []),
+      ...(input.sessions?.notes() ?? []).map((detail, i) => ({
+        id: `n.warn.${i}`,
+        section: "Sessions",
+        label: "Not shown",
+        kind: "check" as const,
+        status: "warn" as const,
+        detail,
+      })),
       ...(input.sessions === undefined
         ? []
         : input.sessions.rows().length > 0
@@ -4858,7 +4866,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
                 id: "n.empty",
                 section: "Sessions",
                 label: "No sessions loaded yet",
-                hint: "They appear here once T3's sessions view has opened.",
+                hint: "They appear here once this computer's server or T3's sessions view answers.",
                 kind: "action" as const,
                 button: "Open sessions",
               },

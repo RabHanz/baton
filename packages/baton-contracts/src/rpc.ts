@@ -153,6 +153,8 @@ import {
   BatonCatalogSendResult,
   BatonCatalogWaitingInput,
   BatonCatalogWaitingResult,
+  BatonSessionsAcrossInput,
+  BatonSessionsAcrossResult,
 } from "./sessionCatalog.ts";
 import { BATON_CLOUD_WS_METHODS, BatonCloudCallInput, BatonCloudCallResult } from "./cloud.ts";
 import {
@@ -487,6 +489,11 @@ const WsBatonSessionsWaitingRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.waiting, {
   payload: BatonCatalogWaitingInput,
   success: BatonCatalogWaitingResult,
   error: CatalogErrors,
+});
+const WsBatonSessionsAcrossRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.across, {
+  payload: BatonSessionsAcrossInput,
+  success: BatonSessionsAcrossResult,
+  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
 const WsBatonSessionsSendRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.send, {
   payload: BatonCatalogSendInput,
@@ -845,6 +852,7 @@ export const BatonRpcGroup = RpcGroup.make(
   WsBatonSessionsReattachRpc,
   WsBatonSessionsKeptRpc,
   WsBatonSessionsWaitingRpc,
+  WsBatonSessionsAcrossRpc,
   WsBatonSessionsResumeRpc,
   WsBatonSessionsCreateRpc,
   WsBatonSessionsSendRpc,

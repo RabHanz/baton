@@ -62,12 +62,13 @@ const fleet = {
       name: "keys",
       project: { key: "dir:payroll", label: "Payroll" },
       configDir: "/home/dev/.claude-work",
+      account: "alex@example.com",
     },
   ],
 } as unknown as BatonFleet;
 
 describe("the fleet an outside agent reads", () => {
-  it("carries no words that were said, no folders, and a walled project's work only by its project's name", () => {
+  it("carries no words that were said, no folders, no account, and a walled project's work only by its project's name", () => {
     const pack = { ...DEFAULT_OS_PACK, walled: ["Payroll"] };
     const titles: Record<string, string> = { "p-secret": "Payroll", "p-shop": "Shop" };
     const out = fleetForOutside(fleet, pack, (id) => titles[id] ?? null);
@@ -78,6 +79,8 @@ describe("the fleet an outside agent reads", () => {
     expect(text).not.toContain("fix/payroll");
     expect(text).not.toContain("payroll pane");
     expect(text).not.toContain('keys"');
+    // Account names are personal.
+    expect(text).not.toContain("alex@example.com");
     expect(out.entries.map((e) => e.title)).toEqual(["Payroll", "Tidy the README"]);
     expect(out.entries.map((e) => e.state)).toEqual(["running", "idle"]);
   });
