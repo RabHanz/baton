@@ -308,3 +308,55 @@ it.effect("weave_send holds one client session to 30 messages a minute", () =>
     expect(sent).toHaveLength(30);
   }),
 );
+
+it.effect(
+  "tells an agent how she is set up, one section at a time, and says so when her desktop is away",
+  () =>
+    Effect.gen(function* () {
+      const inbox = yield* BatonPhoneInbox;
+      const runtime = Context.make(BatonPhoneInbox, inbox) as never;
+      const away = yield* callTool("read-only", runtime, "tessaya_state", { section: "voice" });
+      expect(away.result).toMatchObject({ connected: false, section: "voice" });
+      expect(String((away.result as { value: unknown }).value)).toContain("isn't connected");
+      expect((away.result as { server: { version: string } }).server.version).not.toBe("");
+
+      yield* inbox.take;
+      yield* inbox.publishState({
+        settings: {
+          output: "spoken",
+          captureApproval: "ask",
+          actWithoutAsking: false,
+          socialOn: true,
+          browserChrome: false,
+          remoteHands: false,
+          assistantModel: "auto",
+          assistantEffort: "auto",
+        },
+        voice: {
+          enabled: true,
+          voice: "anna",
+          recognition: "local",
+          cloudProvider: "openai",
+          cloudModel: null,
+          languages: ["en"],
+          wakeWords: ["freya"],
+          dictationCleanup: "claude",
+        },
+        personas: [],
+        skills: [],
+        diagnostics: {
+          appVersion: "1.2.3",
+          brain: "opus",
+          voiceEngine: "kokoro",
+          recognition: "local",
+          environments: [],
+          errors: [],
+        },
+      });
+      const here = yield* callTool("read-only", runtime, "tessaya_state", { section: "voice" });
+      expect(here.result).toMatchObject({
+        connected: true,
+        value: { recognition: "local", wakeWords: ["freya"] },
+      });
+    }).pipe(Effect.provide(inboxLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)))),
+);

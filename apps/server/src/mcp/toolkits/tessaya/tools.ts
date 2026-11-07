@@ -19,6 +19,7 @@ import {
   WatchResult,
 } from "@t3tools/baton-contracts";
 import { OrchestratorMcpEnvironmentTarget, OrchestratorMcpFailure } from "@t3tools/contracts";
+import { DESKTOP_STATE_SECTIONS } from "@t3tools/baton-contracts";
 import * as Schema from "effect/Schema";
 import * as Context from "effect/Context";
 import * as Fiber from "effect/Fiber";
@@ -209,6 +210,26 @@ const MemoryHistoryTool = Tool.make("tessaya_memory_history", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+const StateTool = Tool.make("tessaya_state", {
+  ...shared,
+  description:
+    "How Tessaya is set up on the Director's computer, one section at a time: `settings` (how she answers and what she may do unasked), `voice` (voice, recognition local or cloud, languages, wake words), `personas`, `skills`, or `diagnostics` (versions, each connection, recent error codes, the brain and voice engines). Not for what is running, stuck or waiting: that is `tessaya_watch` and `tessaya_jobs`. Read only, and never keys, the vault or anything said: to change something, ask with `tessaya_ask`. When her desktop app is not connected, only this server's own facts come back.",
+  parameters: Schema.Struct({ section: Schema.Literals(DESKTOP_STATE_SECTIONS) }),
+  success: Schema.Struct({
+    connected: Schema.Boolean,
+    /** When the desktop last reported, ISO time; null when it never has. */
+    at: Schema.NullOr(Schema.String),
+    section: Schema.String,
+    value: Schema.Unknown,
+    server: Schema.Struct({ version: Schema.String }),
+  }),
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
 export const TessayaToolkit = Toolkit.make(
   JobsTool,
   WatchTool,
@@ -221,4 +242,5 @@ export const TessayaToolkit = Toolkit.make(
   AskStatusTool,
   WeaveSendTool,
   WeaveListTool,
+  StateTool,
 );

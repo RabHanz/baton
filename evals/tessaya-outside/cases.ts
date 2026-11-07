@@ -100,4 +100,49 @@ export const outsideCases: ReadonlyArray<OutsideCase> = [
     calls: ["tessaya_memory_history"],
     callsMustNot: ["tessaya_ask"],
   },
+  {
+    id: "outside-reads-state-not-asks",
+    source:
+      "Parity phase B: a question about her setup is read with tessaya_state, not asked of him",
+    prompt: "Is Tessaya using cloud speech recognition on the Director's laptop, or local?",
+    answers: {
+      tessaya_state: {
+        connected: true,
+        at: "2026-11-07T10:00:00.000Z",
+        section: "voice",
+        value: { recognition: "local", cloudProvider: "openai", cloudModel: null },
+        server: { version: "1.2.3" },
+      },
+    },
+    calls: ["tessaya_state"],
+    callsMustNot: ["tessaya_ask"],
+  },
+  {
+    id: "outside-changes-setting-through-ask",
+    source: "Parity phase B: a change to her settings goes through tessaya_ask, never claimed done",
+    prompt: "Switch Tessaya's speech recognition on the laptop to cloud, with OpenAI.",
+    answers: {
+      tessaya_state: {
+        connected: true,
+        at: "2026-11-07T10:00:00.000Z",
+        section: "voice",
+        value: { recognition: "local", cloudProvider: "openai", cloudModel: null },
+        server: { version: "1.2.3" },
+      },
+      tessaya_ask: {
+        id: "mcp-1",
+        status: "queued",
+        line: "Waiting for your computer to pick it up.",
+      },
+      tessaya_ask_status: {
+        id: "mcp-1",
+        status: "queued",
+        line: "Waiting for your computer to pick it up.",
+      },
+    },
+    calls: ["tessaya_ask"],
+    callsMustNot: [],
+    askMatches: /cloud/i,
+    replyMustNot: /\b(has been|I've|I have|is now|successfully) (switched|changed|set)\b/i,
+  },
 ];

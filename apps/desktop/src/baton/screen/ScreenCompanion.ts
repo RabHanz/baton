@@ -16,6 +16,7 @@ import {
   learnFromTurn,
   learnNightly as learnNightlyFrom,
   pruneRecentTurns,
+  readSkills,
   readStates,
   skillsDirOf,
   skillsForTurn,
@@ -112,6 +113,7 @@ import { createMouseConsent, pointerMoved } from "../agent/pointerGuard.ts";
 import { createAgentGate, createTaint, type Gate } from "../agent/agentGate.ts";
 import { createOutsideSlot } from "../agent/outsideSlot.ts";
 import { createTurnLock, INTERRUPTED, labelPrompt } from "./turnLock.ts";
+import type { DesktopStateInput } from "../phone/desktopState.ts";
 import { createTurnLedger, stoppedBy, traceCalls } from "../agent/turnLedger.ts";
 import { buildRemoteHandsTools, type RemoteHandsDeps } from "../agent/remoteHandsTools.ts";
 import type { HandsResult } from "@t3tools/baton-shared/remoteHands";
@@ -148,7 +150,7 @@ import { redactForHistory } from "../vault/redact.ts";
 import { createVaultHost, type VaultHost } from "../vault/vaultHost.ts";
 import { vaultFor } from "../vault/vaultInstance.ts";
 import { createMemorySync } from "../memory/memorySync.ts";
-import { plainError, stepLine } from "@t3tools/baton-shared/stepLine";
+import { errorCode, plainError, stepLine } from "@t3tools/baton-shared/stepLine";
 import { createNotesStore, notesBlock } from "../memory/memoryNotes.ts";
 import {
   assistantFrame,
@@ -515,6 +517,7 @@ export interface ScreenCompanion {
   ) => Promise<{ readonly spoken: string; readonly card: string }>;
   /** Mirrors the questions it asks him to his phone; null stops. The first answer, here or there, counts. */
   readonly setPhoneMirror: (mirror: PhoneMirror | null) => void;
+  readonly stateForServer: () => Omit<DesktopStateInput, "voice" | "appVersion" | "environments">;
   /** A reply from outside the assistant, shown in full when answers are written only. */
   readonly notice: (text: string) => void;
   /** An unprompted line: a card, and aloud when asked and spoken answers are on. */
@@ -684,6 +687,7 @@ export const startScreenCompanion = (input: {
   let phoneCapture: { readonly spoken: string[]; card: string | null } | null = null;
   // A device's turn never overlaps his (turnLock.ts), so while one holds the lock every prompt is labelled as its.
   const turnLock = createTurnLock();
+  let recentErrors: ReadonlyArray<{ readonly code: string; readonly at: string }> = [];
   let phoneTurn = false;
   /** Whether the running turn's words are a device's, and every such sentence, so none counts as his. */
   const outsideSaid = new Set<string>();
@@ -1207,6 +1211,11 @@ export const startScreenCompanion = (input: {
 
   const fail = (error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
+    // Codes only, for diagnostics: the message itself never leaves this machine.
+    recentErrors = [
+      { code: errorCode(message), at: new Date().toISOString() },
+      ...recentErrors,
+    ].slice(0, 20);
     // He stopped it, and that ended the conversation under the question in flight.
     if (error instanceof SessionClosed) return;
     if (run === null && message.startsWith("Claude stopped")) return;
@@ -3266,6 +3275,14 @@ export const startScreenCompanion = (input: {
       void typed(text).catch(fail);
     },
     askFromPhone,
+    stateForServer: () => ({
+      screen: settings,
+      personas: readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas,
+      skills: readSkills(skillsDir()),
+      brain: `${faceModel.model} (${faceModel.effort})`,
+      voiceEngine: settings.output === "written" ? "written only" : "on this computer",
+      errors: recentErrors,
+    }),
     setPhoneMirror: (mirror) => {
       phoneMirror = mirror;
     },

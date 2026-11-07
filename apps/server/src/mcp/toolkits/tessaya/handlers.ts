@@ -7,6 +7,7 @@ import {
   BATON_SESSIONS_WS_METHODS,
   BATON_WATCH_WS_METHODS,
   BATON_WEAVE_WS_METHODS,
+  BatonDesktopState,
 } from "@t3tools/baton-contracts";
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as SecureRandom from "effect/crypto/SecureRandom";
@@ -19,6 +20,7 @@ import { recordText } from "@t3tools/baton-shared/audit";
 import { clientMessageFrom, withAgentMessageFrom } from "../../../baton/AgentMessageFrom.ts";
 import { gateMessage } from "../../../baton/AgentMessageGate.ts";
 import { AskOwner } from "../../../baton/BatonPhoneInbox.ts";
+import packageJson from "../../../../package.json" with { type: "json" };
 import * as BatonRpcHandlers from "../../../baton/BatonRpcHandlers.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
@@ -35,6 +37,14 @@ const decodeAsked = Schema.decodeUnknownOption(
 
 /** A name the caller chose, as one capped line, quoted for the Record. */
 const quoted = (text: string): string => JSON.stringify(recordText(text, 100));
+
+const decodeStateReply = Schema.decodeUnknownOption(
+  Schema.Struct({
+    connected: Schema.Boolean,
+    at: Schema.NullOr(Schema.String),
+    state: Schema.NullOr(BatonDesktopState),
+  }),
+);
 
 const failed = (cause: unknown) =>
   new OrchestratorMcpFailure({
@@ -115,6 +125,26 @@ export const layer = McpToolAccess.toLayer(
               line: asked?.line ?? "Nothing was asked.",
             };
           }),
+        ),
+      ),
+      tessaya_state: McpToolAccess.reads((input) =>
+        call(
+          Effect.map(
+            handlers[BATON_PHONE_WS_METHODS.call]({ op: "stateGet", args: {} }),
+            ({ value }) => {
+              const got = Option.getOrNull(decodeStateReply(value));
+              return {
+                connected: got?.connected === true,
+                at: got?.at ?? null,
+                section: input.section,
+                value:
+                  got?.connected === true && got.state !== null
+                    ? got.state[input.section]
+                    : "Tessaya's desktop app isn't connected to this server, so only the server's own facts are here.",
+                server: { version: packageJson.version },
+              };
+            },
+          ),
         ),
       ),
       // Only this agent's own requests: another agent's, the phone's and the web bar's are not its to read.

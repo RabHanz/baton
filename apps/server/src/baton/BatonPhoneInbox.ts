@@ -20,11 +20,17 @@ import {
   type PhoneAsk,
   type PhonePrompt,
 } from "@t3tools/baton-shared/phoneRelay";
-import { BatonPhoneError, type BatonPhoneCallInput } from "@t3tools/baton-contracts";
+import {
+  BatonDesktopState,
+  BatonPhoneError,
+  type BatonPhoneCallInput,
+} from "@t3tools/baton-contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Semaphore from "effect/Semaphore";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -108,6 +114,12 @@ export class BatonPhoneInbox extends Context.Service<
     readonly closePrompt: (id: string) => Effect.Effect<void>;
     /** Runs agents' check-and-post one at a time, so two at once cannot both pass the cap. */
     readonly agentsInTurn: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
+    /** The desktop's latest account of itself (`tessaya_state`), kept in memory only. */
+    readonly publishState: (state: BatonDesktopState) => Effect.Effect<void>;
+    readonly desktopState: Effect.Effect<{
+      readonly at: number;
+      readonly state: BatonDesktopState;
+    } | null>;
   }
 >()("t3/baton/BatonPhoneInbox") {}
 
@@ -121,6 +133,7 @@ export const AskOwner = Context.Reference<string | null>("t3/baton/BatonPhoneInb
 
 export const make = Effect.gen(function* () {
   const agentPosts = yield* Semaphore.make(1);
+  let latestState: { readonly at: number; readonly state: BatonDesktopState } | null = null;
   const sql = yield* SqlClient.SqlClient;
   let lastSeen: number | null = null;
 
@@ -311,6 +324,10 @@ export const make = Effect.gen(function* () {
     promptAnswer,
     closePrompt,
     agentsInTurn: Semaphore.withPermit(agentPosts),
+    publishState: Effect.fn("BatonPhoneInbox.publishState")(function* (state: BatonDesktopState) {
+      latestState = { at: yield* Clock.currentTimeMillis, state };
+    }),
+    desktopState: Effect.sync(() => latestState),
   });
 });
 
@@ -318,6 +335,8 @@ export const layer = Layer.effect(BatonPhoneInbox, make);
 
 const str = (v: unknown, max: number): string | null =>
   typeof v === "string" && v.length > 0 && v.length <= max ? v : null;
+
+const decodeDesktopState = Schema.decodeUnknownOption(BatonDesktopState);
 
 const AGENT_ASKS_OPEN_MAX = 3;
 const AGENT_ASK_OPEN =
@@ -379,6 +398,24 @@ export const phoneCall = Effect.fn("BatonPhoneInbox.call")(function* (input: Bat
       return {
         value:
           ask === null ? null : { status: ask.status, line: askLine(ask, yield* inbox.connected) },
+      };
+    }
+    // The desktop's account of itself: only the fields BatonDesktopState names survive the decode.
+    case "state": {
+      // Its caps bound every string and list, so an oversized account does not decode.
+      const state = decodeDesktopState(a["state"]);
+      if (Option.isNone(state)) return yield* bad();
+      yield* inbox.publishState(state.value);
+      return { value: null };
+    }
+    case "stateGet": {
+      const latest = yield* inbox.desktopState;
+      return {
+        value: {
+          connected: (yield* inbox.connected) && latest !== null,
+          at: latest === null ? null : DateTime.formatIso(DateTime.makeUnsafe(latest.at)),
+          state: latest?.state ?? null,
+        },
       };
     }
     case "renew": {
