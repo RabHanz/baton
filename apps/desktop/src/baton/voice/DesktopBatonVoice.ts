@@ -345,6 +345,7 @@ import {
   HEALTHY_RUN_MS,
   makeSidecarAudioInput,
   makeSidecarStt,
+  recordingAfter,
   restartDelayMs,
   startDictationSidecar,
   type DictationEvent,
@@ -412,7 +413,7 @@ import {
   withRetry,
 } from "./historyRetry.ts";
 import { buildTranscriptReport } from "./transcriptReport.ts";
-import { boostCore, quietThreshold } from "@t3tools/baton-shared/quietSpeech";
+import { boostCore, quietThreshold, silenceWhile } from "@t3tools/baton-shared/quietSpeech";
 import { makeOpusEncoder } from "./opusEncoder.ts";
 import { computeInsights } from "./insights.ts";
 import { readCaretContext } from "./caretContext.ts";
@@ -2943,7 +2944,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     }
     if (event.ev === "binding") return onBinding(event.id);
     if (event.ev === "configured") mouseHookReady = event.mouse === true;
-    setRecording(event.ev === "recording");
+    setRecording(recordingAfter(event.ev, releaseRecordingEscape !== null));
     if (event.ev === "recording") {
       focusedApp = { exe: event.app ?? "", title: event.title ?? "" };
       if (settings.dictationCleanup === "claude") rewriter.warm();
@@ -3530,7 +3531,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     note = choice.kind === "default" && settings.pinnedLabel !== null ? choice.reason : null;
     loop = await startVoiceLoop({
       audio,
-      core: boostCore(startCore, () => settings.quietSpeech),
+      // Hold, toggle, the setup's test and the tray all record through the sidecar: no wake or turn while they do.
+      core: silenceWhile(
+        boostCore(startCore, () => settings.quietSpeech),
+        () => releaseRecordingEscape !== null,
+      ),
       deviceId: choiceDeviceId(choice),
       onState: (next) => {
         state = next;

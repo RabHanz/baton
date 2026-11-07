@@ -40,6 +40,24 @@ export const createQuietBoost = () => {
 };
 
 /** The core, with audio lifted on its way in while `on()` says so. */
+/**
+ * A core that hears silence while `quiet()` is true, decided as each frame arrives: frames held for a
+ * slow start are replayed later, and must keep the verdict they had when they were heard.
+ */
+export const silenceWhile = <T extends { pushAudio: (frame: Int16Array) => void }>(
+  core: T,
+  quiet: () => boolean,
+): T =>
+  new Proxy(core, {
+    get: (target, prop) => {
+      if (prop === "pushAudio")
+        return (frame: Int16Array) =>
+          target.pushAudio(quiet() ? new Int16Array(frame.length) : frame);
+      const value = Reflect.get(target, prop, target) as unknown;
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+
 export const boostCore = <T extends { pushAudio: (frame: Int16Array) => void }>(
   core: T,
   on: () => boolean,

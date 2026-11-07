@@ -338,10 +338,9 @@ const utterance = (
         ...(d.kind === "stop" && d.text ? [{ kind: "dictate", text: d.text } as const] : []),
         { kind: "speak", text: "Stopped dictating." },
       ]);
-    // What he dictates loses only the name itself: "Desire to win" is his words, not Tessaya.
-    const typed = stripNamed(raw, timings.wakeWords ?? ["jarvis"]);
-    if (d.kind === "text" && typed.length > 0)
-      return step(s, [...carry, { kind: "dictate", text: typed }]);
+    // Dictation owns every word: the name said mid-dictation is typed like any other.
+    if (d.kind === "text" && raw.length > 0)
+      return step(s, [...carry, { kind: "dictate", text: raw }]);
     return step(s, carry);
   }
 

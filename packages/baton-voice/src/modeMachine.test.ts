@@ -300,13 +300,14 @@ describe("stop while dictating", () => {
     );
     expect(stopped.state.mode).toBe("conversation");
     expect(stopped.effects.some((e) => e.kind === "dictate")).toBe(false);
-    // The wake word said mid-dictation is never typed.
+    // The wake word said mid-dictation is an ordinary word: it is typed with the rest.
     const named = reduceVoice(
       start.state,
       { type: "utterance", text: "Freya, see you Friday", at: 40 },
       timings,
     );
-    expect(named.effects).toContainEqual({ kind: "dictate", text: "see you Friday" });
+    expect(named.state.mode).toBe("dictation");
+    expect(named.effects).toContainEqual({ kind: "dictate", text: "Freya, see you Friday" });
   });
 });
 
