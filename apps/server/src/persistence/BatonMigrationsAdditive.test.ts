@@ -30,8 +30,18 @@ const sourceOf = (id: number, name: string): string => {
   return NodeFS.readFileSync(NodePath.join(MIGRATIONS_DIR, file), "utf8");
 };
 
+/** Triggers whose body may delete or update: each runs on later writes, never at migration time, and is reviewed. */
+const REVIEWED_TRIGGERS = new Set(["fabric_memory_vectors_gone"]);
+
+/** Comments out first (a commented-out END must not end a trigger early), then the reviewed triggers' bodies. */
 const withoutTriggerBodies = (source: string): string =>
-  source.replace(/\bCREATE\s+TRIGGER\b[\s\S]*?\bEND\b/gi, "");
+  source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/--[^\n]*/g, "")
+    .replace(
+      /\bCREATE\s+TRIGGER\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)\b[\s\S]*?\bEND\b/gi,
+      (trigger, name: string) => (REVIEWED_TRIGGERS.has(name) ? "" : trigger),
+    );
 
 /** Statements that would make a Baton migration unsafe to roll back past. */
 const FORBIDDEN: ReadonlyArray<{ readonly pattern: RegExp; readonly what: string }> = [
@@ -50,10 +60,19 @@ describe("every Tessaya migration is additive", () => {
     expect(BATON_MIGRATIONS.length).toBeGreaterThan(0);
   });
 
-  it("reads past a trigger's body, and nothing after it", () => {
-    const sql =
-      "CREATE TRIGGER t AFTER DELETE ON a BEGIN DELETE FROM b WHERE id = old.id; END; DELETE FROM c";
-    expect(withoutTriggerBodies(sql)).toBe("; DELETE FROM c");
+  it("reads past a reviewed trigger's body only, and nothing after it", () => {
+    const body = "AFTER DELETE ON a BEGIN DELETE FROM b WHERE id = old.id; END; DELETE FROM c";
+    expect(
+      withoutTriggerBodies(`CREATE TRIGGER IF NOT EXISTS fabric_memory_vectors_gone ${body}`),
+    ).toBe("; DELETE FROM c");
+    // An unreviewed trigger is checked like any statement.
+    expect(withoutTriggerBodies(`CREATE TRIGGER other ${body}`)).toContain("DELETE FROM b");
+    // A commented-out END does not end the trigger early.
+    expect(
+      withoutTriggerBodies(
+        "CREATE TRIGGER fabric_memory_vectors_gone AFTER DELETE ON a BEGIN -- END\n DELETE FROM b; END;",
+      ),
+    ).toBe(";");
   });
 
   it("never drops, renames or rewrites anything", () => {
