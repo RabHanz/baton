@@ -68,6 +68,8 @@ export type HomeControl =
   | (HomeControlBase & {
       readonly kind: "action";
       readonly button: string;
+      /** Sent with the click, so the handler acts on what the button said when he pressed it. */
+      readonly value?: string;
       /** A second button beside it; its action id is `<id>:later`. */
       readonly secondary?: string;
     })
