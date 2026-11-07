@@ -180,6 +180,48 @@ describe("kept messages on a row", () => {
     expect(row().kept).toBeNull();
     expect(resumed).toEqual([]);
   });
+
+  it("looks again once a send under way may have ended, and hides the button when none are left", async () => {
+    const stopped = rows.find((r) => r.state === "stopped")!;
+    let answers = [
+      { messages: ["first"], sending: true },
+      { messages: [] as string[], sending: false },
+    ];
+    let pending: Promise<unknown> = Promise.resolve();
+    const later: Array<() => void> = [];
+    const service: CatalogService = {
+      list: async () => rows.map((r) => (r.id === stopped.id ? { ...r, waiting: 1 } : r)),
+      resume: async () => undefined,
+      create: async () => undefined,
+      folders: async () => [],
+      open: () => undefined,
+      kept: () => {
+        const [answer, ...rest] = answers;
+        answers = rest;
+        pending = Promise.resolve(answer!);
+        return pending as never;
+      },
+    };
+    const catalog = createCatalog({
+      service,
+      onChange: () => undefined,
+      now: () => NOW,
+      later: (run) => void later.push(run),
+    });
+    await catalog.refresh();
+    const row = () =>
+      catalog.controls().find((c) => c.id === `c:${stopped.id}`) as never as {
+        keptLabel: string | null;
+        kept: ReadonlyArray<string> | null;
+      };
+    catalog.apply(`c:${stopped.id}`, "kept");
+    await pending;
+    expect(row()).toMatchObject({ keptLabel: "1 kept message", kept: ["first"] });
+    expect(later).toHaveLength(1);
+    later[0]!();
+    await pending;
+    expect(row()).toMatchObject({ keptLabel: null, kept: null });
+  });
 });
 
 describe("New session", () => {
