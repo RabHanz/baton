@@ -5,6 +5,8 @@
  * The RPC handlers, the desktop tools and the phone all call these; none holds the flow itself.
  */
 import {
+  BatonJobPlacementError,
+  type BatonJobPlaceInput,
   type BatonJobRefineInput,
   type BatonFleetEntry,
   type BatonJobScheduleInput,
@@ -19,6 +21,7 @@ import {
   SUMMARY_MARK,
 } from "@t3tools/baton-shared/coordinator";
 import { BLOCKED_MARK } from "@t3tools/baton-shared/coordinator";
+import { placeJob as placeFromWords } from "@t3tools/baton-shared/jobPlacement";
 import { briefNudge, NUDGE_MARK, parseJobBrief } from "@t3tools/baton-shared/jobBrief";
 import {
   buildReport,
@@ -55,6 +58,7 @@ import * as Option from "effect/Option";
 
 import * as ServerConfig from "../config.ts";
 import { ProviderInstanceRegistry } from "../provider/ProviderInstanceRegistry.ts";
+import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import { BatonEngine } from "./BatonEngine.ts";
 import { spendOf, type Spend } from "./BatonJobSpend.ts";
 import { planningFrame, readPack, readRouting } from "./OperatingSystemPack.ts";
@@ -183,6 +187,36 @@ export const startJob = Effect.fn("BatonJobFlow.start")(function* (
 });
 
 /** The plan stands and the work begins: out of plan mode, and told to go. */
+
+/** A job from his words: the project he named here and the first ready Claude, then an ordinary start. */
+export const placeJob = Effect.fn("BatonJobFlow.place")(function* (input: BatonJobPlaceInput) {
+  const engine = yield* BatonEngine;
+  const registry = yield* ProviderRegistry.ProviderRegistry;
+  const placed = placeFromWords(
+    input.project,
+    yield* engine.projects,
+    yield* registry.getProviders,
+  );
+  if (!placed.ok) return yield* new BatonJobPlacementError({ detail: placed.why });
+  const { project, label, worker } = placed.value;
+  return yield* startJob({
+    projectId: project.id,
+    title: input.title,
+    goal: input.goal,
+    permissions: {
+      folders: input.folders,
+      projects: [label],
+      tools: input.tools.length === 0 ? ["read"] : input.tools,
+    },
+    ...(input.reportEveryMinutes === undefined
+      ? {}
+      : { limits: { reportEveryMinutes: input.reportEveryMinutes } }),
+    modelSelection: { instanceId: worker.instanceId, model: worker.model } as ModelSelection,
+    // Anything the worker would ask permission for becomes a card that needs him.
+    runtimeMode: "approval-required",
+  });
+});
+
 export const beginWork = Effect.fn("BatonJobFlow.beginWork")(function* (threadId: ThreadId) {
   const engine = yield* BatonEngine;
   yield* engine

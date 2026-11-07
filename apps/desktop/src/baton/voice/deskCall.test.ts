@@ -26,7 +26,20 @@ describe("a request answered by this machine's server while T3 is closed", () =>
     });
     // Delivery is the server's own drainer, never a client's call.
     expect(deskCall({ kind: "weave", op: "tick", args: {} })).toBeNull();
-    expect(deskCall({ kind: "job", op: "start", args: {} })).toBeNull();
+    expect(
+      deskCall({ kind: "job", op: "start", args: { project: "shop", title: "t", goal: "g" } }),
+    ).toEqual({
+      method: "baton.job.place",
+      input: { project: "shop", title: "t", goal: "g", folders: [], tools: [] },
+    });
+    // Another machine's job is placed by the window, which is connected to it.
+    expect(deskCall({ kind: "job", op: "start", args: { runOn: "box" } })).toBeNull();
+    expect(deskCall({ kind: "job", op: "handoff", args: { id: "w1", instance: "Codex" } })).toEqual(
+      {
+        method: "baton.job.handoff",
+        input: { id: "w1", instance: "Codex" },
+      },
+    );
     expect(deskCall({ kind: "memory", op: "sync", args: {} })).toBeNull();
     expect(deskCall({ kind: "run" })).toBeNull();
   });

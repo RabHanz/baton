@@ -107,10 +107,12 @@ describe("who may import memory from a folder", () => {
 });
 
 describe("the desktop's direct door while T3's window is closed", () => {
-  it("serves only methods with a declared scope, and never starts a job or reads a folder", () => {
+  it("serves only methods with a declared scope, places jobs rather than starting them raw, and never reads a folder", () => {
     for (const method of DESK_METHODS)
       expect(Object.hasOwn(BATON_RPC_REQUIRED_SCOPES, method)).toBe(true);
+    // A job starts only by placement, which picks the project and worker on this server.
     expect(DESK_METHODS.has(BATON_JOB_WS_METHODS.jobStart)).toBe(false);
+    expect(DESK_METHODS.has(BATON_JOB_WS_METHODS.jobPlace)).toBe(true);
     expect(DESK_METHODS.has(BATON_MEMORY_WS_METHODS.import)).toBe(false);
     expect(missingBatonScope(BATON_JOB_WS_METHODS.jobAgree, [AuthOrchestrationReadScope])).toBe(
       AuthOrchestrationOperateScope,
