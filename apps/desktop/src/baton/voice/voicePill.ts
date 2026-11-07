@@ -58,6 +58,7 @@ const HEIGHT = 80;
 const ABOVE_WORK_AREA = 30;
 const TOP_MARGIN = -4;
 const DRAG_MS = 16;
+const FOREGROUND_WAIT_MS = 300;
 // The hit test runs fast only while the cursor is near the capsule; the resting bar can stay up all day.
 const HIT_MS = 40;
 const FAR_HIT_MS = 250;
@@ -201,6 +202,9 @@ const l=document.createElement('div');l.className='l';l.id='l-'+d.id;l.textConte
 window.hi=id=>{for(const d of dots){document.getElementById('d-'+d.id).classList.toggle('on',d.id===id);document.getElementById('l-'+d.id).classList.toggle('on',d.id===id);}};
 </script>`;
 
+/** The Settings button sends the word it showed, so a click that first blurred the pill (and locked it) stays a lock. */
+export const wantsMoving = (shown: unknown): boolean => shown !== "lock";
+
 export interface VoicePill {
   readonly on: (event: TurnEvent, options?: { readonly silent?: boolean }) => void;
   /** His microphone, while listening or dictating. */
@@ -325,6 +329,7 @@ export const createVoicePill = (input: {
     if (hitTimer !== null) clearTimeout(hitTimer);
     hitTimer = null;
     takingMouse = false;
+    pressing = false;
   };
   const startHitTest = () => {
     if (hitTimer !== null) return;
@@ -467,7 +472,11 @@ export const createVoicePill = (input: {
     moving = on;
     if (on) {
       releaseMoveEscape = input.holdEscape(() => setMoving(false));
-      movedFrom = input.foreground?.().catch(() => null) ?? Promise.resolve(null);
+      // Never waits on a busy helper: no answer in 300 ms means focus is not handed back.
+      movedFrom = Promise.race([
+        input.foreground?.().catch(() => null) ?? Promise.resolve(null),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), FOREGROUND_WAIT_MS).unref()),
+      ]);
       raise();
       if (state.phase === "idle") call("window.pill.move()");
     } else {
@@ -507,6 +516,7 @@ export const createVoicePill = (input: {
 
   const build = () => {
     if (window !== null && !window.isDestroyed()) return;
+    pressing = false;
     const created = new Electron.BrowserWindow({
       width: WIDTH,
       height: HEIGHT,
@@ -539,7 +549,11 @@ export const createVoicePill = (input: {
       if (moving && window === created) setMoving(false);
     });
     ready = loadDocument(created, PILL_DOCUMENT).then((loaded) => {
-      if (loaded && window === created && moving) applyMoving(created);
+      if (loaded && window === created && moving) {
+        applyMoving(created);
+        raise();
+        if (state.phase === "idle") call("window.pill.move()");
+      }
       // A pill that failed to load would stay blank: build it again, and show what it should.
       if (loaded || window !== created) return;
       if (!created.isDestroyed()) created.destroy();

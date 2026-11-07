@@ -373,7 +373,7 @@ import type {
   ScreenCompanion,
 } from "../screen/ScreenCompanion.ts";
 import { focusedFolder } from "../screen/focusedFolder.ts";
-import { createVoicePill, type VoicePill } from "./voicePill.ts";
+import { createVoicePill, wantsMoving, type VoicePill } from "./voicePill.ts";
 import { frameLevel, isCancelPhrase, type TurnEvent } from "@t3tools/baton-shared/voiceTurn";
 import {
   biasTranscript,
@@ -3147,7 +3147,16 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     onChange: (turn) => input.onPillState?.(turn.phase),
     ...(input.onPillDrag === undefined ? {} : { onDrag: input.onPillDrag }),
     onMoving: () => render(),
-    foreground: async () => (await sidecar?.foreground())?.window ?? null,
+    foreground: async () => {
+      const app = await sidecar?.foreground();
+      // The tray's hidden window, the taskbar and our own windows are not where he was working.
+      const ours = NodePath.basename(process.execPath).toLowerCase();
+      const exe = NodePath.basename(app?.exe ?? "").toLowerCase();
+      const back =
+        app?.window !== undefined && exe !== ours && exe !== "explorer.exe" ? app.window : null;
+      input.onNote?.("pill_return", { exe: app?.exe ?? null, back: back !== null });
+      return back;
+    },
     focusWindow: (window) => void sidecar?.focusWindow(window).catch(() => undefined),
   });
   let fullscreen = false;
@@ -5324,9 +5333,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         id: "v.pillMove",
         section: "On screen",
         label: "Move the pill",
-        hint: "Unlocks the pill so you can drag it. Click the check mark above it, or press Esc, when it is where you want it. Move pill in the tray menu does the same.",
+        hint: "Unlocks the pill so you can drag it. Click the check mark above it, press Esc, or click anywhere else when it is where you want it. Move pill in the tray menu does the same.",
         kind: "action",
         button: pill.moving() ? "Lock" : "Move",
+        value: pill.moving() ? "lock" : "move",
       },
       {
         id: "v.pillRest",
@@ -6195,7 +6205,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         input.extras?.notice(line);
         render();
       });
-    } else if (id === "v.pillMove") pill.setMoving(!pill.moving());
+    } else if (id === "v.pillMove") pill.setMoving(wantsMoving(value));
     else if (id === "v.appearance") save({ appearance: parseAppearance(value) });
     else if (id === "v.palette") {
       save({ palette: parsePalette(value) });

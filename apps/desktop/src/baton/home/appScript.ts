@@ -99,7 +99,7 @@ function control(c) {
     return s;
   }
   if (c.kind === 'secret') { const b = $('button', 'btn', shown.has(c.id) ? c.revealed : c.masked); b.setAttribute('aria-label', 'Show address'); b.onclick = () => { if (shown.has(c.id)) shown.delete(c.id); else shown.add(c.id); b.textContent = shown.has(c.id) ? c.revealed : c.masked; }; return b; }
-  const b = $('button', 'btn', c.button); b.onclick = () => set(c.id, null);
+  const b = $('button', 'btn', c.button); b.onclick = () => set(c.id, c.value ?? null);
   if (c.secondary) { const w = $('div', 'pair'); const b2 = $('button', 'btn', c.secondary); b2.onclick = () => set(c.id + ':later', null); w.append(b2, b); return w; }
   return b;
 }

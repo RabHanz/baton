@@ -70,7 +70,7 @@ vi.mock("../lastAppWindow.ts", () => ({ markCompanionWindow: () => undefined }))
 vi.mock("./voicePlayer.ts", () => ({ onAudioServiceGone: () => undefined }));
 
 import * as Electron from "electron";
-import { createVoicePill } from "./voicePill.ts";
+import { createVoicePill, wantsMoving } from "./voicePill.ts";
 
 /** Fake timers, a fresh state folder and the IPC listeners; all undone when the test ends, pass or fail. */
 const setup = () => {
@@ -180,6 +180,20 @@ describe("the pill is locked until Move pill is on", () => {
     expect(pill.moving()).toBe(false);
     expect(escapes).toHaveLength(0);
     expect(focusedBack).toEqual([]);
+    pill.dispose();
+  });
+
+  it("stays locked when the Settings Lock click first blurred the pill", async () => {
+    using t = setup();
+    const pill = t.make();
+    pill.setMoving(true);
+    await vi.advanceTimersByTimeAsync(0);
+    // The click into Settings blurs (and locks) the pill before the action arrives with what the button said.
+    page().blur();
+    pill.setMoving(wantsMoving("lock"));
+    expect(pill.moving()).toBe(false);
+    pill.setMoving(wantsMoving("move"));
+    expect(pill.moving()).toBe(true);
     pill.dispose();
   });
 
