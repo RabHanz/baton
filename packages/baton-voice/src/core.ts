@@ -159,8 +159,6 @@ export interface BatonVoiceCore extends VoiceCore {
    * depends on the output device's latency, which is not known.
    */
   readonly playingCue: (ms: number) => void;
-  /** The dictation key is recording: it types every word, so until it stops the core hears silence. */
-  readonly setKeyDictation: (on: boolean) => void;
   /** He is in the middle of an utterance right now. */
   readonly hearingSpeech: () => boolean;
   /** A sentence Baton is saying, so a stop phrase in it is not taken for his. */
@@ -772,7 +770,6 @@ export const createVoiceCore = (input: {
   let scoredSpeech = 0;
   let ducked = false;
   let cueUntil = 0;
-  let keyDictation = false;
 
   /** Should speech be segmented right now? Only when something will listen. */
   const listening = () => machine.mode !== "sleeping" || segment !== null;
@@ -838,7 +835,7 @@ export const createVoiceCore = (input: {
   const pushAudio = (heard: Int16Array) => {
     if (disposed) return;
     // Inside a cue's window the microphone is replaced by silence for everything downstream.
-    const frame = samples < cueUntil || keyDictation ? new Int16Array(heard.length) : heard;
+    const frame = samples < cueUntil ? new Int16Array(heard.length) : heard;
     samples += frame.length;
 
     const score = input.wake.process(frame);
@@ -930,7 +927,7 @@ export const createVoiceCore = (input: {
     }
 
     // His voice over hers: through the echo guard over speakers, or plain speech detection on headphones.
-    if (speaking && !barged) {
+    if (speaking && !barged && machine.mode !== "dictation") {
       const flagged = headphones()
         ? input.vad.isSpeech(frame)
         : input.echo !== undefined &&
@@ -1044,9 +1041,6 @@ export const createVoiceCore = (input: {
     reference: (pcm, soundsAtMs) => input.echo?.reference(pcm, soundsAtMs),
     playingCue: (ms) => {
       cueUntil = Math.max(cueUntil, samples + msToSamples(ms));
-    },
-    setKeyDictation: (on) => {
-      keyDictation = on;
     },
     hearingSpeech: () => segment !== null,
     noteSpoken,

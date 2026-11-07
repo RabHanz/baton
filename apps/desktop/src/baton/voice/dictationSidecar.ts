@@ -39,6 +39,15 @@ export interface DictationConfig {
   readonly mouse?: string | null;
 }
 
+/**
+ * Whether the recorder is recording after this event. Only its state events say so: a result fed back
+ * from the cloud, a notice or a reconfigure leaves a live recording as it was.
+ */
+export const recordingAfter = (ev: DictationEvent["ev"], was: boolean): boolean =>
+  ev === "recording" || ev === "transcribing" || ev === "idle" || ev === "error"
+    ? ev === "recording"
+    : was;
+
 export interface FocusedApp {
   readonly exe: string;
   readonly title: string;

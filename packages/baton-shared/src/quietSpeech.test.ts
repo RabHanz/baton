@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { boostCore, createQuietBoost, quietThreshold } from "./quietSpeech.ts";
+import { boostCore, createQuietBoost, quietThreshold, silenceWhile } from "./quietSpeech.ts";
 
 const tone = (amplitude: number, n = 320) =>
   Int16Array.from({ length: n }, (_, i) => Math.round(amplitude * Math.sin(i / 3)));
@@ -47,6 +47,23 @@ describe("quiet-speech mode", () => {
     for (let i = 0; i < 10; i += 1) core.pushAudio(whisper);
     expect(heard[0]).toBeCloseTo(rmsOf(whisper));
     expect(heard.at(-1)!).toBeGreaterThan(heard[0]! * 3);
+    expect(core.name()).toBe("kept");
+  });
+});
+
+describe("silence while the dictation key records", () => {
+  it("passes silence while on, decided as each frame arrives, and keeps the rest of the core", () => {
+    const heard: number[] = [];
+    let on = true;
+    const core = silenceWhile(
+      { pushAudio: (f: Int16Array) => void heard.push(rmsOf(f)), name: () => "kept" },
+      () => on,
+    );
+    core.pushAudio(tone(300));
+    on = false;
+    core.pushAudio(tone(300));
+    expect(heard[0]).toBe(0);
+    expect(heard[1]).toBeGreaterThan(0);
     expect(core.name()).toBe("kept");
   });
 });

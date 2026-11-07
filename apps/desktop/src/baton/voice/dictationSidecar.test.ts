@@ -7,11 +7,29 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   focusedFrom,
+  recordingAfter,
   resolveDictationBinary,
   restartDelayMs,
   startDictationSidecar,
   type DictationEvent,
 } from "./dictationSidecar.ts";
+
+describe("recordingAfter", () => {
+  it("keeps a second recording live through the first one's cloud result, a notice and a reconfigure", () => {
+    const events: ReadonlyArray<DictationEvent["ev"]> = [
+      "recording",
+      "transcribing",
+      "recording",
+      "text",
+      "unread",
+      "configured",
+      "ready",
+    ];
+    expect(events.reduce((was, ev) => recordingAfter(ev, was), false)).toBe(true);
+    expect(recordingAfter("idle", true)).toBe(false);
+    expect(recordingAfter("error", true)).toBe(false);
+  });
+});
 
 describe("restartDelayMs", () => {
   it("backs off to a minute and no further", () => {
