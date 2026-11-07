@@ -178,6 +178,47 @@ describe("trust page", () => {
     expect(trustAction("trust.missed:morning_brief", "later")).toBeNull();
   });
 
+  it("lists his own job with a switch, its words to edit and a way to remove it; a proposal says whose it is", () => {
+    const mine = {
+      kind: "user" as const,
+      id: "user:2",
+      title: "Morning CI check",
+      what: "Every day at 08:00: check CI and tell me what broke",
+      owner: "Tessaya",
+      on: false,
+      count: 0,
+      instruction: "check CI and tell me what broke",
+      proposed: true,
+      missed: "once" as const,
+    };
+    const rows = trustControls(data({ standing: [mine] }), NOW);
+    const ids = rows.map((r) => r.id);
+    expect(ids).toEqual(
+      expect.arrayContaining([
+        "trust.userjob:user:2",
+        "trust.userjobtext:user:2",
+        "trust.userjobdel:user:2",
+        "trust.missed:user:2",
+      ]),
+    );
+    expect(rows.find((r) => r.id === "trust.userjob:user:2")?.label).toContain("proposed");
+    expect(trustAction("trust.userjob:user:2", true)).toEqual({
+      kind: "userJob",
+      id: "user:2",
+      on: true,
+    });
+    expect(trustAction("trust.userjobtext:user:2:save", " check CI on tessaya ")).toEqual({
+      kind: "userJobText",
+      id: "user:2",
+      text: "check CI on tessaya",
+    });
+    expect(trustAction("trust.userjobtext:user:2:save", "  ")).toBeNull();
+    expect(trustAction("trust.userjobdel:user:2", null)).toEqual({
+      kind: "userJobDelete",
+      id: "user:2",
+    });
+  });
+
   it("offers quiet unless changed for an event job, and reads the switch", () => {
     const ciLook = {
       kind: "built_in" as const,

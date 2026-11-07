@@ -38,6 +38,12 @@ export const SAY: Readonly<Record<string, readonly [string, string]>> = {
   fleet_status: ["What is everyone working on?", "A summary across machines."],
   dictation_stop: ["Stop dictating", "Ends dictation."],
   dictation_start: ["Start dictating", "Your words are typed into the app you are in."],
+  job_create: [
+    "Every morning at 8, check CI and tell me what broke",
+    "Sets up a standing job of your own; you see it and say yes first.",
+  ],
+  job_update: ["Switch off my morning CI job", "Changes or pauses one of your own jobs."],
+  job_delete: ["Remove my morning CI job", "Removes one of your own jobs."],
   assistant_model: [
     "Use Opus for this conversation",
     "Picks the model and effort that answer you, until you say back to normal.",

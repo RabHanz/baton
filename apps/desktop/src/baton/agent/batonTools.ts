@@ -114,6 +114,10 @@ export interface ToolHost {
 }
 
 type JobOp =
+  | "user_job_create"
+  | "user_job_propose"
+  | "user_job_update"
+  | "user_job_delete"
   | "rule_preview"
   | "rule_run"
   | "list"
@@ -878,6 +882,64 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
         "'What needs me?' across everything: sessions that failed, stalled, wait for him or finished unseen, jobs and plans waiting, the ledger and deadlines he configured. A short ranked list, read-only, with a note for any source it could not read. Use it first for 'what needs me', 'what should I do next', 'what is waiting'.",
       inputSchema: object({}),
       run: async () => ({ text: await host.jobs("needs", {}) }),
+    },
+    {
+      name: "job_create",
+      description:
+        "Set up a standing job he asked for in one sentence: something done again and again by itself, on a schedule ('every morning at 8, check CI and tell me what broke') or when something happens ('when a session has waited 20 minutes, remind me'). Not for a one-off reminder ('remind me at 5'): that is commit_add. Fill the trigger from his words: a time of day (24-hour hour, minute, days or none for every day) or an event. He sees a card and says yes before anything is saved. Tools default to reading and reporting.",
+      inputSchema: object(
+        {
+          title: { type: "string", maxLength: 120 },
+          instruction: {
+            type: "string",
+            maxLength: 1000,
+            description: "What to do each time, in his words.",
+          },
+          trigger: {
+            type: "object",
+            properties: {
+              kind: { enum: ["time", "event"] },
+              hour: { type: "integer", minimum: 0, maximum: 23 },
+              minute: { type: "integer", minimum: 0, maximum: 59 },
+              days: {
+                type: "array",
+                items: { enum: ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] },
+              },
+              event: { enum: ["session_waiting", "build_failed", "job_finished"] },
+              minutes: { type: "integer", minimum: 1 },
+            },
+            required: ["kind"],
+            additionalProperties: false,
+          },
+          owner: {
+            type: "string",
+            description: "The persona's role id when he names one; the current persona otherwise.",
+          },
+          tools: { type: "array", items: { type: "string" } },
+        },
+        ["title", "instruction", "trigger"],
+      ),
+      run: async (a) => ({ text: await host.jobs("user_job_create", a) }),
+    },
+    {
+      name: "job_update",
+      description:
+        "Change one of his own standing jobs (an id from trust_show, like user:3): switch it on or off, or reword what it does.",
+      inputSchema: object(
+        {
+          id: { type: "string", maxLength: 40 },
+          on: { type: "boolean" },
+          instruction: { type: "string", maxLength: 1000 },
+        },
+        ["id"],
+      ),
+      run: async (a) => ({ text: await host.jobs("user_job_update", a) }),
+    },
+    {
+      name: "job_delete",
+      description: "Remove one of his own standing jobs by its id (user:3).",
+      inputSchema: object({ id: { type: "string", maxLength: 40 } }, ["id"]),
+      run: async (a) => ({ text: await host.jobs("user_job_delete", { id: str(a, "id", 40) }) }),
     },
     {
       name: "commit_add",

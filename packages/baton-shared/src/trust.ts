@@ -199,6 +199,9 @@ const UNATTENDED_TOOLS: ReadonlySet<string> = new Set([
   "skill_draft",
 ]);
 
+/** Whether a run nobody is watching may use this tool at all (a user's standing job picks only from these). */
+export const isUnattendedTool = (tool: string): boolean => UNATTENDED_TOOLS.has(tool);
+
 export const standingVerdict = (tool: string, agent: TrustAgent): TrustVerdict =>
   UNATTENDED_TOOLS.has(tool)
     ? decideTrust({
