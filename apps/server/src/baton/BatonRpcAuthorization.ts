@@ -227,6 +227,10 @@ export const DESK_METHODS: ReadonlySet<string> = new Set([
   BATON_CLOUD_WS_METHODS.approve,
   // Every live session here and on each linked environment, and typing into a pane here.
   BATON_SESSIONS_WS_METHODS.across,
+  // This machine's own catalog with T3's window closed; another machine's goes through the window.
+  ...(
+    ["list", "folders", "resume", "create", "cleanup", "autoResume", "reattach", "waiting"] as const
+  ).map((op) => BATON_SESSIONS_WS_METHODS[op]),
   BATON_LIVE_WS_METHODS.herdrSend,
   // Another server's sync over plain HTTPS, with its sync-only credential.
   ...SYNC_METHODS,

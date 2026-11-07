@@ -37,7 +37,7 @@ import { openThreadInSplit } from "../panes/batonPanesStore";
 import { BatonContinueWith, type HandoffTarget } from "./BatonContinueWith";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { waitForThreadShell } from "../../state/entities";
-import { answerCatalogRequest } from "./batonCatalogRequests";
+import { answerCatalogRequest } from "@t3tools/baton-shared/catalogRequests";
 
 export interface BatonProjectsBlockProps {
   readonly environmentIds: readonly EnvironmentId[];

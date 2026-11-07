@@ -32,14 +32,30 @@ describe("a request answered by this machine's server while T3 is closed", () =>
       method: "baton.job.place",
       input: { project: "shop", title: "t", goal: "g", folders: [], tools: [] },
     });
-    // Another machine's job is placed by the window, which is connected to it.
-    expect(deskCall({ kind: "job", op: "start", args: { runOn: "box" } })).toBeNull();
+    // Another machine's job is placed by the window, which is connected to it; this one's, by name, here.
+    expect(deskCall({ kind: "job", op: "start", args: { runOn: "box" } })).toEqual({
+      refuse: "Open T3 to start a job on box.",
+    });
+    const here = { environmentId: "env-laptop", label: "Laptop" };
+    for (const runOn of ["laptop", "lap", "this computer"])
+      expect(deskCall({ kind: "job", op: "start", args: { runOn } }, here)).toMatchObject({
+        method: "baton.job.place",
+      });
+    // Before the list is read, only the words for here are known to be this computer.
+    expect(deskCall({ kind: "job", op: "start", args: { runOn: "here" } })).toMatchObject({
+      method: "baton.job.place",
+    });
     expect(deskCall({ kind: "cloud", op: "read", args: { op: "list" } })).toEqual({
       method: "baton.cloud.read",
       input: { op: "list" },
     });
     // A hub on another machine, and the list of machines, are the window's.
-    expect(deskCall({ kind: "cloud", op: "act", args: {}, environmentId: "box" })).toBeNull();
+    expect(
+      deskCall({ kind: "cloud", op: "act", args: {}, environmentId: "box" }, here, () => "Box"),
+    ).toEqual({ refuse: "Open T3 to use cloud tasks on Box." });
+    expect(
+      deskCall({ kind: "cloud", op: "act", args: { id: "c1" }, environmentId: "env-laptop" }, here),
+    ).toEqual({ method: "baton.cloud.act", input: { id: "c1" } });
     expect(deskCall({ kind: "cloud", op: "environments", args: {} })).toBeNull();
     expect(deskCall({ kind: "job", op: "handoff", args: { id: "w1", instance: "Codex" } })).toEqual(
       {

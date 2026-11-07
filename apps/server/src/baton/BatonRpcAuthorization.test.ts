@@ -127,6 +127,9 @@ describe("the desktop's direct door while T3's window is closed", () => {
       AuthOrchestrationOperateScope,
     );
     expect(DESK_METHODS.has(BATON_LIVE_WS_METHODS.herdrSend)).toBe(true);
+    // This machine's catalog actions too; another machine's stay on T3's own session to it.
+    expect(DESK_METHODS.has(BATON_SESSIONS_WS_METHODS.autoResume)).toBe(true);
+    expect(DESK_METHODS.has(BATON_SESSIONS_WS_METHODS.retireHandoff)).toBe(false);
     // The folder is on this machine, and only the desktop app's own session holds the scope to read it.
     expect(DESK_METHODS.has(BATON_MEMORY_WS_METHODS.import)).toBe(true);
     expect(missingBatonScope(BATON_MEMORY_WS_METHODS.import, AuthStandardClientScopes)).toBe(

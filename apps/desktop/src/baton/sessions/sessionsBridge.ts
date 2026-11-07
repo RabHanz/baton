@@ -18,6 +18,7 @@ import {
   BATON_SESSIONS_SNAPSHOT_CHANNEL,
   BATON_USAGE_CHANNEL,
 } from "../channels.ts";
+import { answerOnDoor } from "./catalogDoor.ts";
 import { closedWindowSend, requestFor, sendRefusal } from "./sessionRows.ts";
 
 const ANSWER_MS = 4_000;
@@ -34,7 +35,13 @@ export interface SessionsBridge {
   readonly notes: () => ReadonlyArray<string>;
   /** Open a session's thread (`text` null) or type to its pane. Resolves to a plain line. */
   readonly act: (id: string, text: string | null) => Promise<string>;
-  /** Any request to the sidebar with its own wait; null when it did not answer in time. */
+  /** This machine's server as its session list names it; null until the list was read through the door. */
+  readonly here: () => { readonly environmentId: string; readonly label: string } | null;
+  /** The same, reading the list first if it was not read yet, and never opening the window. */
+  readonly ready: () => Promise<{ readonly environmentId: string; readonly label: string } | null>;
+  /** A computer's name as the session list shows it. */
+  readonly labelOf: (environmentId: string) => string;
+  /** Any request to the sidebar, or with T3's window closed to this machine's server; null when nothing answered in time. */
   readonly request: (
     request: BatonSessionRequest,
     waitMs?: number,
@@ -99,11 +106,13 @@ export const createSessionsBridge = (input: {
   const windowClosed = async () =>
     direct !== undefined && mainWindowUp !== undefined && !(await mainWindowUp());
   // The window's push stays the source while it is up; this never opens it.
+  let here: { readonly environmentId: string; readonly label: string } | null = null;
   const readDoor = async () => {
     if (!(await windowClosed())) return;
     const value = (await direct!("baton.sessions.across", {}).catch(() => null)) as {
       sessions?: unknown;
       unreachable?: ReadonlyArray<{ label?: unknown }>;
+      here?: { environmentId?: unknown; label?: unknown };
     } | null;
     if (!Array.isArray(value?.sessions)) {
       // The window's rows cannot be acted on with it closed; the server's last answer stays, said to be old.
@@ -111,6 +120,9 @@ export const createSessionsBridge = (input: {
       notes = ["This computer's server did not answer, so these sessions may be out of date."];
     } else {
       rows = value.sessions.filter(isRow);
+      const { environmentId, label } = value.here ?? {};
+      if (typeof environmentId === "string" && typeof label === "string")
+        here = { environmentId, label };
       notes = (value.unreachable ?? []).flatMap((peer) =>
         typeof peer.label === "string"
           ? [`${peer.label} isn't answering, so its sessions are not listed.`]
@@ -120,6 +132,11 @@ export const createSessionsBridge = (input: {
     source = "door";
     input.onChange();
   };
+  const labelOf = (environmentId: string) =>
+    rows.find(
+      (row) =>
+        row.pane?.environmentId === environmentId || row.thread?.environmentId === environmentId,
+    )?.box ?? "that computer";
   // A cheap look at the window every few seconds: the server is read at once when it closes, then every 30 s.
   if (direct !== undefined && mainWindowUp !== undefined) {
     let ticks = 0;
@@ -156,7 +173,19 @@ export const createSessionsBridge = (input: {
     rows: () => rows,
     usage: () => usage,
     notes: () => notes,
-    request: (request, waitMs) => ask(request, waitMs),
+    here: () => here,
+    ready: async () => {
+      if (here === null && (await windowClosed())) await readDoor();
+      return here;
+    },
+    labelOf,
+    request: async (request, waitMs) => {
+      // Opening a thread and typing over T3's own session keep the window's path, which brings the window up.
+      if (request.kind === "open" || request.kind === "send" || !(await windowClosed()))
+        return ask(request, waitMs);
+      if (here === null) await readDoor();
+      return here === null ? null : answerOnDoor(request, { here, labelOf, direct: direct! });
+    },
     act: async (id, text) => {
       const row = rows.find((s) => id === `n:${s.key}`);
       const refused = text === null || row === undefined ? null : sendRefusal(row);

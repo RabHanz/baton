@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { answerCatalogRequest, type CatalogCommands } from "./batonCatalogRequests";
+import { answerCatalogRequest, type CatalogCommands } from "./catalogRequests.ts";
 
 const row = {
   id: "s1",

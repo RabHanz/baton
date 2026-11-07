@@ -545,13 +545,10 @@ export const startBatonDesktop = Effect.gen(function* () {
       }),
       onChange: () => voice?.refresh(),
     }));
-    // Asking the sidebar opens T3's window: a background refresh only runs while it is already up, or a closed T3 comes back.
-    const refreshIfT3Up = () =>
-      void t3Up().then((up) => {
-        if (up) void catalog.refresh();
-      });
-    setTimeout(refreshIfT3Up, 8_000).unref();
-    setInterval(refreshIfT3Up, 45_000).unref();
+    // With T3's window closed the catalog is this machine's server's, through its door; it never opens the window.
+    const refreshCatalog = () => void catalog.refresh();
+    setTimeout(refreshCatalog, 8_000).unref();
+    setInterval(refreshCatalog, 45_000).unref();
     markPhase("voice-start:begin");
     voice = startDesktopBatonVoice({
       loginEntry: environment.appUserModelId,
