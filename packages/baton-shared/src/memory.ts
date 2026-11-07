@@ -292,7 +292,7 @@ export const redactSecretLines = (text: string): string =>
   text
     // A private key spans lines, so its whole block goes first.
     .replace(
-      /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g,
+      /-----BEGIN [A-Z ]*PRIVATE KEY-----(?:[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----|[^\n]*)/g,
       REDACTED,
     )
     .split("\n")

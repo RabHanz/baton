@@ -66,8 +66,11 @@ const answerFromHere = Effect.fn("BatonMemoryPull.answerFromHere")(function* (
   return redactSecretLines(
     keepHistory(
       text,
-      (venture, hit) =>
-        (venture !== null && walled.has(slug(venture))) || sharesPrivateText(hit, privateTexts),
+      (folder, hit) =>
+        // By prefix, failing closed: a wall on "shop" also hides "shop-x", and covers its worktrees and lanes.
+        (folder !== null &&
+          [...walled].some((w) => slug(folder) === w || slug(folder).startsWith(`${w}-`))) ||
+        sharesPrivateText(hit, privateTexts),
     ),
   );
 });

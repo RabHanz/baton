@@ -80,9 +80,11 @@ const HEADER =
 // Tool output and thinking are file dumps, not lessons.
 const NOISE_ROLES = new Set(["tool_result", "tool_use", "thinking", "system", "meta"]);
 
-/** `-home-user-shop` is the project the session ran in; the tail after the machine's path prefix is the venture. */
-const ventureOf = (project: string): string | null => {
-  const name = project
+/** The folder a session ran in, after the machine's path prefix and before any shape check: what a wall is judged on. */
+const folderOf = (project: string): string =>
+  project
+    // A scratchpad folder (`-tmp-claude-<uid>-`) names the path it was made for next.
+    .replace(/^-tmp-claude-\d+-/, "")
     .replace(/^-home-[^-]+-/, "")
     // A mounted volume's path, up to its code folder (`-mnt-<volume>-dev-<project>`).
     .replace(/^-mnt-.*?-(?:dev|src|code|projects|work)-/, "")
@@ -90,6 +92,10 @@ const ventureOf = (project: string): string | null => {
     .replace(/^(?:dev|src|code|projects|work)-/, "")
     .replace(/^-+/, "")
     .toLowerCase();
+
+/** `-home-user-shop` is the project the session ran in; the tail after the machine's path prefix is the venture. */
+const ventureOf = (project: string): string | null => {
+  const name = folderOf(project);
   return /^[a-z0-9][a-z0-9_-]{1,39}$/.test(name) && name !== "prompts" ? name : null;
 };
 
@@ -101,23 +107,23 @@ const tidy = (text: string): string =>
     .trim()
     .slice(0, QUOTE_MAX);
 
-/** The output without the hits `drop` refuses, each header-led block judged whole by its venture and its text. */
+/** The output without the hits `drop` refuses, each header-led block judged whole by its folder and its text. */
 export const keepHistory = (
   output: string,
-  drop: (venture: string | null, text: string) => boolean,
+  drop: (folder: string | null, text: string) => boolean,
 ): string => {
   const out: string[] = [];
   let block: string[] = [];
-  let venture: string | null = null;
+  let folder: string | null = null;
   const flush = () => {
-    if (block.length > 0 && !drop(venture, block.join("\n"))) out.push(...block);
+    if (block.length > 0 && !drop(folder, block.join("\n"))) out.push(...block);
     block = [];
   };
   for (const line of output.split(/\r?\n/)) {
     const head = HEADER.exec(line);
     if (head !== null) {
       flush();
-      venture = ventureOf(head[2]!);
+      folder = folderOf(head[2]!);
     }
     block.push(line);
   }

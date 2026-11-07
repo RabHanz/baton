@@ -125,6 +125,13 @@ it.effect(
       // "Kai Hair" in the pack is the kai-hair folder, also under a code folder in his home.
       hit("-home-ann-kai-hair", "Kai pays the salon rent late"),
       hit("-home-ann-dev-kai-hair", "Kai wants a second salon"),
+      // Its worktrees, lanes and scratchpads are behind the same wall, however long the folder.
+      hit(
+        "-mnt-vol-1-dev-shop--claude-worktrees-agent-a1b2c3d4e5f6a7b8c9d0",
+        "Shop worktree margin notes",
+      ),
+      hit("-mnt-vol-1-dev-kai-hair-lane-srv", "Lane salon numbers"),
+      hit("-tmp-claude-1000--home-ann-shop", "Scratch margin sums"),
       hit("-home-ann-books", `Note: ${private_}, so plan around it`),
       hit("-home-ann-books", `Use the key sk-${"b".repeat(24)} for the books export`),
       hit("-home-ann-books", "The books close on the fifth"),
@@ -136,6 +143,8 @@ it.effect(
       const text = seen.ok ? seen.text : "";
       assert.notInclude(text, "margin");
       assert.notInclude(text, "salon");
+      assert.notInclude(text, "worktree");
+      assert.notInclude(text, "Scratch");
       assert.notInclude(text, "board meets");
       assert.notInclude(text, "sk-b");
       assert.include(text, "[redacted: looks like a secret]");
@@ -165,6 +174,13 @@ it.effect(
       );
       assert.include(mine.ok ? mine.text : "", "We set up the deploy key");
       assert.notInclude(mine.ok ? mine.text : "", "b3BlbnNzaC1rZXk");
+      // A key block with no end line marks only its own line, not the rest of the answer.
+      const cut = yield* searchHistory(
+        { session, admin: true },
+        env,
+        async () => `${pem("BEGIN")} b3Blbn\nStill here.`,
+      ).pipe(Effect.provideService(MemoryViewer, "desktop"));
+      assert.deepEqual(cut, { ok: true, text: "[redacted: looks like a secret]\nStill here." });
     }).pipe(
       Effect.provide(
         Layer.mergeAll(memoryLayer, peers, config).pipe(
