@@ -42,7 +42,7 @@ import {
 } from "../../providerInstances";
 import { useProjects } from "../../state/entities";
 import { usePrimaryEnvironmentId } from "../../state/environments";
-import { weaveAcross } from "./batonWeaveAcross";
+import { weaveAcross, weaveSessionsOf } from "./batonWeaveAcross";
 import { environmentServerConfigsAtom } from "../../state/server";
 import { useBatonFleets } from "../../state/batonWorkSessions";
 import { batonWorkSessions } from "../../state/batonWorkSessions";
@@ -307,7 +307,11 @@ export function BatonSidebarSection(props: {
     const commands = { send: weaveSend, list: weaveList, tick: weaveTick };
     const environments = [memoryHome, ...fleet.environmentIds.filter((id) => id !== memoryHome)]
       .filter((id) => id !== undefined)
-      .map((id) => ({ id: id as string, label: fleet.resolveEnvironmentLabel(id) ?? id }));
+      .map((id) => ({
+        id: id as string,
+        label: fleet.resolveEnvironmentLabel(id) ?? id,
+        sessions: weaveSessionsOf(fleets.find((f) => f.environmentId === id)?.fleet ?? null),
+      }));
     return weaveAcross(request, environments, async (environmentId, op, args) => {
       const run = commands[op] as unknown as (call: {
         readonly environmentId: EnvironmentId;
@@ -324,6 +328,7 @@ export function BatonSidebarSection(props: {
       const error = squashAtomCommandFailure(result) as {
         reason?: unknown;
         missing?: unknown;
+        _tag?: unknown;
       } | null;
       return {
         ok: false,
@@ -331,7 +336,12 @@ export function BatonSidebarSection(props: {
           typeof error?.reason === "string"
             ? error.reason
             : "Weaving did not answer. Nothing was sent.",
-        missing: error?.missing === true,
+        kind:
+          error?.missing === true
+            ? "missing"
+            : error?._tag === "EnvironmentAuthorizationError"
+              ? "unreachable"
+              : "other",
       };
     });
   };
