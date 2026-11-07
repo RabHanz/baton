@@ -578,7 +578,7 @@ export const startBatonDesktop = Effect.gen(function* () {
       onBargeIn: () => {
         voicePlayer.duck?.(false);
         speaker.cancel();
-        screen?.hush();
+        screen?.cutIn();
       },
       onDuck: (on) => voicePlayer.duck?.(on),
       onDismiss: () => {

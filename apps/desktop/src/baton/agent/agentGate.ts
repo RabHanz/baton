@@ -28,6 +28,20 @@ export type Gate = (
   call: ToolCall,
 ) => Promise<{ readonly allow: true } | { readonly allow: false; readonly reason: string }>;
 
+/**
+ * Cut-ins over her voice, against the turn they cut. `begin` at each turn, and again once he has answered her own
+ * question aloud: talking over that question was his answer, not a cut-in.
+ */
+export const createCutInMark = () => {
+  let cuts = 0;
+  let atTurn = 0;
+  return {
+    cut: () => void (cuts += 1),
+    begin: () => void (atTurn = cuts),
+    since: () => cuts !== atTurn,
+  };
+};
+
 /** He talked over her reply since this turn began: it does nothing more, and his next words say what he wants. */
 export const stopsOnCutIn =
   (gate: Gate, cutSinceTurn: () => boolean): Gate =>
