@@ -4555,10 +4555,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         };
       }
     },
+    // The connected machines are the window's to list; asking a closed one would reopen it.
     environments: async () =>
-      ((await requestKept({ kind: "cloud", op: "environments", args: {} }).catch(
-        () => [],
-      )) as ReadonlyArray<{ id: string; label: string }> | null) ?? [],
+      mainContents === null || mainContents.isDestroyed()
+        ? []
+        : (((await requestKept({ kind: "cloud", op: "environments", args: {} }).catch(
+            () => [],
+          )) as ReadonlyArray<{ id: string; label: string }> | null) ?? []),
     vaultKey: (name, why) =>
       useVaultKey(name, why, {
         unlocked: () => vaultState.vault.isUnlocked(),

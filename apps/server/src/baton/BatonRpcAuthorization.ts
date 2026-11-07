@@ -210,6 +210,9 @@ export const DESK_METHODS: ReadonlySet<string> = new Set([
   BATON_COMMITMENT_WS_METHODS.upsert,
   BATON_WEAVE_WS_METHODS.send,
   BATON_WEAVE_WS_METHODS.list,
+  BATON_CLOUD_WS_METHODS.read,
+  BATON_CLOUD_WS_METHODS.act,
+  BATON_CLOUD_WS_METHODS.approve,
   // Another server's sync over plain HTTPS, with its sync-only credential.
   ...SYNC_METHODS,
   ...(
