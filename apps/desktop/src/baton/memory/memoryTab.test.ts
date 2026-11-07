@@ -39,12 +39,12 @@ const make = (call: (op: string, args: Record<string, unknown>) => Promise<unkno
   const reveal = vi.fn();
   const sync = {
     enabled: () => false,
-    setEnabled: vi.fn(),
+    setEnabled: vi.fn(async () => undefined),
     run: vi.fn(async () => "Synced 1 changes across 2 servers."),
     peers: vi.fn(async () => []),
     issue: vi.fn(async () => "CODE"),
     link: vi.fn(async () => undefined),
-    forget: vi.fn(),
+    forget: vi.fn(async () => undefined),
     start: vi.fn(),
     migrate: vi.fn(async () => undefined),
   };
@@ -144,6 +144,19 @@ describe("the Memory tab", () => {
     tab.act("m.sync", null);
     await settle();
     expect(sync.run).toHaveBeenCalled();
+  });
+
+  it("says so when the server refuses to switch sync or forget a server", async () => {
+    const { tab, sync } = make(async () => ({ items: [] }));
+    await tab.load();
+    sync.setEnabled.mockRejectedValueOnce(new Error("The server did not answer."));
+    tab.act("m.syncOn", true);
+    await settle();
+    expect((tab.controls()[0] as { status: string }).status).toBe("The server did not answer.");
+    sync.forget.mockRejectedValueOnce(new Error("Nothing was changed."));
+    tab.act("m.syncForget:box", null);
+    await settle();
+    expect((tab.controls()[0] as { status: string }).status).toBe("Nothing was changed.");
   });
 
   it("leaves other ids alone", () => {

@@ -5,12 +5,14 @@
  * API keys (not encrypted), and goes only to the origin that issued it, never along a redirect.
  */
 import {
+  BatonMemorySyncError,
   BatonMemorySyncHelloResult,
   BatonMemorySyncPullResult,
   BatonMemorySyncPushResult,
   type BatonMemorySyncPeer,
 } from "@t3tools/baton-contracts";
 import type { MemoryChange } from "@t3tools/baton-shared/memory";
+import { syncOriginAllowed } from "@t3tools/baton-shared/syncOrigin";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -18,6 +20,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
+import * as Semaphore from "effect/Semaphore";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
@@ -26,6 +29,16 @@ import { BatonMemoryService } from "./BatonMemoryService.ts";
 const SECRET = "tessaya-memory-sync-peers";
 const ENABLED_KEY = "memory_sync";
 const EVERY = "10 minutes";
+const PEER_TIMEOUT_MS = 15_000;
+
+/** Where a credential may go, judged on the origin it came from. */
+export const originAllowed = (origin: string): boolean => {
+  try {
+    return syncOriginAllowed(new URL(origin));
+  } catch {
+    return false;
+  }
+};
 
 const StoredPeer = Schema.Struct({
   label: Schema.String,
@@ -83,6 +96,7 @@ export const syncRound = Effect.fn("BatonMemorySync.round")(function* (
 
 /** The credential goes only back to the origin that issued it. */
 export const peerUrl = (origin: string, method: string): URL | null => {
+  if (!originAllowed(origin)) return null;
   try {
     const url = new URL(`tessaya/desk/${method}`, origin.endsWith("/") ? origin : `${origin}/`);
     return url.origin === new URL(origin).origin ? url : null;
@@ -101,8 +115,8 @@ export class BatonMemorySync extends Context.Service<
     readonly setEnabled: (on: boolean) => Effect.Effect<void>;
     readonly addPeer: (
       input: { readonly environmentId: string } & typeof StoredPeer.Type,
-    ) => Effect.Effect<void>;
-    readonly forget: (environmentId: string) => Effect.Effect<void>;
+    ) => Effect.Effect<void, BatonMemorySyncError>;
+    readonly forget: (environmentId: string) => Effect.Effect<void, BatonMemorySyncError>;
     readonly run: Effect.Effect<{
       readonly servers: number;
       readonly applied: number;
@@ -116,16 +130,28 @@ export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const memory = yield* BatonMemoryService;
 
-  const readPeers = secrets.get(SECRET).pipe(
-    Effect.map((bytes) =>
+  // Every read-modify-write of the blob holds this, so a pairing during a round is never lost.
+  const lock = yield* Semaphore.make(1);
+  const unreadable = new BatonMemorySyncError({
+    detail: "This server's sync credentials could not be read, so nothing was changed.",
+  });
+  /** The stored peers; a read or decode failure is an error, so nothing is written over them. */
+  const readPeersStrict = secrets.get(SECRET).pipe(
+    Effect.mapError(() => unreadable),
+    Effect.flatMap((bytes) =>
       Option.isNone(bytes)
-        ? {}
-        : Option.getOrElse(decodePeers(new TextDecoder().decode(bytes.value)), () => ({})),
+        ? Effect.succeed<StoredPeers>({})
+        : Effect.fromOption(decodePeers(new TextDecoder().decode(bytes.value))).pipe(
+            Effect.mapError(() => unreadable),
+          ),
     ),
-    Effect.orElseSucceed((): StoredPeers => ({})),
   );
+  // For showing and syncing only: an unreadable blob syncs nothing, and is never written from here.
+  const readPeers = readPeersStrict.pipe(Effect.orElseSucceed((): StoredPeers => ({})));
   const writePeers = (peers: StoredPeers) =>
     secrets.set(SECRET, new TextEncoder().encode(JSON.stringify(peers))).pipe(Effect.orDie);
+  const modify = (change: (peers: StoredPeers) => StoredPeers) =>
+    lock.withPermits(1)(Effect.flatMap(readPeersStrict, (peers) => writePeers(change(peers))));
 
   const enabled = sql<{ readonly value: string }>`
     SELECT value FROM fabric_settings WHERE key = ${ENABLED_KEY}
@@ -140,7 +166,7 @@ export const make = Effect.gen(function* () {
   const remote = (
     environmentId: string,
     peer: typeof StoredPeer.Type,
-    refused: Set<string>,
+    refused: Map<string, string>,
   ): SyncEndpoint => {
     const call = Effect.fn("BatonMemorySync.peerCall")(function* <A>(
       method: string,
@@ -154,6 +180,7 @@ export const make = Effect.gen(function* () {
           fetch(url, {
             method: "POST",
             redirect: "error",
+            signal: AbortSignal.timeout(PEER_TIMEOUT_MS),
             headers: { authorization: `Bearer ${peer.token}`, "content-type": "application/json" },
             body: JSON.stringify(input),
           }),
@@ -161,7 +188,7 @@ export const make = Effect.gen(function* () {
       }).pipe(Effect.option);
       if (Option.isNone(response)) return Option.none<A>();
       if (response.value.status === 401 || response.value.status === 403)
-        refused.add(environmentId);
+        refused.set(environmentId, peer.token);
       if (!response.value.ok) return Option.none<A>();
       const json = yield* Effect.tryPromise({
         try: () => response.value.json() as Promise<{ value?: unknown }>,
@@ -192,19 +219,23 @@ export const make = Effect.gen(function* () {
   const run = Effect.gen(function* () {
     const peers = yield* readPeers;
     const now = DateTime.toEpochMillis(yield* DateTime.now);
-    const refused = new Set<string>();
+    const refused = new Map<string, string>();
     const round = yield* syncRound([
       self,
       ...live(peers, now).map(([id, peer]) => remote(id, peer, refused)),
     ]);
-    // Revoked, or its session ended there: keeping it would only fail again.
+    // Revoked, or its session ended there: keeping it would only fail again. Read again first, and drop only the
+    // credential that was refused, so one he paired again during the round stays.
     if (refused.size > 0) {
-      const kept = Object.fromEntries(Object.entries(peers).filter(([id]) => !refused.has(id)));
-      yield* writePeers(kept);
+      yield* modify((current) =>
+        Object.fromEntries(
+          Object.entries(current).filter(([id, peer]) => refused.get(id) !== peer.token),
+        ),
+      ).pipe(Effect.ignoreCause({ log: true }));
     }
     return {
       ...round,
-      refused: [...refused].map((environmentId) => ({
+      refused: [...refused.keys()].map((environmentId) => ({
         environmentId,
         label: peers[environmentId]?.label ?? environmentId,
       })),
@@ -235,11 +266,18 @@ export const make = Effect.gen(function* () {
       sql`INSERT INTO fabric_settings (key, value) VALUES (${ENABLED_KEY}, ${on ? "on" : "off"})
         ON CONFLICT (key) DO UPDATE SET value = excluded.value`.pipe(Effect.asVoid, Effect.orDie),
     addPeer: ({ environmentId, ...peer }) =>
-      Effect.flatMap(readPeers, (peers) => writePeers({ ...peers, [environmentId]: peer })),
+      originAllowed(peer.origin)
+        ? modify((peers) => ({ ...peers, [environmentId]: peer }))
+        : Effect.fail(
+            new BatonMemorySyncError({
+              detail:
+                "That server's address is not https, this machine or the tailnet, so its credential was not kept.",
+            }),
+          ),
     forget: (environmentId) =>
-      Effect.flatMap(readPeers, (peers) => {
+      modify((peers) => {
         const { [environmentId]: _gone, ...rest } = peers;
-        return writePeers(rest);
+        return rest;
       }),
     run,
   });

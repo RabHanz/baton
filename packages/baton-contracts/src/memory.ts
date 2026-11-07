@@ -231,6 +231,15 @@ export const BatonMemorySyncAddPeerInput = Schema.Struct({
   token: TrimmedNonEmptyString,
   expiresAt: Schema.Number,
 });
+/** A change to this server's sync peers that was refused or could not be made; nothing was written. */
+export class BatonMemorySyncError extends Schema.TaggedError<BatonMemorySyncError>()(
+  "BatonMemorySyncError",
+  { detail: Schema.String },
+) {
+  override get message(): string {
+    return this.detail;
+  }
+}
 export const BatonMemorySyncForgetInput = Schema.Struct({ environmentId: TrimmedNonEmptyString });
 export const BatonMemorySyncRunResult = Schema.Struct({
   servers: Schema.Number,

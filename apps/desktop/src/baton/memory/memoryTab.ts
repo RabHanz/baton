@@ -127,9 +127,11 @@ export const createMemoryTab = (input: {
         .catch((error: unknown) => void (status = reason(error)))
         .then(load);
     } else if (id === "m.syncOn") {
-      input.sync.setEnabled(value === true);
-      status = value === true ? "Sync is on." : "Sync is off.";
-      input.refresh();
+      void input.sync
+        .setEnabled(value === true)
+        .then(() => void (status = value === true ? "Sync is on." : "Sync is off."))
+        .catch((error: unknown) => void (status = reason(error)))
+        .finally(input.refresh);
     } else if (id === "m.pullOn") {
       void run(
         "pull",
@@ -161,10 +163,15 @@ export const createMemoryTab = (input: {
         .catch((error: unknown) => void (status = reason(error)))
         .then(load);
     } else if ((target = memoryIdOf(id, "m.syncForget")) !== null) {
-      input.sync.forget(target);
-      status =
-        'Stopped here. To end it there too, revoke "Tessaya memory sync" in that server\'s Sharing & access.';
-      void load();
+      void input.sync
+        .forget(target)
+        .then(
+          () =>
+            void (status =
+              'Stopped here. To end it there too, revoke "Tessaya memory sync" in that server\'s Sharing & access.'),
+        )
+        .catch((error: unknown) => void (status = reason(error)))
+        .then(load);
     } else if (id === "m.sync") {
       void input.sync
         .run()

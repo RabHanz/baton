@@ -1,3 +1,7 @@
+// @effect-diagnostics nodeBuiltinImport:off globalJson:off
+import * as NodeHttp from "node:http";
+import type * as NodeNet from "node:net";
+
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -102,4 +106,70 @@ it.effect("keeps a peer's credential in the secret store, and shows it without i
       ),
     ),
   ),
+);
+
+const serviceLayer = layer.pipe(
+  Layer.provide(Layer.mergeAll(secrets, memory)),
+  Layer.provideMerge(SqlitePersistenceMemory),
+);
+const blob = () => new TextDecoder().decode(stored.get("tessaya-memory-sync-peers"));
+const peer = (origin: string, token = "sync-token") => ({
+  label: "Server",
+  origin,
+  token,
+  expiresAt: Number.MAX_SAFE_INTEGER,
+});
+
+it.effect("keeps a credential only for https, this machine or the tailnet", () =>
+  Effect.gen(function* () {
+    const sync = yield* BatonMemorySync;
+    const refused = yield* Effect.flip(
+      sync.addPeer({ environmentId: "far", ...peer("http://box.example") }),
+    );
+    assert.include(refused.detail, "not https");
+    yield* sync.addPeer({ environmentId: "tail", ...peer("http://100.100.1.2:3773") });
+    yield* sync.addPeer({ environmentId: "here", ...peer("http://127.0.0.1:3773") });
+    assert.notInclude(blob(), "box.example");
+    assert.include(blob(), "100.100.1.2");
+  }).pipe(Effect.provide(serviceLayer)),
+);
+
+it.effect("never writes over credentials it cannot read", () =>
+  Effect.gen(function* () {
+    const sync = yield* BatonMemorySync;
+    stored.set("tessaya-memory-sync-peers", new TextEncoder().encode("not json"));
+    yield* Effect.flip(sync.addPeer({ environmentId: "box", ...peer("https://box.example") }));
+    yield* Effect.flip(sync.forget("box"));
+    assert.strictEqual(blob(), "not json");
+    stored.delete("tessaya-memory-sync-peers");
+  }).pipe(Effect.provide(serviceLayer)),
+);
+
+it.live("drops only the credential a peer refused, not one paired again during the round", () =>
+  Effect.gen(function* () {
+    const sync = yield* BatonMemorySync;
+    stored.delete("tessaya-memory-sync-peers");
+    const server = NodeHttp.createServer((_request, response) => {
+      // He pairs the box again while the round is out: its stored token changes before the refusal lands.
+      const now = JSON.parse(blob()) as Record<string, { token: string }>;
+      now["box"] = { ...now["box"]!, token: "new-token" };
+      stored.set("tessaya-memory-sync-peers", new TextEncoder().encode(JSON.stringify(now)));
+      response.writeHead(401).end();
+    });
+    yield* Effect.callback<void>(
+      (resume) => void server.listen(0, "127.0.0.1", () => resume(Effect.void)),
+    );
+    const origin = `http://127.0.0.1:${(server.address() as NodeNet.AddressInfo).port}`;
+    yield* sync.addPeer({ environmentId: "box", ...peer(origin, "old-token") });
+    yield* sync.addPeer({ environmentId: "gone", ...peer(origin, "gone-token") });
+    const round = yield* sync.run;
+    server.close();
+    assert.sameMembers(
+      round.refused.map((r) => r.environmentId),
+      ["box", "gone"],
+    );
+    const left = JSON.parse(blob()) as Record<string, { token: string }>;
+    assert.deepStrictEqual(Object.keys(left), ["box"]);
+    assert.strictEqual(left["box"]?.token, "new-token");
+  }).pipe(Effect.provide(serviceLayer)),
 );

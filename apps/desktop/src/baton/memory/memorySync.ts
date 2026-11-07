@@ -54,15 +54,19 @@ export const createMemorySync = (input: {
     return state;
   };
 
-  /** The older build's credentials, live and decryptable; any other one counts as unpaired. */
-  const legacyPeers = (): Record<string, PeerCredential> => {
+  /**
+   * The older build's credentials, live and decryptable. Null when the file exists and cannot be read here (no
+   * encryption, or it is not the file's JSON): then nothing may be deleted, and the move is tried at the next start.
+   */
+  const legacyPeers = (): Record<string, PeerCredential> | null => {
+    if (input.peersFile === undefined || !NodeFS.existsSync(input.peersFile)) return {};
     const protection = input.protection?.() ?? null;
-    if (input.peersFile === undefined || protection === null) return {};
+    if (protection === null) return null;
     let wrapped: Record<string, unknown>;
     try {
       wrapped = JSON.parse(NodeFS.readFileSync(input.peersFile, "utf8")) as Record<string, unknown>;
     } catch {
-      return {};
+      return null;
     }
     const out: Record<string, PeerCredential> = {};
     for (const [id, value] of Object.entries(wrapped)) {
@@ -76,7 +80,7 @@ export const createMemorySync = (input: {
         )
           out[id] = peer;
       } catch {
-        // Not decryptable here any more: as good as none.
+        // This entry was already unusable here (another machine's key); the others still move.
       }
     }
     return out;
@@ -94,10 +98,21 @@ export const createMemorySync = (input: {
   /** Once: the old switch and credentials go to the server, and the local copies are deleted only after it took them. */
   const migrate = async (): Promise<void> => {
     const peers = legacyPeers();
+    if (peers === null) return;
     const on = legacyEnabled();
-    if (Object.keys(peers).length === 0 && !on) return;
+    if (Object.keys(peers).length === 0 && !on && !NodeFS.existsSync(input.peersFile ?? "")) return;
+    // His names for them, from the window's list when it is up.
+    const listed = (await input.call("syncPeers", {}).catch(() => null)) as ReadonlyArray<{
+      environmentId: string;
+      label: string;
+    }> | null;
+    const labels = new Map((listed ?? lastPeers).map((p) => [p.environmentId, p.label]));
     for (const [environmentId, peer] of Object.entries(peers))
-      await input.call("syncAddPeer", { environmentId, label: environmentId, ...peer });
+      await input.call("syncAddPeer", {
+        environmentId,
+        label: labels.get(environmentId) ?? environmentId,
+        ...peer,
+      });
     if (on) await input.call("syncSetEnabled", { on: true });
     if (input.peersFile !== undefined) NodeFS.rmSync(input.peersFile, { force: true });
     NodeFS.rmSync(input.file, { force: true });
@@ -129,9 +144,10 @@ export const createMemorySync = (input: {
   return {
     /** The server's switch as last read; a refresh happens with every list and run. */
     enabled: (): boolean => state.enabled,
-    setEnabled: (on: boolean): void => {
+    /** Resolves once the server has it; a refusal is his to read. */
+    setEnabled: async (on: boolean): Promise<void> => {
+      await input.call("syncSetEnabled", { on });
       state = { ...state, enabled: on };
-      void input.call("syncSetEnabled", { on }).catch(() => undefined);
     },
     run,
     migrate,
@@ -169,9 +185,9 @@ export const createMemorySync = (input: {
       await readState();
     },
     /** Drops that server's credential here; revoking it there ("Tessaya memory sync" in Sharing & access) ends it. */
-    forget: (environmentId: string): void => {
+    forget: async (environmentId: string): Promise<void> => {
+      await input.call("syncForget", { environmentId });
       state = { ...state, peers: state.peers.filter((p) => p.environmentId !== environmentId) };
-      void input.call("syncForget", { environmentId }).catch(() => undefined);
     },
     /** The server runs the rounds; this moves an older build's credentials there and reads the switch. */
     start: (): (() => void) => {

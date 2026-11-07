@@ -190,6 +190,7 @@ import {
   BatonMemoryRefInput,
   BatonMemoryRefusedError,
   BatonMemorySyncAddPeerInput,
+  BatonMemorySyncError,
   BatonMemorySyncForgetInput,
   BatonMemorySyncHelloResult,
   BatonMemorySyncRunResult,
@@ -584,12 +585,20 @@ const WsBatonMemorySyncSetEnabledRpc = Rpc.make(BATON_MEMORY_WS_METHODS.syncSetE
 const WsBatonMemorySyncAddPeerRpc = Rpc.make(BATON_MEMORY_WS_METHODS.syncAddPeer, {
   payload: BatonMemorySyncAddPeerInput,
   success: Schema.Struct({}),
-  error: MemoryErrors,
+  error: Schema.Union([
+    BatonMemorySyncError,
+    BatonMemoryRefusedError,
+    EnvironmentAuthorizationError,
+  ]),
 });
 const WsBatonMemorySyncForgetRpc = Rpc.make(BATON_MEMORY_WS_METHODS.syncForget, {
   payload: BatonMemorySyncForgetInput,
   success: Schema.Struct({}),
-  error: MemoryErrors,
+  error: Schema.Union([
+    BatonMemorySyncError,
+    BatonMemoryRefusedError,
+    EnvironmentAuthorizationError,
+  ]),
 });
 const WsBatonMemorySyncRunRpc = Rpc.make(BATON_MEMORY_WS_METHODS.syncRun, {
   payload: Schema.Struct({}),

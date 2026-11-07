@@ -1,13 +1,5 @@
 /** Where the window may send another server's memory-sync credential (MEMORY.md section 6). */
-
-const isPrivateTailnet = (host: string): boolean => {
-  const parts = host.split(".").map(Number);
-  // The /10 block Tailscale gives its machines: first octet 100, second 64 to 127.
-  return parts.length === 4 && parts[0] === 100 && parts[1]! >= 64 && parts[1]! <= 127;
-};
-
-const isLoopback = (host: string): boolean =>
-  host === "localhost" || host === "[::1]" || host.startsWith("127.");
+import { syncOriginAllowed } from "@t3tools/baton-shared/syncOrigin";
 
 /**
  * That server's URL for `path`, keeping any base path a relay puts it under. Null when the credential must not go
@@ -15,11 +7,7 @@ const isLoopback = (host: string): boolean =>
  */
 export const syncPeerUrl = (base: string, path: string): URL | null => {
   const root = new URL(base.endsWith("/") ? base : `${base}/`);
-  if (
-    root.protocol !== "https:" &&
-    !(root.protocol === "http:" && (isLoopback(root.hostname) || isPrivateTailnet(root.hostname)))
-  )
-    return null;
+  if (!syncOriginAllowed(root)) return null;
   return new URL(path.replace(/^\//, ""), root);
 };
 

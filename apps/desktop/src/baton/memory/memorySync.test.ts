@@ -56,7 +56,7 @@ describe("memory sync, carried by this app's own server", () => {
       call: server.call,
     });
     expect(await sync.run()).toBe("Memory sync is off.");
-    sync.setEnabled(true);
+    await sync.setEnabled(true);
     expect(await sync.run()).toContain("nothing to carry");
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
@@ -75,7 +75,7 @@ describe("memory sync, carried by this app's own server", () => {
     expect(server.peers.get("box")).toMatchObject({ label: "Server", token: "sync-token" });
     expect(NodeFS.readdirSync(dir)).toEqual([]);
     expect(await box()).toMatchObject({ paired: true, expiresAt: 10_000 });
-    sync.forget("box");
+    await sync.forget("box");
     expect((await box())?.paired).toBe(false);
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
@@ -104,13 +104,55 @@ describe("memory sync, carried by this app's own server", () => {
     });
     await sync.migrate();
     expect([...server.peers.keys()]).toEqual(["box"]);
+    // Moved under his name for it, from the window's list.
     expect(server.peers.get("box")).toMatchObject({
+      label: "Server",
       token: "old-token",
       origin: "https://box.example",
     });
     expect(sync.enabled()).toBe(true);
     expect(NodeFS.existsSync(peersFile)).toBe(false);
     expect(NodeFS.existsSync(file)).toBe(false);
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("never deletes the old credentials file it could not read, and moves it at a later start", async () => {
+    const dir = tmp();
+    const file = NodePath.join(dir, "baton-memory.json");
+    const peersFile = NodePath.join(dir, "memory-sync-peers.json");
+    const credential = { origin: "https://box.example", token: "old-token", expiresAt: 10_000 };
+    NodeFS.writeFileSync(
+      peersFile,
+      JSON.stringify({ box: protection().protect(JSON.stringify(credential)) }),
+    );
+    const server = fakeServer();
+    let encrypts = false;
+    const sync = createMemorySync({
+      file,
+      peersFile,
+      now: () => 1_000,
+      protection: () => (encrypts ? protection() : null),
+      call: server.call,
+    });
+    await sync.migrate();
+    expect(NodeFS.existsSync(peersFile)).toBe(true);
+    expect(server.peers.size).toBe(0);
+    encrypts = true;
+    await sync.migrate();
+    expect(NodeFS.existsSync(peersFile)).toBe(false);
+    expect([...server.peers.keys()]).toEqual(["box"]);
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("waits for the server when switching sync or forgetting a server, and passes its refusal on", async () => {
+    const dir = tmp();
+    const sync = createMemorySync({
+      file: NodePath.join(dir, "baton-memory.json"),
+      call: async () => Promise.reject(new Error("The server did not answer.")),
+    });
+    await expect(sync.setEnabled(true)).rejects.toThrow("The server did not answer.");
+    expect(sync.enabled()).toBe(false);
+    await expect(sync.forget("box")).rejects.toThrow("The server did not answer.");
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 
