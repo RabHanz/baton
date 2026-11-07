@@ -7,7 +7,13 @@ export interface ProviderChoice {
   readonly enabled: boolean;
   /** Why it cannot be chosen, in words for a person. */
   readonly why: string | null;
-  readonly accounts: ReadonlyArray<{ readonly account: string; readonly enabled: boolean; readonly why: string | null; readonly percent: number | null; readonly resets: string | null }>;
+  readonly accounts: ReadonlyArray<{
+    readonly account: string;
+    readonly enabled: boolean;
+    readonly why: string | null;
+    readonly percent: number | null;
+    readonly resets: string | null;
+  }>;
 }
 
 /** The provider step and the account step of the card. Only providers that are set up are enabled. */
@@ -23,11 +29,21 @@ export const providerChoices = (
       id: p.id,
       label: p.label,
       enabled: usable,
-      why: usable ? null : setup.state === "not-set-up" ? setup.why : `${p.label} is not installed or not signed in on the computer that runs cloud tasks.`,
+      why: usable
+        ? null
+        : setup.state === "not-set-up"
+          ? setup.why
+          : `${p.label} is not installed or not signed in on the computer that runs cloud tasks.`,
       accounts: p.accounts().map((account) => {
         const u = usage.find((x) => x.provider === p.id && x.account === account);
         const can = pickable(u);
-        return { account, enabled: can.enabled, why: can.why, percent: u?.weeklyPercent ?? null, resets: u?.resetsAt ?? null };
+        return {
+          account,
+          enabled: can.enabled,
+          why: can.why,
+          percent: u?.weeklyPercent ?? null,
+          resets: u?.resetsAt ?? null,
+        };
       }),
     };
   });

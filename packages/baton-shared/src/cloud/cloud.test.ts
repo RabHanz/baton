@@ -7,6 +7,7 @@ import {
   claudeHarness,
   codexHarness,
   localProvider,
+  weeklyForLogin,
   type BriefStore,
   type PendingStore,
 } from "./local.ts";
@@ -823,6 +824,55 @@ describe("one cap for every provider", () => {
       enabled: true,
       why: "usage unknown",
     });
+  });
+
+  it("reads each login's weekly figure from T3's instances, and counts the points a finished task used", async () => {
+    let week = 40;
+    const weekly = async () => [
+      { instanceId: "codex", label: "Codex", email: null, weeklyPercent: 12, resetsAt: null },
+      {
+        instanceId: "codex_work",
+        label: "Work",
+        email: null,
+        weeklyPercent: week,
+        resetsAt: "Mon",
+      },
+    ];
+    let finished = false;
+    const { exec } = fakeExec((c) =>
+      c.args[1] === "exec"
+        ? { stdout: "Submitted task_abc123\n" }
+        : c.args[1] === "status"
+          ? { stdout: finished ? "completed\n" : "running\n" }
+          : {},
+    );
+    const { store, brief } = memoryStores();
+    const p = localProvider(
+      codexHarness(exec, { codexEnv: "env_1", codexHomes: { work: "/h/work" }, weekly }),
+      store,
+      brief,
+    );
+    const u = await p.usage();
+    expect(u.ok && u.value.map((x) => [x.account, x.weeklyPercent, x.resetsAt])).toEqual([
+      ["work", 40, "Mon"],
+    ]);
+    await p.dispatch(input);
+    const ok = await p.approve("L-1", "work", "r");
+    expect(ok.ok && ok.value.weeklyBefore).toBe(40);
+    week = 43;
+    expect((await p.status("L-1")).ok).toBe(true);
+    expect(store.load()[0]).toMatchObject({ state: "running", pointsUsed: null });
+    finished = true;
+    const done = await p.status("L-1");
+    expect(done.ok && done.value).toMatchObject({
+      state: "done",
+      weeklyAfter: 43,
+      pointsUsed: 3,
+      overCap: true,
+    });
+    expect(
+      weeklyForLogin(await weekly(), "codex", "This computer's Codex login", true)?.percent,
+    ).toBe(12);
   });
 
   it("shows a provider with no usage as unknown, not zero", async () => {

@@ -228,6 +228,16 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     ],
   },
   {
+    id: "cloud-dispatch-points",
+    source:
+      "GEN-10: a cloud task carries her estimate of the week it will use, so the cap is checked first",
+    said: "run the README typo fix in the cloud: repo shop, branch fix/readme-typo, already pushed",
+    first: ["cloud_dispatch"],
+    goal: "cloud_dispatch",
+    maxCalls: 2,
+    goalArgs: ['"expected_points":'],
+  },
+  {
     id: "anything-stuck",
     model: "haiku",
     source: "agentPrompt status rules",

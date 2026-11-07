@@ -29,6 +29,8 @@ export const BATON_ACCOUNT_WS_METHODS = {
   /** Whether automatic rotation leaves this thread on its account, and setting that. */
   threadKept: "fabric.account.threadKept",
   threadKeep: "fabric.account.threadKeep",
+  /** Each instance's weekly figure, for cloud tasks on this computer (D2). A read. */
+  weekly: "fabric.account.weekly",
 } as const;
 
 export const BATON_DEFAULT_CLAUDE_INSTANCE = "claudeAgent";
@@ -146,6 +148,37 @@ export const BatonThreadKeptInput = Schema.Struct({ threadId: ThreadId });
 export const BatonThreadKeepInput = Schema.Struct({ threadId: ThreadId, keep: Schema.Boolean });
 export type BatonThreadKeepInput = typeof BatonThreadKeepInput.Type;
 export const BatonThreadKeepResult = Schema.Struct({ keep: Schema.Boolean });
+
+export const BatonInstanceWeekly = Schema.Struct({
+  instanceId: TrimmedNonEmptyString,
+  label: TrimmedNonEmptyString,
+  email: Schema.NullOr(Schema.String),
+  weeklyPercent: Schema.NullOr(Schema.Number),
+  resetsAt: Schema.NullOr(Schema.String),
+});
+export type BatonInstanceWeekly = typeof BatonInstanceWeekly.Type;
+export const BatonAccountWeeklyInput = Schema.Struct({ driver: ProviderDriverKind });
+export const BatonAccountWeeklyResult = Schema.Struct({
+  instances: Schema.Array(BatonInstanceWeekly),
+});
+
+/** The weekly window each enabled instance of a driver reports, as T3's provider snapshot has it. */
+export const instancesWeekly = (
+  providers: ReadonlyArray<ServerProvider>,
+  driver: string,
+): ReadonlyArray<BatonInstanceWeekly> =>
+  providers
+    .filter((provider) => provider.driver === driver && provider.enabled)
+    .map((provider) => {
+      const week = provider.usageLimits?.windows.find((window) => window.kind === "weekly");
+      return {
+        instanceId: provider.instanceId,
+        label: provider.displayName ?? provider.instanceId,
+        email: provider.auth.email ?? null,
+        weeklyPercent: week?.usedPercent ?? null,
+        resetsAt: week?.resetsAt ?? null,
+      };
+    });
 
 export const BatonAccountUseResult = Schema.Struct({
   rotation: BatonAccountRotation,

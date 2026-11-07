@@ -28,7 +28,11 @@ export type CardEvent =
   | { readonly type: "retry" };
 
 /** `choices` are what the card is showing now; a disabled choice cannot be picked whatever is sent. */
-export const reduceCard = (s: CardState, e: CardEvent, choices: ReadonlyArray<ProviderChoice>): CardState => {
+export const reduceCard = (
+  s: CardState,
+  e: CardEvent,
+  choices: ReadonlyArray<ProviderChoice>,
+): CardState => {
   switch (e.type) {
     case "provider":
       return s.phase === "provider" && choices.find((c) => c.id === e.provider)?.enabled === true
@@ -36,21 +40,39 @@ export const reduceCard = (s: CardState, e: CardEvent, choices: ReadonlyArray<Pr
         : s;
     case "account": {
       if (s.phase !== "account") return s;
-      const pick = choices.find((c) => c.id === s.provider)?.accounts.find((a) => a.account === e.account);
-      return pick?.enabled === true ? { phase: "confirm", provider: s.provider, account: e.account } : s;
+      const pick = choices
+        .find((c) => c.id === s.provider)
+        ?.accounts.find((a) => a.account === e.account);
+      return pick?.enabled === true
+        ? { phase: "confirm", provider: s.provider, account: e.account }
+        : s;
     }
     case "back":
-      return s.phase === "account" ? CARD_START : s.phase === "confirm" ? { phase: "account", provider: s.provider } : s.phase === "error" ? s.back : s;
+      return s.phase === "account"
+        ? CARD_START
+        : s.phase === "confirm"
+          ? { phase: "account", provider: s.provider }
+          : s.phase === "error"
+            ? s.back
+            : s;
     case "confirm":
-      return s.phase === "confirm" ? { phase: "approving", provider: s.provider, account: s.account } : s;
+      return s.phase === "confirm"
+        ? { phase: "approving", provider: s.provider, account: s.account }
+        : s;
     case "approved":
-      return s.phase === "approving" ? { phase: "done", provider: s.provider, account: s.account } : s;
+      return s.phase === "approving"
+        ? { phase: "done", provider: s.provider, account: s.account }
+        : s;
     case "failed":
-      return s.phase === "approving" ? { phase: "error", message: e.message, back: { phase: "account", provider: s.provider } } : s;
+      return s.phase === "approving"
+        ? { phase: "error", message: e.message, back: { phase: "account", provider: s.provider } }
+        : s;
     case "retry":
       return s.phase === "error" ? s.back : s;
     case "deny":
-      return s.phase === "done" || s.phase === "approving" || s.phase === "denied" ? s : { phase: "denied" };
+      return s.phase === "done" || s.phase === "approving" || s.phase === "denied"
+        ? s
+        : { phase: "denied" };
   }
 };
 
@@ -63,13 +85,21 @@ export const fromSpoken = (
   said: { readonly provider?: ProviderId; readonly account: string },
 ): { readonly state: CardState; readonly readBack: string } | { readonly refused: string } => {
   const matches = choices.filter(
-    (c) => c.enabled && (said.provider === undefined || c.id === said.provider) && c.accounts.some((a) => a.account.toLowerCase() === said.account.toLowerCase()),
+    (c) =>
+      c.enabled &&
+      (said.provider === undefined || c.id === said.provider) &&
+      c.accounts.some((a) => a.account.toLowerCase() === said.account.toLowerCase()),
   );
-  if (matches.length === 0) return { refused: `I cannot approve on ${said.account}: it is not offered, or its provider is not set up.` };
-  if (matches.length > 1) return { refused: `${said.account} is offered by more than one provider. Say which.` };
+  if (matches.length === 0)
+    return {
+      refused: `I cannot approve on ${said.account}: it is not offered, or its provider is not set up.`,
+    };
+  if (matches.length > 1)
+    return { refused: `${said.account} is offered by more than one provider. Say which.` };
   const c = matches[0]!;
   const a = c.accounts.find((x) => x.account.toLowerCase() === said.account.toLowerCase())!;
-  if (!a.enabled) return { refused: `${a.account} cannot be used now: ${a.why ?? "not available"}.` };
+  if (!a.enabled)
+    return { refused: `${a.account} cannot be used now: ${a.why ?? "not available"}.` };
   return {
     state: { phase: "confirm", provider: c.id, account: a.account },
     readBack: `Approve this cloud task on ${c.label}, account ${a.account}${a.percent === null ? "" : `, ${a.percent}% used this week`}? Only your yes on the card runs it.`,
@@ -90,20 +120,36 @@ export type OfferPick =
  */
 export const offerQuestion = (
   choices: ReadonlyArray<ProviderChoice>,
-  words: { readonly pick: (label: string, account: string, usage: string) => string; readonly deny: string; readonly later: string },
-): { readonly buttons: ReadonlyArray<string>; readonly cancel: number; readonly picks: ReadonlyArray<OfferPick> } => {
+  words: {
+    readonly pick: (label: string, account: string, usage: string) => string;
+    readonly deny: string;
+    readonly later: string;
+  },
+): {
+  readonly buttons: ReadonlyArray<string>;
+  readonly cancel: number;
+  readonly picks: ReadonlyArray<OfferPick>;
+} => {
   const options = choices
     .filter((c) => c.enabled)
     .flatMap((c) =>
       c.accounts
         .filter((a) => a.enabled)
         .map((a) => ({
-          button: words.pick(c.label, a.account, a.percent === null ? "usage unknown" : `${a.percent}% used`),
+          button: words.pick(
+            c.label,
+            a.account,
+            a.percent === null ? "usage unknown" : `${a.percent}% used`,
+          ),
           pick: { kind: "pick", provider: c.id, account: a.account } as OfferPick,
         })),
     );
   // A phone shows eight answers; the rest are still on the card in Approvals.
   const shown = options.slice(0, OFFER_MAX);
   const picks: OfferPick[] = [...shown.map((o) => o.pick), { kind: "deny" }, { kind: "later" }];
-  return { buttons: [...shown.map((o) => o.button), words.deny, words.later], cancel: picks.length - 1, picks };
+  return {
+    buttons: [...shown.map((o) => o.button), words.deny, words.later],
+    cancel: picks.length - 1,
+    picks,
+  };
 };

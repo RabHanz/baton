@@ -26,6 +26,7 @@ import {
   BATON_WATCH_WS_METHODS,
   BATON_WS_METHODS,
   BatonRpcGroup,
+  instancesWeekly,
   isProviderAvailable,
   OrchestrationFiringNotFoundError,
   ProviderDriverKind,
@@ -195,6 +196,10 @@ export const makeHandlers = Effect.gen(function* () {
       run(Effect.flatMap(AccountRotationPolicy, (policy) => policy.read)).pipe(
         Effect.map((policy) => ({ policy })),
       ),
+    [BATON_ACCOUNT_WS_METHODS.weekly]: (input) =>
+      run(
+        Effect.flatMap(ProviderRegistry.ProviderRegistry, (registry) => registry.getProviders),
+      ).pipe(Effect.map((providers) => ({ instances: instancesWeekly(providers, input.driver) }))),
     [BATON_ACCOUNT_WS_METHODS.threadKept]: (input) =>
       run(Effect.flatMap(ThreadAccountMoves, (moves) => moves.kept(input.threadId))).pipe(
         Effect.map((keep) => ({ keep })),

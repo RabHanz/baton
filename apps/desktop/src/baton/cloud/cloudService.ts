@@ -4,6 +4,7 @@
  * the approval card's clicks. The rules are in `@t3tools/baton-shared/cloud`; this holds state and I/O.
  */
 import { buildLocalProviders } from "@t3tools/baton-shared/cloud/build";
+import type { LocalSettings } from "@t3tools/baton-shared/cloud/local";
 import {
   CARD_START,
   fromSpoken,
@@ -74,6 +75,8 @@ export type HubCall = (
 
 export interface CloudDeps {
   readonly settings: () => CloudSettings;
+  /** T3's instances with their weekly figures, read from this machine's server (D2). */
+  readonly weekly?: LocalSettings["weekly"];
   readonly exec: Exec;
   /** Where the local transport keeps its small files. */
   readonly dir: string;
@@ -181,6 +184,7 @@ export const createCloud = (deps: CloudDeps) => {
         : [
             ...buildLocalProviders(deps.exec, fileStores(deps.dir), {
               codexEnv: s.codexEnv,
+              ...(deps.weekly === undefined ? {} : { weekly: deps.weekly }),
             }).values(),
             ...STUBS,
           ];
@@ -464,6 +468,9 @@ export const createCloud = (deps: CloudDeps) => {
         if (p === undefined)
           return "No cloud provider is ready here. Turn one on and sign in under Cloud.";
         if (a.brief.length > BRIEF_MAX) return `A cloud brief is at most ${BRIEF_MAX} characters.`;
+        const cap = deps.settings().capPoints;
+        if (a.expectedUsage !== undefined && a.expectedUsage > cap)
+          return `That is expected to use ${a.expectedUsage} points of the week, over his cap of ${cap}. Split it into smaller tasks, or ask him to raise the cap under Cloud.`;
         const out = await p.dispatch({
           repo: a.repo,
           branch: a.branch,
