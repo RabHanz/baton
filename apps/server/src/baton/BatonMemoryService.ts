@@ -34,7 +34,6 @@ import {
   isLesson,
   type MemoryQuery,
 } from "@t3tools/baton-shared/memory";
-import { redactText } from "@t3tools/baton-shared/diagnostics";
 import { DEFAULT_OS_PACK, mayRecall } from "@t3tools/baton-shared/osPack";
 import * as NodePath from "node:path";
 import * as Clock from "effect/Clock";
@@ -225,11 +224,8 @@ export class BatonMemoryService extends Context.Service<
 const TALKS_SCRUBBED = "talks-scrubbed";
 const TALK_REDACTED = "[redacted: looks like a secret]";
 const decodeTalks = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Array(Schema.String)));
-/** A talk line's tokens taken out, or the whole line marked when it still looks like a secret. */
-const scrubTalk = (line: string): string => {
-  const out = redactText(line);
-  return detectSecret(out) === null ? out : TALK_REDACTED;
-};
+/** The whole line marked when it looks like a secret, as the live door refuses it; anything else is kept as it is. */
+const scrubTalk = (line: string): string => (detectSecret(line) === null ? line : TALK_REDACTED);
 
 export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -934,7 +930,10 @@ export const make = Effect.gen(function* () {
       );
     }
     yield* setFlag(TALKS_SCRUBBED, true);
-  });
+  }).pipe(
+    // A failure must not stop the server starting; the flag stays unset, so the next start tries again.
+    Effect.catchCause((cause) => Effect.logWarning("old talk notes were not scrubbed", cause)),
+  );
 
   return BatonMemoryService.of({
     origin,

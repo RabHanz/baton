@@ -443,13 +443,18 @@ it.effect("scrubs secrets from talk notes kept before #410, once, keeping every 
     const sql = yield* SqlClient.SqlClient;
     const key = `sk-${"a".repeat(24)}`;
     yield* sql`INSERT INTO fabric_memory_meta (key, value) VALUES ('talks:2026-10-01', ${JSON.stringify(
-      [`use the key ${key} for the shop`, "the password is sunshine42", "book the dentist"],
+      [
+        `use the key ${key} for the shop`,
+        "the password is sunshine42",
+        "mail ann@example.com about commit 0123456789abcdef0123456789abcdef01234567",
+      ],
     )})`;
     const memory = Context.get(yield* Layer.build(memoryLayer), BatonMemoryService);
+    // Ordinary words (an address, a commit) stay as they were; only a line that looks like a secret is marked.
     assert.deepStrictEqual(yield* memory.talks("2026-10-01"), [
-      "use the key <secret> for the shop",
       "[redacted: looks like a secret]",
-      "book the dentist",
+      "[redacted: looks like a secret]",
+      "mail ann@example.com about commit 0123456789abcdef0123456789abcdef01234567",
     ]);
     assert.isTrue(yield* memory.flag("talks-scrubbed"));
     // Done once: talk kept after the scrub is left as it is (new talk never holds a secret now).
