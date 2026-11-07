@@ -132,6 +132,7 @@ it.effect(
       ),
       hit("-mnt-vol-1-dev-kai-hair-lane-srv", "Lane salon numbers"),
       hit("-tmp-claude-1000--home-ann-shop", "Scratch margin sums"),
+      hit("-mnt-vol-1-tmp-lanes-claude-1000--home-ann-shop", "Scratch margin on the volume"),
       hit("-home-ann-books", `Note: ${private_}, so plan around it`),
       hit("-home-ann-books", `Use the key sk-${"b".repeat(24)} for the books export`),
       hit("-home-ann-books", "The books close on the fifth"),

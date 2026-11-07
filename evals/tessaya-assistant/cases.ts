@@ -28,6 +28,8 @@ export interface AssistantCase {
   readonly maxCalls?: number;
   /** Words the goal tool's arguments must contain, such as the persona a part goes to. */
   readonly goalArgs?: ReadonlyArray<string>;
+  /** Text the goal tool's arguments must not contain, such as a made-up argument's key. */
+  readonly notGoalArgs?: ReadonlyArray<string>;
   /** He talked over her reply: what she had said by then. */
   readonly cutIn?: CutIn;
   /** A paired device's or agent's words, not his: the turn says a paired device said it. */
@@ -254,6 +256,25 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     goalArgs: ["pric"],
     answers: {
       memory_search: "Nothing in memory matches.",
+      history_search:
+        "2026-10-04T13:55  user  -home-ann-shop  11111111-2222-3333-4444-555555555555\n    We settled on twelve pounds a month for the shop plan",
+    },
+  },
+  {
+    id: "history-search-pasted-session",
+    source:
+      "MEM-7 review: he pastes a session id; the assistant searches by words, with no session argument it would make up",
+    said: "what happened in session 11111111-2222-3333-4444-555555555555 about the shop's pricing?",
+    // Its own sessions list first is fine; once that has no such session, the history is searched by words.
+    first: ["history_search", "memory_search", "session_show"],
+    goal: "history_search",
+    maxCalls: 3,
+    goalArgs: ['"query":'],
+    notGoalArgs: ['"session":'],
+    answers: {
+      memory_search: "Nothing in memory matches.",
+      session_show:
+        "There is no session 11111111-2222-3333-4444-555555555555 on any connected machine.",
       history_search:
         "2026-10-04T13:55  user  -home-ann-shop  11111111-2222-3333-4444-555555555555\n    We settled on twelve pounds a month for the shop plan",
     },

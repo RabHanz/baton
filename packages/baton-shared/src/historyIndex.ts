@@ -83,7 +83,8 @@ const NOISE_ROLES = new Set(["tool_result", "tool_use", "thinking", "system", "m
 /** The folder a session ran in, after the machine's path prefix and before any shape check: what a wall is judged on. */
 const folderOf = (project: string): string =>
   project
-    // A scratchpad folder (`-tmp-claude-<uid>-`) names the path it was made for next.
+    // A scratchpad folder (`-tmp-claude-<uid>-`, or one on a mounted volume) names the path it was made for next.
+    .replace(/^-mnt-.*?-tmp-(?:lanes-)?claude-\d+-/, "")
     .replace(/^-tmp-claude-\d+-/, "")
     .replace(/^-home-[^-]+-/, "")
     // A mounted volume's path, up to its code folder (`-mnt-<volume>-dev-<project>`).

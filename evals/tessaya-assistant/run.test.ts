@@ -60,6 +60,8 @@ describe("the assistant eval's grader", () => {
     });
     expect(passes(split, call("alfred"))).toBe(true);
     expect(passes(split, call("engineering"))).toBe(false);
+    const words = { ...split, goalArgs: [], notGoalArgs: ['"parts":'] };
+    expect(passes(words, call("alfred"))).toBe(false);
   });
 
   it("fails a case when half or more of its samples fail", () => {
