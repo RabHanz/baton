@@ -31,6 +31,13 @@ export interface AssistantCase {
   readonly outside?: boolean;
   /** The model a run without `--model` must put this turn on: simple turns fast, planning strong. */
   readonly model?: string;
+  /** What she recalls for this sentence, built into the real recall block (memoryBlock): kind, words, and whether they are his. */
+  readonly remembered?: ReadonlyArray<{
+    readonly kind: "fact" | "preference" | "correction" | "note";
+    readonly text: string;
+    readonly his: boolean;
+    readonly pinned?: boolean;
+  }>;
 }
 
 /** An agreed job that needs an engineer and a researcher, as jobs_list reads it out. */
@@ -207,6 +214,18 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
       memory_search: "[id: mem-42] The shop deploys on Thursdays (fact, his own words)",
       memory_history: "- version 1, 2026-11-01, by him (he edited it): The shop deploys on Fridays",
     },
+  },
+  {
+    id: "lesson-wins-conflict",
+    source:
+      "KIRO-4b: his correction leads the recall block and wins over an older memory that disagrees",
+    said: "for the shop repo, should I indent with tabs or spaces?",
+    first: ["none", "memory_search"],
+    says: "spaces",
+    remembered: [
+      { kind: "fact", text: "The shop repo is indented with tabs", his: false, pinned: true },
+      { kind: "correction", text: "No: the shop repo uses spaces, not tabs", his: true },
+    ],
   },
   {
     id: "anything-stuck",

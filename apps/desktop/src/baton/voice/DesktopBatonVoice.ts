@@ -192,6 +192,7 @@ import { runCommitOp } from "../presence/commitTools.ts";
 import { presenceControls, presencePatch } from "../presence/presenceRows.ts";
 import {
   askWhyPrompt,
+  usedLine,
   EMPTY_NOW,
   nowAction,
   nowControls,
@@ -4080,6 +4081,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           at,
           status: result.status,
           text: result.text.slice(0, 2_000),
+          ...(result.model === undefined ? {} : { model: result.model }),
+          ...(result.turns === undefined ? {} : { turns: result.turns }),
         });
         // The answer is on screen and in the Record; aloud only that it is done, so read data never speaks for it.
         if (result.status === "ok")
@@ -4096,7 +4099,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             subject: job.title,
             outcome:
               result.status === "ok" ? "ran" : result.status === "cancelled" ? "held" : "failed",
-            detail: result.text.slice(0, 2_000),
+            detail: `${result.text.slice(0, 1_900)}${usedLine(result.model, result.turns)}`,
           })
           .catch(() => undefined);
       }
@@ -4210,7 +4213,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           actor: ownerOf(job).name,
           subject: job.title,
           outcome: run.outcome,
-          detail: run.text,
+          detail: `${run.text}${usedLine(job.model, job.turns)}`,
         })
         .catch(() => undefined);
     }
@@ -4409,13 +4412,39 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     nowData = {
       loaded: true,
       brief: standingStore.load().brief?.text ?? null,
-      runs: latestRuns(standingStore.load()).map((r) => ({
-        id: r.id,
-        title: BUILT_INS.find((j) => j.id === r.id)?.title ?? r.id,
-        at: r.at,
-        status: statusOf(r),
-        text: r.text,
-      })),
+      runs: [
+        ...latestRuns(standingStore.load()).map((r) => {
+          const def = BUILT_INS.find((j) => j.id === r.id);
+          return {
+            id: r.id,
+            title: def?.title ?? r.id,
+            at: r.at,
+            status: statusOf(r),
+            text: r.text,
+            ...(def === undefined ? {} : { model: def.model, turns: def.turns }),
+          };
+        }),
+        // His own jobs' latest runs beside the built-ins'.
+        ...userJobStore.list().flatMap((j) => {
+          const last = userJobStore
+            .runs()
+            .filter((r) => r.id === j.id)
+            .at(-1);
+          return last === undefined
+            ? []
+            : [
+                {
+                  id: j.id,
+                  title: j.title,
+                  at: last.at,
+                  status: last.status,
+                  text: last.text.slice(0, 300),
+                  ...(last.model === undefined ? {} : { model: last.model }),
+                  ...(last.turns === undefined ? {} : { turns: last.turns }),
+                },
+              ];
+        }),
+      ].toSorted((a, b) => b.at - a.at),
       interrupted: interruptedNow,
       needs: ranked,
       unreadable,
@@ -5863,7 +5892,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           // Already closed elsewhere; the refresh shows the truth.
         }
       } else if (act?.kind === "allow") initiative.allow(act.topic);
-      else if (act?.kind === "why") {
+      else if (act?.kind === "why" && act.job.startsWith("user:")) {
+        const job = userJobStore.get(act.job);
+        const run = userJobStore.runs().find((r) => r.id === act.job && r.at === act.at);
+        if (job !== undefined && run !== undefined)
+          input.extras?.askAbout?.(askWhyPrompt(job.title, run.status, run.at, run.text));
+      } else if (act?.kind === "why") {
         const run = standingStore.load().runs.find((r) => r.id === act.job && r.at === act.at);
         const job = BUILT_INS.find((j) => j.id === run?.id);
         if (run !== undefined && job !== undefined)

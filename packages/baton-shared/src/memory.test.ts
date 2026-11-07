@@ -5,6 +5,7 @@ import {
   effectiveConfidence,
   exportMarkdown,
   memoryBlock,
+  LESSONS_CAP,
   parseLearningFile,
   refuseToStore,
   reinforced,
@@ -125,6 +126,55 @@ describe("decay and conflicts", () => {
 });
 
 describe("memoryBlock", () => {
+  it("puts his lessons first, under a line that says they win, and carries at most LESSONS_CAP", () => {
+    const at = (n: number) =>
+      `2026-11-0${Math.min(9, 1 + Math.floor(n / 10))}T00:00:${String(n % 60).padStart(2, "0")}.000Z`;
+    const base = {
+      sourceRef: null,
+      scope: "global" as const,
+      scopeRef: null,
+      confidence: 1,
+      pinned: false,
+      createdAt: at(0),
+      lastUsedAt: null,
+      expiresAt: null,
+      supersededBy: null,
+      proposed: false,
+    };
+    const older = {
+      ...base,
+      id: "f1",
+      kind: "fact" as const,
+      text: "The shop repo uses tabs",
+      source: "thread" as const,
+      updatedAt: at(0),
+      pinned: true,
+    };
+    const lesson = {
+      ...base,
+      id: "c1",
+      kind: "correction" as const,
+      text: "No: the shop repo uses spaces, not tabs",
+      source: "user" as const,
+      updatedAt: at(1),
+    };
+    const { block, ids } = memoryBlock([older, lesson], 600);
+    expect(ids).toEqual(["c1", "f1"]);
+    expect(block.indexOf("corrections he made")).toBe(0);
+    expect(block).toContain("these win");
+    const many = Array.from({ length: LESSONS_CAP + 5 }, (_, i) => ({
+      ...lesson,
+      id: `c${i}`,
+      text: `Lesson ${i}`,
+      updatedAt: at(i),
+    }));
+    const capped = memoryBlock(many, 100_000);
+    expect(capped.ids).toHaveLength(LESSONS_CAP);
+    // The newest are kept.
+    expect(capped.ids).toContain(`c${LESSONS_CAP + 4}`);
+    expect(capped.ids).not.toContain("c0");
+  });
+
   it("puts pinned first and stops at the budget", () => {
     const items = [
       item({ id: "1", text: "one ".repeat(30) }),

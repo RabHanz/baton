@@ -474,6 +474,8 @@ export interface ScreenCompanion {
   ) => Promise<{
     readonly status: "ok" | "error" | "timeout" | "cancelled";
     readonly text: string;
+    readonly model?: string;
+    readonly turns?: number;
   }>;
   readonly said: (
     text: string,
@@ -2735,6 +2737,8 @@ export const startScreenCompanion = (input: {
   ): Promise<{
     readonly status: "ok" | "error" | "timeout" | "cancelled";
     readonly text: string;
+    readonly model?: string;
+    readonly turns?: number;
   }> => {
     const busy = {
       status: "cancelled" as const,
@@ -2753,7 +2757,13 @@ export const startScreenCompanion = (input: {
         signal.addEventListener("abort", stop, { once: true });
         try {
           const reply = await once.say(standingTurnText(job), { window: null, session: null });
-          return { status: "ok" as const, text: reply };
+          // One model turn, and one more for each tool call it made (the turn record counts them).
+          return {
+            status: "ok" as const,
+            text: reply,
+            model: leadBrain().model,
+            turns: 1 + turns.current().tools.length,
+          };
         } catch (error) {
           return {
             status: timeout.aborted

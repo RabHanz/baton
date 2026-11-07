@@ -30,6 +30,10 @@ export interface StandingJobDef {
   readonly trigger: StandingTrigger;
   /** The one Baton tool it uses, as One Trust judges it for the owner. */
   readonly tool: string;
+  /** What a run thinks on, for its result line: "no model" for one that only reads and writes records. */
+  readonly model: string;
+  /** Model turns a run uses; null when they are its worker's, shown on that job. */
+  readonly turns: number | null;
 }
 
 export const BRIEF_HOUR = 6;
@@ -43,6 +47,8 @@ export const BUILT_INS: ReadonlyArray<StandingJobDef> = [
     owner: "executive",
     trigger: { kind: "event", event: "a build failed" },
     tool: "job_start",
+    model: "the look job's worker",
+    turns: null,
   },
   {
     id: "morning_brief",
@@ -51,6 +57,8 @@ export const BUILT_INS: ReadonlyArray<StandingJobDef> = [
     owner: "executive",
     trigger: { kind: "time", hour: BRIEF_HOUR },
     tool: "morning_brief",
+    model: "no model",
+    turns: 0,
   },
   {
     id: "waiting_remind",
@@ -59,6 +67,8 @@ export const BUILT_INS: ReadonlyArray<StandingJobDef> = [
     owner: "operations",
     trigger: { kind: "event", event: "a session waited an hour" },
     tool: "watch_report",
+    model: "no model",
+    turns: 0,
   },
   {
     id: "job_summary",
@@ -67,6 +77,8 @@ export const BUILT_INS: ReadonlyArray<StandingJobDef> = [
     owner: "engineering",
     trigger: { kind: "event", event: "a job finished" },
     tool: "job_refine",
+    model: "no model",
+    turns: 0,
   },
   {
     id: "nightly_learning",
@@ -75,6 +87,8 @@ export const BUILT_INS: ReadonlyArray<StandingJobDef> = [
     owner: "executive",
     trigger: { kind: "time", hour: LEARN_HOUR },
     tool: "skill_draft",
+    model: "the learning pass's Claude",
+    turns: null,
   },
 ];
 
