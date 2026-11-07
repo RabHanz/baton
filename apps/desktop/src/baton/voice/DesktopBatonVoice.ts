@@ -856,6 +856,8 @@ export interface VoiceCoreHooks {
   ) => Promise<boolean | null>;
   /** The model is sure of this word past any doubt (see `wakeTrusted`). */
   readonly trustWake: (word: string, score: number) => boolean;
+  /** He is recording with the dictation keys: a wake with nothing after it must not end that. */
+  readonly recording: () => boolean;
   /** Hears him over Baton's own voice through the speakers (docs/baton/BARGE_IN.md). */
   readonly echo: EchoGuard | undefined;
   readonly speakerMode: () => "speakers" | "headphones";
@@ -3264,11 +3266,6 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             dictationHold.setTarget(sidecar.foreground().catch(() => null));
           // Before she answers, and after the target is read: he may have put headphones on since the last look.
           setImmediate(() => void output.refresh());
-          // He is already talking: no cue, which would sound over his words and blank them from the microphone.
-          if (event.heard === true) {
-            pill.on({ type: "wake", word: wordName(event.word) }, { silent: true });
-            return null;
-          }
           return { type: "wake", word: wordName(event.word) };
         case "speech_end":
           return null;
@@ -3503,6 +3500,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       echo: settings.voiceBargeIn ? echoGuard : undefined,
       speakerMode: () => speakerModeOf(settings.outputDevice, output.kind()),
       trustWake: (word, score) => wakeTrusted(settings.wakeWords, word, score),
+      recording: () => releaseRecordingEscape !== null,
       verifyWake: async (pcm, word, score) => {
         // Null is "not checked" (switched off, or it failed): a wake, but not one the recogniser confirmed.
         if (!settings.verifyWake || word === null || sidecar === null) return null;
