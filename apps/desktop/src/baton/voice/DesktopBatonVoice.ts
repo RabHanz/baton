@@ -138,7 +138,12 @@ import {
 } from "@t3tools/baton-shared/skillReview";
 import { fetchSkillText, installSkill, nameFromUrl, skillExists } from "../harness/skillInstall.ts";
 import { createVolumeDuck } from "./volumeDuck.ts";
-import { createOutputWatch, speakerModeOf, type OutputDevice } from "./outputDevice.ts";
+import {
+  createOutputWatch,
+  outputDeviceFrom,
+  speakerModeOf,
+  type OutputDevice,
+} from "./outputDevice.ts";
 import { PLACES, type PlaceId } from "./pillPlacement.ts";
 import { createSilenceWatch, DEFAULT_SILENCE_SECONDS } from "@t3tools/baton-shared/silenceWatch";
 import {
@@ -720,13 +725,7 @@ export const readSettings = (path: string): VoiceSettings => {
       bindings: parseBindings(saved["bindings"]),
       learnWords: saved["learnWords"] !== false,
       quietSpeech: saved["quietSpeech"] === true,
-      // Before Automatic this was a switch: on meant headphones, and off is now Automatic.
-      outputDevice:
-        saved["outputDevice"] === "headphones" || saved["outputDevice"] === "speakers"
-          ? saved["outputDevice"]
-          : saved["outputDevice"] === undefined && saved["headphones"] === true
-            ? "headphones"
-            : "auto",
+      outputDevice: outputDeviceFrom(saved),
       voiceBargeIn: saved["voiceBargeIn"] === true,
       doubleTap: saved["doubleTap"] !== false,
       appearance: parseAppearance(saved["appearance"]),
@@ -2876,7 +2875,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     }
     return `Memory is erased (${forgotten} items and your notes folder).`;
   };
-  const output = createOutputWatch({ platform: input.platform });
+  const output = createOutputWatch({
+    platform: input.platform,
+    dir: NodePath.join(input.stateDir, "voice"),
+  });
   void output.refresh();
   const duck = createVolumeDuck({
     file: NodePath.join(input.stateDir, "voice", "volume-before-dictation.json"),
@@ -3242,11 +3244,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const turn = ((): TurnEvent | null => {
       switch (event.type) {
         case "wake":
-          // Before she answers: he may have put headphones on since the last look.
-          void output.refresh();
           // Read before anything of ours shows: what he had in front of him when he said the name.
           if (!dictatingByVoice && sidecar !== null)
             dictationHold.setTarget(sidecar.foreground().catch(() => null));
+          // Before she answers, and after the target is read: he may have put headphones on since the last look.
+          setImmediate(() => void output.refresh());
           return { type: "wake", word: wordName(event.word) };
         case "speech_end":
           return null;
@@ -5288,7 +5290,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         id: "v.headphones",
         section: "Wake and listening",
         label: "Headphones or speakers",
-        hint: "With headphones the microphone cannot hear Tessaya, so it keeps listening while she speaks and you can cut in just by talking. With speakers it does not take talking over her as a cut-in unless you turn on the setting below, and the wake word, a stop phrase, Esc and the pill's stop button always work. Automatic reads your playback device; Bluetooth counts as headphones.",
+        hint: "With headphones the microphone cannot hear Tessaya, so it keeps listening while she speaks and you can cut in just by talking. With speakers it does not take talking over her as a cut-in unless you turn on the setting below, and the wake word, a stop phrase, Esc and the pill's stop button always work. On Windows, Automatic reads your playback device: headphones and headsets count as headphones, and anything else (a Bluetooth speaker too) as speakers.",
         kind: "choice",
         value: settings.outputDevice,
         options: [
@@ -6592,6 +6594,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     openHome: () => home.open(),
     busy: () => speakingNow || !["sleeping", "listening", "muted"].includes(state),
     onSpeaking: (active) => {
+      // Her reply starts: whether he can talk over it depends on what she is playing through now.
+      if (active && !speakingNow) setImmediate(() => void output.refresh());
       speakingNow = active;
       recogniserPriority.speaking(active);
       core?.setSpeaking(active);

@@ -1,18 +1,29 @@
 // @effect-diagnostics nodeBuiltinImport:off
 /**
- * Headphones or speakers, read from Windows' default playback device: its form factor, and whether it is
- * Bluetooth. With headphones the microphone cannot hear her, so talking over her is a cut-in.
+ * Headphones or speakers, read from Windows' default playback device's form factor. With headphones the
+ * microphone cannot hear her, so talking over her is a cut-in. Only a known form factor decides: a Bluetooth
+ * speaker is a speaker, and a device that does not say counts as speakers.
  */
 import * as NodeChildProcess from "node:child_process";
+import * as NodeCrypto from "node:crypto";
+import * as NodePath from "node:path";
 
 export type OutputDevice = "auto" | "headphones" | "speakers";
 
-/** The default render endpoint's PKEY_AudioEndpoint_FormFactor, and its PKEY_Device_EnumeratorName. */
-export const readScript = `Add-Type -TypeDefinition @'
-using System;
+/** His saved choice. Before Automatic this was a switch: on meant headphones, and off is now Automatic. */
+export const outputDeviceFrom = (saved: Readonly<Record<string, unknown>>): OutputDevice =>
+  saved["outputDevice"] === "headphones" || saved["outputDevice"] === "speakers"
+    ? saved["outputDevice"]
+    : saved["outputDevice"] === undefined && saved["headphones"] === true
+      ? "headphones"
+      : "auto";
+
+// shortcut: reads the console default device (role 0); an app routed to another device in Windows' per-app
+// sound settings is not seen. Upgrade to the audio session's own endpoint if he routes Tessaya separately.
+const SOURCE = `using System;
 using System.Runtime.InteropServices;
 [StructLayout(LayoutKind.Sequential)] public struct PropertyKey { public Guid fmtid; public int pid; }
-[StructLayout(LayoutKind.Explicit, Size = 24)] public struct PropVariant { [FieldOffset(0)] public ushort vt; [FieldOffset(8)] public uint ui4; [FieldOffset(8)] public IntPtr p; }
+[StructLayout(LayoutKind.Explicit, Size = 24)] public struct PropVariant { [FieldOffset(0)] public ushort vt; [FieldOffset(8)] public uint ui4; }
 [Guid("886d8eeb-8cf2-4446-8d02-cdba1dbdcf99"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 interface IPropertyStore { int GetCount(out int count); int GetAt(int i, out PropertyKey key); int GetValue(ref PropertyKey key, out PropVariant value); }
 [Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
@@ -22,28 +33,42 @@ interface IMMDeviceEnumerator { int f(); int GetDefaultAudioEndpoint(int dataFlo
 [ComImport, Guid("BCDE0395-E52F-46C5-9B0E-3F2FD7D7C8E0")] class MMDeviceEnumeratorComObject { }
 public class TessayaOutput {
   public static string Get() {
-    var e = new MMDeviceEnumeratorComObject() as IMMDeviceEnumerator; IMMDevice d; e.GetDefaultAudioEndpoint(0, 1, out d);
+    var e = new MMDeviceEnumeratorComObject() as IMMDeviceEnumerator; IMMDevice d; e.GetDefaultAudioEndpoint(0, 0, out d);
     IPropertyStore s; d.OpenPropertyStore(0, out s);
     var form = new PropertyKey { fmtid = new Guid("1da5d803-d492-4edd-8c23-e0c0ffee7f0e"), pid = 0 };
-    var bus = new PropertyKey { fmtid = new Guid("a45c254e-df1c-4efd-8020-67d146a850e0"), pid = 24 };
     PropVariant f; s.GetValue(ref form, out f);
-    PropVariant b; s.GetValue(ref bus, out b);
-    return (f.vt == 19 ? f.ui4.ToString() : "") + ";" + (b.vt == 31 ? Marshal.PtrToStringUni(b.p) : "");
+    return f.vt == 19 ? f.ui4.ToString() : "";
   }
-}
-'@
+}`;
+
+/**
+ * The default render endpoint's PKEY_AudioEndpoint_FormFactor. The C# is compiled once into `dir` (named by its
+ * source, so a new version compiles afresh) and only loaded after that, so a read does not compile on the wake path.
+ */
+export const readScript = (dir: string): string => {
+  // A Windows path wherever this runs: the script only ever runs on Windows.
+  const dll = NodePath.win32
+    .join(
+      dir,
+      `tessaya-output-${NodeCrypto.createHash("sha256").update(SOURCE).digest("hex").slice(0, 12)}.dll`,
+    )
+    .replaceAll("'", "''");
+  return `$dll = '${dll}'
+if (-not (Test-Path -LiteralPath $dll)) { Add-Type -TypeDefinition @'
+${SOURCE}
+'@ -OutputAssembly $dll }
+Add-Type -LiteralPath $dll
 [TessayaOutput]::Get()`;
+};
 
 /** EndpointFormFactor values that are worn, and ones that fill the room. */
 const WORN = new Set([3, 5, 6]); // Headphones, Headset, Handset
 const ROOM = new Set([1, 2, 8, 9]); // Speakers, LineLevel, SPDIF, DigitalAudioDisplayDevice (a screen's speakers)
 
-/** "3;HDAUDIO" → headphones. Bluetooth counts as headphones. Null when the device does not say. */
+/** "3" → headphones, "1" → speakers. Null when the device does not say; anything after the number is ignored. */
 export const outputKindOf = (out: string): "headphones" | "speakers" | null => {
-  const m = /^\s*(\d*);(.*?)\s*$/.exec(out);
-  if (m === null) return null;
-  if (/BTH/i.test(m[2] ?? "")) return "headphones";
-  const form = m[1] === "" ? Number.NaN : Number(m[1]);
+  const m = /^\s*(\d+)\b/.exec(out);
+  const form = m === null ? Number.NaN : Number(m[1]);
   return WORN.has(form) ? "headphones" : ROOM.has(form) ? "speakers" : null;
 };
 
@@ -63,9 +88,14 @@ const powershell = (script: string): Promise<string> =>
     ),
   );
 
-/** Reads the device at most once in `everyMs`, in the background; `kind` is the last answer. Windows only. */
+/**
+ * Reads the device in the background; `kind` is the last answer. At most once in `everyMs`, except while the last
+ * answer was headphones: taking them off must not leave her cutting herself off for long. Windows only.
+ */
 export const createOutputWatch = (input: {
   readonly platform: string;
+  /** Where the compiled reader is kept (`readScript`). */
+  readonly dir: string;
   readonly run?: (script: string) => Promise<string>;
   readonly everyMs?: number;
   readonly now?: () => number;
@@ -75,15 +105,20 @@ export const createOutputWatch = (input: {
   const everyMs = input.everyMs ?? 15_000;
   let kind: "headphones" | "speakers" | null = null;
   let lastAt = -Infinity;
+  let reading: Promise<void> | null = null;
   return {
     kind: () => kind,
     refresh: (): Promise<void> => {
-      if (input.platform !== "win32" || now() - lastAt < everyMs) return Promise.resolve();
+      if (input.platform !== "win32") return Promise.resolve();
+      if (reading !== null) return reading;
+      if (kind !== "headphones" && now() - lastAt < everyMs) return Promise.resolve();
       lastAt = now();
-      // A failed read keeps the last answer: the device rarely changes between two looks.
-      return run(readScript)
+      // A failed read is not a reading: unknown, which counts as speakers.
+      reading = run(readScript(input.dir))
         .then((out) => void (kind = outputKindOf(out)))
-        .catch(() => undefined);
+        .catch(() => void (kind = null))
+        .finally(() => (reading = null));
+      return reading;
     },
   };
 };
