@@ -3352,8 +3352,6 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     input.onNote?.("voice_start", { step: name, ...fields });
   // The engine is set only when the warm-up ends: start, stop and relisten queue, so none acts on a half-built one.
   const lifecycle = serialQueue();
-  /** Off was asked for: a start still loading the models or warming up stops before it opens the mic. */
-  let offAsked = false;
   const startNow = async () => {
     step("begin", {
       binary: binary !== null,
@@ -3368,7 +3366,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (loop !== null || input.makeCore === null || !settings.enabled) return render();
     // The models first: if they are missing, no microphone is opened.
     await loadSpeechModel();
-    if (offAsked) return render();
+    // Turned off while loading or warming: stop before the mic opens.
+    if (!settings.enabled) return render();
     step("speech-model-loaded", { sidecar: sidecar !== null });
     if (sidecar === null) throw new Error("Speech recognition is not installed.");
     markPhase("voice-core:begin");
@@ -3498,7 +3497,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       });
     }
     step(warmed ? "warm-done" : "warm-timeout");
-    if (offAsked) return render();
+    // Turned off while loading or warming: stop before the mic opens.
+    if (!settings.enabled) return render();
     // What Baton costs while nobody speaks, from the first minute (startup still settling) to five minutes in.
     for (const afterMs of [0, 4 * 60_000]) {
       setTimeout(() => {
@@ -3588,16 +3588,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (loop === null) await stopNow();
       throw error;
     });
-  const start = () => {
-    offAsked = false;
-    return lifecycle(startOrClean);
-  };
+  const start = () => lifecycle(startOrClean);
   let launchWarm: ReturnType<typeof setTimeout> | null = null;
 
-  const stop = () => {
-    offAsked = true;
-    return lifecycle(stopNow);
-  };
+  const stop = () => lifecycle(stopNow);
   const stopNow = async () => {
     if (launchWarm !== null) clearTimeout(launchWarm);
     launchWarm = null;

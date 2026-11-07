@@ -263,65 +263,87 @@ describe("when dictation loads at launch", () => {
 });
 
 describe("starting and stopping the voice engine", () => {
-  /** The shape of the voice start: a warm-up that waits, an off that cancels it, and a stop that tears down. */
-  const engine = (listDevices: () => Promise<void> = async () => undefined) => {
+  /**
+   * The shape of the desktop voice start: the enabled setting, a warm-up that waits, a start that stops before
+   * the mic if he turned it off meanwhile, a failure that stops (as `failed` does), and relisten.
+   */
+  const engine = (listDevices: () => Promise<void>) => {
     const queue = serialQueue();
+    const settings = { enabled: true };
     // Each start's warm-up ends when the test says so, whether or not that start has reached it yet.
-    const ends = Array.from({ length: 3 }, () => Promise.withResolvers<void>());
-    const warmUps = ends.map((d) => d.resolve);
+    const ends = Array.from({ length: 4 }, () => Promise.withResolvers<void>());
     let running = false;
-    let offAsked = false;
     let builds = 0;
+    const stopNow = async () => void (running = false);
     const startNow = async () => {
-      if (running) return;
+      if (running || !settings.enabled) return;
       builds += 1;
       await ends[builds - 1]!.promise;
-      if (offAsked) return;
+      if (!settings.enabled) return;
       await within(listDevices(), 1_000, "The microphone list");
       running = true;
     };
+    const failed = () => void queue(stopNow);
     return {
-      start: () => {
-        offAsked = false;
-        return queue(startNow);
+      on: () => {
+        settings.enabled = true;
+        return queue(startNow).catch(failed);
       },
-      stop: () => {
-        offAsked = true;
-        return queue(async () => void (running = false));
+      off: () => {
+        settings.enabled = false;
+        return queue(stopNow);
       },
-      warmUps,
+      relisten: () =>
+        queue(async () => {
+          if (running) await stopNow();
+          await startNow().catch(failed);
+        }),
+      warmUps: ends.map((d) => d.resolve),
       running: () => running,
       builds: () => builds,
     };
   };
+
   it("ends running after on, off, on during the warm-up, with one engine at a time", async () => {
-    const voice = engine();
-    const first = voice.start();
-    const off = voice.stop();
-    const again = voice.start();
-    voice.warmUps.shift()!();
+    const voice = engine(async () => undefined);
+    const first = voice.on();
+    const off = voice.off();
+    const again = voice.on();
+    voice.warmUps[0]!();
     await first;
     await off;
-    voice.warmUps.shift()!();
+    voice.warmUps[1]!();
     await again;
     expect(voice.running()).toBe(true);
     expect(voice.builds()).toBe(2);
   });
 
-  it("gives up on a microphone list that never answers, and stop still runs", async () => {
+  it("listens again on a relisten after a start that failed", async () => {
+    let lists = 0;
+    const voice = engine(async () => {
+      lists += 1;
+      if (lists === 1) throw new Error("The microphone list failed.");
+    });
+    voice.warmUps[0]!();
+    await voice.on();
+    expect(voice.running()).toBe(false);
+    voice.warmUps[1]!();
+    await voice.relisten();
+    expect(voice.running()).toBe(true);
+  });
+
+  it("gives up on a microphone list that never answers, and a stop queued behind it still runs", async () => {
     vi.useFakeTimers();
     try {
-      const hung = engine(() => new Promise<void>(() => undefined));
-      const started = hung.start();
-      const rejected = expect(started).rejects.toThrow("did not answer");
-      hung.warmUps.shift()!();
+      const voice = engine(() => new Promise<void>(() => undefined));
+      const started = voice.on();
+      voice.warmUps[0]!();
       await vi.advanceTimersByTimeAsync(0);
-      // Queued behind a start whose microphone list hangs: it still runs once that start gives up.
-      const stopped = hung.stop();
+      const stopped = voice.off();
       await vi.advanceTimersByTimeAsync(1_000);
-      await rejected;
+      await started;
       await stopped;
-      expect(hung.running()).toBe(false);
+      expect(voice.running()).toBe(false);
     } finally {
       vi.useRealTimers();
     }
