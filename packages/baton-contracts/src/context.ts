@@ -28,7 +28,6 @@ import * as Schema from "effect/Schema";
 import { IsoDateTime, ThreadId, TrimmedNonEmptyString, TrimmedString } from "@t3tools/contracts";
 import { WorkSessionId } from "./workSession.ts";
 import type { BATON_PHONE_OPS } from "./phone.ts";
-import type { BatonSessionSummary } from "./sessionCatalog.ts";
 
 /**
  * Who reported a snapshot. §15's producer list, and the reason the bus keeps
@@ -299,8 +298,6 @@ export interface BatonDesktopBridge {
         | BatonPhoneBridgeRequest,
     ) => Promise<unknown>,
   ) => () => void;
-  /** The sidebar's live sessions, pushed when they change, for Baton's own window. */
-  readonly setBatonSessions?: (sessions: ReadonlyArray<BatonSessionSummary>) => void;
   /** The accounts' limits, pushed when they change, for Baton's own window. */
   readonly setBatonUsage?: (usage: ReadonlyArray<BatonUsageSummary>) => void;
   /** Open a thread or send to a session on behalf of Baton's window; the answer is the result. */
@@ -357,7 +354,6 @@ export interface BatonMemoryBridgeRequest {
     | "import"
     | "pull"
     | "syncPush"
-    | "sync"
     | "syncPeers"
     | "syncPair"
     | "syncLink";

@@ -11,9 +11,6 @@ export const syncPeerUrl = (base: string, path: string): URL | null => {
   return new URL(path.replace(/^\//, ""), root);
 };
 
-/** A credential is only ever sent back to the origin that issued it. */
-export const sameSyncOrigin = (stored: string, url: URL): boolean => stored === url.origin;
-
 /** What a failed pairing or sync call means, in his words. */
 export const syncFailureLine = (status: number): string =>
   status === 404 || status === 502

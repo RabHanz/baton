@@ -17,7 +17,6 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import {
   batonRowStatusPill,
-  batonSessionSummaries,
   buildBatonProjects,
   type BatonProjectGroup,
   type BatonSessionRow,
@@ -97,12 +96,6 @@ export function BatonProjectsBlock(props: BatonProjectsBlockProps): ReactNode {
     resolveWorkProject: props.resolveWorkProject,
   });
   const rows = groups.flatMap((group) => group.rows.map((row) => ({ row, group })));
-  const summaries = JSON.stringify(batonSessionSummaries(groups, (row) => rowAccount(props, row)));
-  // Baton's own window lists these sessions; the push is by change, not on a timer.
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- tells the desktop shell outside React
-  useEffect(() => {
-    batonDesktopBridge()?.setBatonSessions?.(JSON.parse(summaries));
-  }, [summaries]);
   const sendToPane = useAtomCommand(batonWorkSessions.herdrSend, { reportFailure: false });
   const catalogList = useAtomCommand(batonWorkSessions.sessionsList, { reportFailure: false });
   const catalogResume = useAtomCommand(batonWorkSessions.sessionsResume, { reportFailure: false });

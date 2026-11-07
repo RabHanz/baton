@@ -50,7 +50,7 @@ import { authEnvironment } from "../../state/auth";
 import { environmentCatalog } from "../../connection/catalog";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
 import { readPreparedConnection } from "../../state/session";
-import { sameSyncOrigin, syncFailureLine, syncPeerUrl } from "../../batonMemorySync";
+import { syncFailureLine, syncPeerUrl } from "../../batonMemorySync";
 import { batonProjectKey } from "@t3tools/baton-shared/jobPlacement";
 import { BatonIntentBar } from "./BatonIntentBar";
 import { BatonProjectsBlock } from "./BatonProjectsBlock";
@@ -114,8 +114,6 @@ export function BatonSidebarSection(props: {
   const memoryLearn = useAtomCommand(batonWorkSessions.memoryLearn, quiet);
   const memoryImport = useAtomCommand(batonWorkSessions.memoryImport, quiet);
   const memoryPull = useAtomCommand(batonWorkSessions.memoryPull, quiet);
-  const memorySyncHello = useAtomCommand(batonWorkSessions.memorySyncHello, quiet);
-  const memorySyncPull = useAtomCommand(batonWorkSessions.memorySyncPull, quiet);
   const memorySyncPush = useAtomCommand(batonWorkSessions.memorySyncPush, quiet);
   const createPairingCredential = useAtomCommand(authEnvironment.createPairingCredential, quiet);
   const jobList = useAtomCommand(batonWorkSessions.jobList, quiet);
@@ -304,92 +302,6 @@ export function BatonSidebarSection(props: {
         );
     }
   };
-  /** The desktop assistant's memory calls: the memory RPCs, with a refusal's reason kept in plain words. */
-  /**
-   * Memory between the servers this window is connected to (MEMORY.md section 6): for each pair, ask
-   * the one what the other has not seen and hand it over. Last writer wins; the servers keep the cursors.
-   */
-  type SyncPeerCredential = { readonly origin: string; readonly token: string };
-  const syncMemory = async (
-    peers: Readonly<Record<string, SyncPeerCredential>>,
-  ): Promise<unknown> => {
-    // Servers whose credential was turned away: the desktop forgets it and says so.
-    const refused = new Set<EnvironmentId>();
-    type Reply<V> = { readonly _tag: "Success"; readonly value: V } | { readonly _tag: "Failure" };
-    const methods = new Map<unknown, string>([
-      [memorySyncHello, "baton.memory.syncHello"],
-      [memorySyncPull, "baton.memory.syncPull"],
-      [memorySyncPush, "baton.memory.syncPush"],
-    ]);
-    // This app's own server answers its own session; any other syncs only with the sync credential it issued.
-    const call = async <V,>(
-      run: unknown,
-      environmentId: EnvironmentId,
-      input: unknown,
-    ): Promise<Reply<V>> => {
-      if (environmentId === primaryEnvironmentId)
-        return await (
-          run as (c: { environmentId: EnvironmentId; input: never }) => Promise<Reply<V>>
-        )({ environmentId, input: input as never });
-      const peer = peers[environmentId];
-      const base = readPreparedConnection(environmentId)?.httpBaseUrl;
-      const url = base === undefined ? null : syncPeerUrl(base, `tessaya/desk/${methods.get(run)}`);
-      // The credential goes only back to the origin that issued it, never along a redirect.
-      if (peer === undefined || url === null || !sameSyncOrigin(peer.origin, url))
-        return { _tag: "Failure" };
-      const response = await fetch(url, {
-        method: "POST",
-        redirect: "error",
-        headers: { authorization: `Bearer ${peer.token}`, "content-type": "application/json" },
-        body: JSON.stringify(input),
-      }).catch(() => null);
-      if (response?.status === 401 || response?.status === 403) refused.add(environmentId);
-      const json = (await response?.json().catch(() => null)) as { value?: V } | null;
-      return response?.ok === true && json?.value !== undefined
-        ? { _tag: "Success", value: json.value }
-        : { _tag: "Failure" };
-    };
-    const hellos = (
-      await Promise.all(
-        fleet.environmentIds.map(async (environmentId) => {
-          const reply = await call<{ origin: string; cursors: Record<string, string> }>(
-            memorySyncHello,
-            environmentId,
-            {},
-          );
-          return reply._tag === "Success" ? [{ environmentId, ...reply.value }] : [];
-        }),
-      )
-    ).flat();
-    // Two connections to the same server count once.
-    const servers = hellos.filter((h, i) => hellos.findIndex((o) => o.origin === h.origin) === i);
-    let applied = 0;
-    for (const to of servers) {
-      for (const from of servers) {
-        if (to.origin === from.origin) continue;
-        const pulled = await call<{
-          origin: string;
-          changes: ReadonlyArray<unknown>;
-          upTo: string;
-        }>(memorySyncPull, from.environmentId, { since: to.cursors[from.origin] ?? null });
-        if (pulled._tag !== "Success") continue;
-        const pushed = await call<{ applied: number }>(memorySyncPush, to.environmentId, {
-          from: pulled.value.origin,
-          changes: pulled.value.changes,
-          upTo: pulled.value.upTo,
-        });
-        if (pushed._tag === "Success") applied += pushed.value.applied;
-      }
-    }
-    return {
-      servers: servers.length,
-      applied,
-      refused: [...refused].map((environmentId) => ({
-        environmentId,
-        label: fleet.resolveEnvironmentLabel(environmentId) ?? environmentId,
-      })),
-    };
-  };
   const onWeave = async (request: BatonWeaveBridgeRequest): Promise<unknown> => {
     const commands = { send: weaveSend, list: weaveList, tick: weaveTick };
     const run = commands[request.op] as unknown as (call: {
@@ -456,11 +368,8 @@ export function BatonSidebarSection(props: {
       typeof reason === "string" ? reason : "The commitments did not answer. Nothing changed.",
     );
   };
+  /** The desktop assistant's memory calls: the memory RPCs, with a refusal's reason kept in plain words. */
   const onMemory = async (request: BatonMemoryBridgeRequest): Promise<unknown> => {
-    if (request.op === "sync")
-      return syncMemory(
-        (request.args["peers"] ?? {}) as Readonly<Record<string, SyncPeerCredential>>,
-      );
     if (request.op === "syncPeers")
       return fleet.environmentIds.map((environmentId) => {
         const baseUrl = readPreparedConnection(environmentId)?.httpBaseUrl;

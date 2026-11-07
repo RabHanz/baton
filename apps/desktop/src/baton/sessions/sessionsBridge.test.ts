@@ -6,7 +6,7 @@ vi.mock("electron", () => ({
   ipcMain: { on: (channel: string, handler: never) => void ipc.set(channel, handler) },
 }));
 
-import { BATON_SESSION_RESPONSE_CHANNEL, BATON_SESSIONS_SNAPSHOT_CHANNEL } from "../channels.ts";
+import { BATON_SESSION_RESPONSE_CHANNEL } from "../channels.ts";
 import { createSessionsBridge } from "./sessionsBridge.ts";
 
 const summary = (key: string, over: Partial<BatonSessionSummary>): BatonSessionSummary => ({
@@ -54,7 +54,7 @@ it("with T3's window closed, lists from this machine's server and types only int
         : { delivered: true, detail: "" };
     },
   });
-  await vi.advanceTimersByTimeAsync(5_000);
+  await vi.advanceTimersByTimeAsync(2_000);
   expect(bridge.rows().map((row) => row.key)).toEqual(["laptop", "box", "shared"]);
   expect(bridge.notes()).toEqual(["Studio isn't answering, so its sessions are not listed."]);
 
@@ -71,22 +71,57 @@ it("with T3's window closed, lists from this machine's server and types only int
   expect(ensureMainWindow).not.toHaveBeenCalled();
 });
 
-it("drops the window's rows as soon as the window closes and says the list is old when the server does not answer", async () => {
+it("lists from this machine's server with T3's window up too, types into its own panes there, and another computer's through the window", async () => {
   using _timers = { [Symbol.dispose]: () => vi.useRealTimers() };
   vi.useFakeTimers();
-  let up = true;
+  const sent: Array<unknown> = [];
+  let answer: unknown = {
+    here: { environmentId: "here", label: "laptop" },
+    sessions: [
+      summary("laptop", { access: null, pane: { environmentId: "here", pane: "s~1" } }),
+      summary("box", { access: "full-access", pane: { environmentId: "box", pane: "s~2" } }),
+    ],
+    unreachable: [],
+  };
+  const window = {
+    webContents: {
+      send: (_channel: string, message: { id: number; request: unknown }) => {
+        sent.push(message.request);
+        ipc.get(BATON_SESSION_RESPONSE_CHANNEL)?.(null, {
+          id: message.id,
+          ok: true,
+          detail: "Sent.",
+        });
+      },
+    },
+  };
+  const calls: Array<string> = [];
   const bridge = createSessionsBridge({
-    ensureMainWindow: () => Promise.reject(new Error("must not open")),
+    ensureMainWindow: async () => window as never,
     openMainWindow: () => undefined,
     onChange: () => undefined,
-    mainWindowUp: async () => up,
-    direct: () => Promise.reject(new Error("down")),
+    mainWindowUp: async () => true,
+    direct: async (method) => {
+      calls.push(method);
+      if (method === "baton.sessions.across") {
+        if (answer === null) throw new Error("down");
+        return answer;
+      }
+      return { delivered: true, detail: "" };
+    },
   });
-  ipc.get(BATON_SESSIONS_SNAPSHOT_CHANNEL)?.(null, [summary("pushed", {})]);
-  expect(bridge.rows().map((row) => row.key)).toEqual(["pushed"]);
-  up = false;
-  await vi.advanceTimersByTimeAsync(5_000);
-  expect(bridge.rows()).toEqual([]);
+  await vi.advanceTimersByTimeAsync(2_000);
+  expect(bridge.rows().map((row) => row.key)).toEqual(["laptop", "box"]);
+
+  expect(await bridge.act("n:laptop", "hi")).toBe("Sent.");
+  expect(calls.at(-1)).toBe("baton.live.herdrSend");
+  expect(await bridge.act("n:box", "hi")).toBe("Sent.");
+  expect(sent).toEqual([{ kind: "send", environmentId: "box", pane: "s~2", text: "hi" }]);
+
+  // A failed read keeps the last list and says it may be old.
+  answer = null;
+  await vi.advanceTimersByTimeAsync(30_000);
+  expect(bridge.rows().map((row) => row.key)).toEqual(["laptop", "box"]);
   expect(bridge.notes()).toEqual([
     "This computer's server did not answer, so these sessions may be out of date.",
   ]);
