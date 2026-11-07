@@ -654,7 +654,16 @@ export const createVoiceCore = (input: {
     const spoken = stopSpeech;
     clearStop();
     if (spoken < msToSamples(STOP_MIN_SPEECH_MS)) return;
-    if (stopBusy) return emit({ type: "dropped", text: "", reason: "recogniser busy" });
+    // Busy: the newest clip waits its turn, so his latest words are heard; only an older waiting one goes.
+    if (stopBusy) {
+      if (stopWaiting !== null) emit({ type: "dropped", text: "", reason: "recogniser busy" });
+      stopWaiting = parts;
+      return;
+    }
+    recogniseStop(parts);
+  };
+  let stopWaiting: Int16Array[] | null = null;
+  const recogniseStop = (parts: Int16Array[]) => {
     stopBusy = true;
     void (input.stopStt ?? input.stt)
       .transcribe(joined(parts))
@@ -683,11 +692,19 @@ export const createVoiceCore = (input: {
         if ((!whole || sheSaidIt) && echoesSpeech(said, hers)) {
           return emit({ type: "dropped", text: said, reason: "own voice" });
         }
+        // Stopped: whatever waited behind this clip was said over a voice that has gone.
+        stopWaiting = null;
         emit({ type: "stop_heard", text: said, at: now() });
       })
       .catch(() => emit({ type: "dropped", text: "", reason: "recognition failed" }))
       .finally(() => {
         stopBusy = false;
+        const next = stopWaiting;
+        stopWaiting = null;
+        if (next === null || disposed) return;
+        // Only while she still speaks: once she has stopped, the stop listener has nothing to stop.
+        if (hearingItself()) recogniseStop(next);
+        else emit({ type: "dropped", text: "", reason: "recogniser busy" });
       });
   };
   const watchForStop = (frame: Int16Array) => {
