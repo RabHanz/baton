@@ -34,6 +34,8 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
+import * as HostProcess from "@t3tools/shared/HostProcess";
+
 import * as ServerConfig from "../config.ts";
 import {
   appendLiveQueue,
@@ -168,8 +170,10 @@ export const storesLayer = Layer.effect(
   Effect.gen(function* () {
     const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
     const own =
-      process.env["BATON_LIVE_QUEUE_DIR"] ??
+      (yield* HostProcess.Environment)["BATON_LIVE_QUEUE_DIR"] ??
       (Option.isSome(config) ? queueDirFor(config.value.baseDir, NodeOS.homedir()) : null);
+    // The bridges this server starts read the folder from the environment they inherit.
+    // @effect-diagnostics-next-line processEnvInEffect:off
     if (own !== null) yield* Effect.sync(() => void (process.env["BATON_LIVE_QUEUE_DIR"] = own));
     return {
       // Read each time otherwise: the folder can move to ~/.t3/tessaya while the server runs.

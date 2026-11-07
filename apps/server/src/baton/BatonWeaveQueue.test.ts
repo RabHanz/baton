@@ -419,12 +419,10 @@ it.effect("a weave Herdr may have typed is reported lost and never typed again",
       assert.deepStrictEqual(typed, ["run the tests please"]);
     }).pipe(
       Effect.provide(Layer.mergeAll(layerMemory, Layer.succeed(BatonWeaveBoxes, [pane] as never))),
-      Effect.provide(
-        Layer.succeed(WeaveStores, {
-          liveQueueDir: () => t.dir,
-          catalogFile: t.file("none.json"),
-        }),
-      ),
+      Effect.provideService(WeaveStores, {
+        liveQueueDir: () => t.dir,
+        catalogFile: t.file("none.json"),
+      }),
     );
   }),
 );
