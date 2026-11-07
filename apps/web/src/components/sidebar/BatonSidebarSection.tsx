@@ -28,7 +28,6 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { useEffect, useRef, type ReactNode } from "react";
 import { batonUsageSummaries } from "../../batonUsage";
@@ -48,21 +47,11 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { authEnvironment } from "../../state/auth";
 import { readPreparedConnection } from "../../state/session";
 import { sameSyncOrigin, syncFailureLine, syncPeerUrl } from "../../batonMemorySync";
+import { batonProjectKey } from "@t3tools/baton-shared/jobPlacement";
 import { BatonIntentBar } from "./BatonIntentBar";
 import { BatonProjectsBlock } from "./BatonProjectsBlock";
 
-/** D72: a project's key is its repository's canonical key, else its folder name. */
-export function batonProjectKey(project: EnvironmentProject): { key: string; label: string } {
-  const identity = project.repositoryIdentity;
-  if (identity != null) {
-    return {
-      key: identity.canonicalKey,
-      label: identity.name ?? identity.displayName ?? project.title,
-    };
-  }
-  const leaf = project.workspaceRoot.split("/").filter(Boolean).pop() ?? project.title;
-  return { key: `dir:${leaf.toLowerCase()}`, label: leaf };
-}
+export { batonProjectKey };
 
 export function BatonSidebarSection(props: {
   /** The thread the route has open, as upstream's scoped thread key. */
@@ -100,7 +89,6 @@ export function BatonSidebarSection(props: {
   const weaveSend = useAtomCommand(batonWorkSessions.weaveSend, quiet);
   const weaveList = useAtomCommand(batonWorkSessions.weaveList, quiet);
   const weaveTick = useAtomCommand(batonWorkSessions.weaveTick, quiet);
-  const handoffJob = useAtomCommand(batonWorkSessions.handoff, quiet);
   const phoneCall = useAtomCommand(batonWorkSessions.phoneCall, quiet);
   const cloudRead = useAtomCommand(batonWorkSessions.cloudRead, quiet);
   const cloudAct = useAtomCommand(batonWorkSessions.cloudAct, quiet);
@@ -127,7 +115,8 @@ export function BatonSidebarSection(props: {
   const memorySyncPush = useAtomCommand(batonWorkSessions.memorySyncPush, quiet);
   const createPairingCredential = useAtomCommand(authEnvironment.createPairingCredential, quiet);
   const jobList = useAtomCommand(batonWorkSessions.jobList, quiet);
-  const jobStart = useAtomCommand(batonWorkSessions.jobStart, quiet);
+  const jobPlace = useAtomCommand(batonWorkSessions.jobPlace, quiet);
+  const jobHandoff = useAtomCommand(batonWorkSessions.jobHandoff, quiet);
   const jobAgree = useAtomCommand(batonWorkSessions.jobAgree, quiet);
   const jobRefine = useAtomCommand(batonWorkSessions.jobRefine, quiet);
   const jobSplit = useAtomCommand(batonWorkSessions.jobSplit, quiet);
@@ -213,47 +202,21 @@ export function BatonSidebarSection(props: {
       case "watch":
         return done(await watchGet({ ...env, input: {} }));
       case "start": {
-        const wanted = text("project").trim().toLowerCase();
-        const mine = projects.filter((p) => p.environmentId === target);
-        const project = mine.find((p) => {
-          const label = batonProjectKey(p).label.toLowerCase();
-          return label === wanted || p.title.toLowerCase() === wanted;
-        });
-        if (project === undefined) {
-          throw new Error(
-            `No project is called "${text("project")}". Projects: ${mine.map((p) => batonProjectKey(p).label).join(", ")}.`,
-          );
-        }
-        const worker = [...(providerEntries.get(target)?.values() ?? [])].find(
-          (entry) => isProviderInstancePickerReady(entry) && entry.driverKind === "claudeAgent",
-        );
-        const model = worker?.models.find((m) => m.isDefault) ?? worker?.models[0];
-        if (worker === undefined || model === undefined) {
-          throw new Error("No signed-in Claude is ready to be the worker.");
-        }
+        // The server that runs it places it: the project he named there, and its first ready Claude.
         const strings = (key: string) =>
           Array.isArray(args[key]) ? (args[key] as ReadonlyArray<string>) : [];
-        const tools = strings("tools") as ReadonlyArray<
-          "read" | "edit" | "shell" | "web" | "sessions"
-        >;
         const started = done(
-          await jobStart({
+          await jobPlace({
             ...env,
             input: {
-              projectId: project.id,
+              project: text("project"),
               title: text("title"),
               goal: text("goal"),
-              permissions: {
-                folders: strings("folders"),
-                projects: [batonProjectKey(project).label],
-                tools: tools.length === 0 ? ["read"] : tools,
-              },
+              folders: strings("folders"),
+              tools: strings("tools") as never,
               ...(typeof args["reportEveryMinutes"] === "number"
-                ? { limits: { reportEveryMinutes: args["reportEveryMinutes"] } }
+                ? { reportEveryMinutes: args["reportEveryMinutes"] }
                 : {}),
-              modelSelection: { instanceId: worker.instanceId, model: model.slug },
-              // Anything the worker would ask permission for becomes a card that needs him.
-              runtimeMode: "approval-required",
             },
           }),
         );
@@ -289,28 +252,17 @@ export function BatonSidebarSection(props: {
             },
           }),
         );
-      case "handoff": {
-        const wanted = text("instance").trim().toLowerCase();
-        const targets = listHandoffTargets(primary);
-        const target = targets.find(
-          (t) => t.instanceId.toLowerCase() === wanted || t.label.toLowerCase() === wanted,
-        );
-        if (target === undefined) {
-          throw new Error(
-            `No worker is called "${text("instance")}". Ready: ${targets.map((t) => t.label).join(", ") || "none"}.`,
-          );
-        }
+      case "handoff":
         return done(
-          await handoffJob({
+          await jobHandoff({
             ...env,
             input: {
               id: text("id") as never,
-              modelSelection: { instanceId: target.instanceId, model: target.model },
+              instance: text("instance"),
               ...(text("note") === "" ? {} : { note: text("note") }),
-            } as never,
+            },
           }),
         );
-      }
       case "stop":
         return done(await jobStop({ ...env, input: { id: text("id") as never } }));
       case "schedule":

@@ -25,7 +25,9 @@ import {
   BATON_RECORD_WS_METHODS,
   BATON_WATCH_WS_METHODS,
   BATON_WS_METHODS,
+  BatonJobPlacementError,
   BatonRpcGroup,
+  type BatonJobHandoffInput,
   instancesWeekly,
   isProviderAvailable,
   OrchestrationFiringNotFoundError,
@@ -33,7 +35,9 @@ import {
   WorkSessionHandoffRefusedError,
   type WorkSessionHandoffInput,
 } from "@t3tools/baton-contracts";
+import { handoffTarget } from "@t3tools/baton-shared/jobPlacement";
 import { watchFleet } from "@t3tools/baton-shared/watch";
+import { type ModelSelection, ProviderInstanceId } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
@@ -159,6 +163,21 @@ const handoff = Effect.fn("fabric.workSession.handoff")(function* (input: WorkSe
     })
     .pipe(Effect.ignoreCause({ log: true }));
   return { workSession: yield* workSessions.get(input.id) };
+});
+
+/** A handoff to the worker he named, resolved here so no client has to hold the provider list. */
+const handoffTo = Effect.fn("baton.job.handoff")(function* (input: BatonJobHandoffInput) {
+  const registry = yield* ProviderRegistry.ProviderRegistry;
+  const target = handoffTarget(input.instance, yield* registry.getProviders);
+  if (!target.ok) return yield* new BatonJobPlacementError({ detail: target.why });
+  return yield* handoff({
+    id: input.id,
+    modelSelection: {
+      instanceId: ProviderInstanceId.make(target.value.instanceId),
+      model: target.value.model,
+    } as ModelSelection,
+    ...(input.note === undefined ? {} : { note: input.note }),
+  });
 });
 
 /** The handler functions themselves, for the WS group and for the desktop's own direct door (BatonTessayaRoutes). */
@@ -350,6 +369,8 @@ export const makeHandlers = Effect.gen(function* () {
       ),
     [BATON_JOB_WS_METHODS.jobList]: () => run(Effect.map(JobFlow.listJobs(), (jobs) => ({ jobs }))),
     [BATON_JOB_WS_METHODS.jobStart]: (input) => run(JobFlow.startJob(input)),
+    [BATON_JOB_WS_METHODS.jobPlace]: (input) => run(JobFlow.placeJob(input)),
+    [BATON_JOB_WS_METHODS.jobHandoff]: (input) => run(handoffTo(input)),
     [BATON_JOB_WS_METHODS.jobAgree]: (input) =>
       run(Effect.map(JobFlow.agreeJob(input.id), (terms) => ({ terms }))),
     [BATON_JOB_WS_METHODS.jobRefine]: (input) =>

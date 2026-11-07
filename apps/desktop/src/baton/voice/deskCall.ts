@@ -47,6 +47,34 @@ export const deskCall = (body: {
   switch (body.op as BatonJobBridgeRequest["op"]) {
     case "list":
       return { method: "baton.job.list", input: {} };
+    // The server places a job here; one he asked to run on another machine still goes through the window.
+    case "start": {
+      if (text("runOn").trim() !== "") return null;
+      const strings = (key: string) =>
+        Array.isArray(args[key]) ? args[key].filter((v) => typeof v === "string") : [];
+      return {
+        method: "baton.job.place",
+        input: {
+          project: text("project"),
+          title: text("title"),
+          goal: text("goal"),
+          folders: strings("folders"),
+          tools: strings("tools"),
+          ...(typeof args["reportEveryMinutes"] === "number"
+            ? { reportEveryMinutes: args["reportEveryMinutes"] }
+            : {}),
+        },
+      };
+    }
+    case "handoff":
+      return {
+        method: "baton.job.handoff",
+        input: {
+          ...id,
+          instance: text("instance"),
+          ...(text("note") === "" ? {} : { note: text("note") }),
+        },
+      };
     case "watch":
       return { method: "baton.watch.get", input: {} };
     case "agree":

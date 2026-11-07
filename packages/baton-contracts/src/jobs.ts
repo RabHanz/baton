@@ -162,6 +162,10 @@ export const BATON_JOB_WS_METHODS = {
   jobStop: "baton.job.stop",
   jobSchedule: "baton.job.schedule",
   jobSplit: "baton.job.split",
+  /** Start a job from his words: the server picks the project he named and a ready worker (GEN-6). */
+  jobPlace: "baton.job.place",
+  /** Hand a job to the worker he named. */
+  jobHandoff: "baton.job.handoff",
 } as const;
 
 /** His words verbatim become the goal; the worker starts in plan mode (D145). */
@@ -185,6 +189,34 @@ export const BatonJobStartInput = Schema.Struct({
   id: Schema.optionalKey(WorkSessionId),
 });
 export type BatonJobStartInput = typeof BatonJobStartInput.Type;
+
+export const BatonJobPlaceInput = Schema.Struct({
+  project: TrimmedNonEmptyString,
+  title: TrimmedNonEmptyString,
+  goal: TrimmedNonEmptyString,
+  folders: Schema.Array(TrimmedNonEmptyString),
+  /** Read only when empty. */
+  tools: Schema.Array(BatonJobTool),
+  reportEveryMinutes: Schema.optionalKey(Schema.Number),
+});
+export type BatonJobPlaceInput = typeof BatonJobPlaceInput.Type;
+
+export const BatonJobHandoffInput = Schema.Struct({
+  id: WorkSessionId,
+  instance: TrimmedNonEmptyString,
+  note: Schema.optionalKey(TrimmedNonEmptyString),
+});
+export type BatonJobHandoffInput = typeof BatonJobHandoffInput.Type;
+
+/** His words named no project or worker this server has; the reason says what it does have. */
+export class BatonJobPlacementError extends Schema.TaggedError<BatonJobPlacementError>()(
+  "BatonJobPlacementError",
+  { detail: Schema.String },
+) {
+  override get message(): string {
+    return this.detail;
+  }
+}
 
 export const BatonJobStartResult = Schema.Struct({
   terms: BatonJobTerms,

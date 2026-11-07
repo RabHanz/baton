@@ -287,6 +287,14 @@ export function createBatonWorkSessionAtoms<R, E>(
       label: "environment-data:baton:job-start",
       tag: BATON_JOB_WS_METHODS.jobStart,
     }),
+    jobPlace: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:job-place",
+      tag: BATON_JOB_WS_METHODS.jobPlace,
+    }),
+    jobHandoff: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:job-handoff",
+      tag: BATON_JOB_WS_METHODS.jobHandoff,
+    }),
     jobAgree: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:job-agree",
       tag: BATON_JOB_WS_METHODS.jobAgree,
