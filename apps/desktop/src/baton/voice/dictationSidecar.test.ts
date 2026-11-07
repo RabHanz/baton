@@ -7,6 +7,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   focusedFrom,
+  busyAfter,
   recordingAfter,
   resolveDictationBinary,
   restartDelayMs,
@@ -30,6 +31,11 @@ describe("recordingAfter", () => {
     expect(events.reduce((was, ev) => recordingAfter(ev, was), false)).toBe(true);
     expect(recordingAfter("idle", true)).toBe(false);
     expect(recordingAfter("error", true)).toBe(false);
+    // Busy also while it writes the recording out: a wake must not end a short dictation's Finishing pill.
+    expect(busyAfter("transcribing", false)).toBe(true);
+    expect(busyAfter("text", true)).toBe(true);
+    expect(busyAfter("idle", true)).toBe(false);
+    expect(busyAfter("error", true)).toBe(false);
   });
 });
 

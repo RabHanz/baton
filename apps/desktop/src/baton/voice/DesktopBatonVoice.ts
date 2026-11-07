@@ -351,6 +351,7 @@ import {
   HEALTHY_RUN_MS,
   makeSidecarAudioInput,
   makeSidecarStt,
+  busyAfter,
   recordingAfter,
   restartDelayMs,
   startDictationSidecar,
@@ -856,7 +857,7 @@ export interface VoiceCoreHooks {
   ) => Promise<boolean | null>;
   /** The model is sure of this word past any doubt (see `wakeTrusted`). */
   readonly trustWake: (word: string, score: number) => boolean;
-  /** He is recording with the dictation keys: a wake with nothing after it must not end that. */
+  /** A key dictation is recording or being written out: a wake with nothing after it must not end that. */
   readonly recording: () => boolean;
   /** Hears him over Baton's own voice through the speakers (docs/baton/BARGE_IN.md). */
   readonly echo: EchoGuard | undefined;
@@ -1088,6 +1089,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let modelJob: Promise<string> | null = null;
   let sidecarDevices: ReadonlyArray<SidecarDevice> = [];
   let releaseRecordingEscape: (() => void) | null = null;
+  /** The sidecar is recording or writing out a key dictation (`busyAfter`). */
+  let sidecarBusy = false;
   let lastDictation: string | null = null;
   /** What Baton last answered, so Copy last transcript can take it; cleared by his next words. */
   let lastReply: string | null = null;
@@ -2987,6 +2990,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (event.ev === "binding") return onBinding(event.id);
     if (event.ev === "configured") mouseHookReady = event.mouse === true;
     setRecording(recordingAfter(event.ev, releaseRecordingEscape !== null));
+    sidecarBusy = busyAfter(event.ev, sidecarBusy);
     if (event.ev === "recording") {
       focusedApp = { exe: event.app ?? "", title: event.title ?? "" };
       if (settings.dictationCleanup === "claude") rewriter.warm();
@@ -3500,7 +3504,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       echo: settings.voiceBargeIn ? echoGuard : undefined,
       speakerMode: () => speakerModeOf(settings.outputDevice, output.kind()),
       trustWake: (word, score) => wakeTrusted(settings.wakeWords, word, score),
-      recording: () => releaseRecordingEscape !== null,
+      recording: () => sidecarBusy,
       verifyWake: async (pcm, word, score) => {
         // Null is "not checked" (switched off, or it failed): a wake, but not one the recogniser confirmed.
         if (!settings.verifyWake || word === null || sidecar === null) return null;

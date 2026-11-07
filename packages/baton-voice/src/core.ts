@@ -989,8 +989,9 @@ export const createVoiceCore = (input: {
       due.delete(limit);
       // A newer wake, speech from him, her voice or a dictation since: this answer is about nothing now.
       if (disposed || lone !== wake) return;
+      // A heard name keeps the window. A no is only unsure, never a drop: his real name can fail the matcher,
+      // and the silence after it (UNSURE_WAKE_MS) still lets a noise fire go, never while he is being heard.
       if (heardName === true) lone = null;
-      else if (heardName === false) letGo(wake);
       else wake.state = "unsure";
     };
     const limit = { at: wallNow() + LONE_CHECK_LIMIT_MS, run: () => answer(null) };

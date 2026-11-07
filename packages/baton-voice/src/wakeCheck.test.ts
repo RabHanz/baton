@@ -617,7 +617,7 @@ const was = (events: ReadonlyArray<VoiceCoreEvent>, reason: string) =>
 // The model is saturated (0.1.70: a noise fire scored 1.0519, like his real wakes), so a sure wake with nothing
 // after it has its name checked in the background. Nothing in the voice queue waits on that check.
 describe("a wake from sleep with nothing after it", () => {
-  it("is let go silently when the name's own audio does not hold the name", async () => {
+  it("is let go silently after 5 s when the name's own audio does not hold the name", async () => {
     const r = rig(
       async () => false,
       () => true,
@@ -629,7 +629,11 @@ describe("a wake from sleep with nothing after it", () => {
     await r.core.idle();
     // The pill shows at once, as for any sure wake.
     expect(r.events.some((e) => e.type === "wake")).toBe(true);
-    r.push(1);
+    // A no is only unsure: his real name can fail the matcher.
+    r.push(4.5);
+    await r.core.idle();
+    expect(r.core.snapshot().machine.mode).toBe("command_window");
+    r.push(0.6);
     await r.core.idle();
     expect(
       r.events.find((e) => e.type === "dropped" && e.reason === "wake not heard"),
@@ -640,7 +644,10 @@ describe("a wake from sleep with nothing after it", () => {
 
   it("keeps the window for a pause after the name, and the words he says then (L-11)", async () => {
     // His real "Tessaya" can fail the matcher ("Okay, to say you, what time…"): his words decide when he speaks.
-    for (const heardName of [true, false]) {
+    for (const [heardName, pause] of [
+      [true, 7],
+      [false, 4.5],
+    ] as const) {
       const r = rig(
         async () => heardName,
         () => true,
@@ -649,7 +656,7 @@ describe("a wake from sleep with nothing after it", () => {
       r.wake();
       r.push(0.1);
       await r.core.idle();
-      r.push(heardName ? 5 : 0.4);
+      r.push(pause);
       await r.core.idle();
       r.speak(true);
       r.push(1);
@@ -659,6 +666,32 @@ describe("a wake from sleep with nothing after it", () => {
       expect(r.events.some((e) => e.type === "transcript")).toBe(true);
       expect(was(r.events, "wake not heard")).toBe(false);
     }
+  });
+
+  it("keeps his sentence when the no arrives just after he starts speaking", async () => {
+    const answer = deferred<boolean>();
+    const asked = deferred<void>();
+    const r = rig(
+      () => {
+        asked.resolve();
+        return answer.promise;
+      },
+      () => true,
+    );
+    r.push(2);
+    r.wake();
+    r.push(0.7);
+    await asked.promise;
+    r.speak(true);
+    r.push(0.1);
+    answer.resolve(false);
+    await r.core.idle();
+    r.push(0.9);
+    r.speak(false);
+    r.push(1.5);
+    await r.core.idle();
+    expect(r.events.some((e) => e.type === "transcript")).toBe(true);
+    expect(was(r.events, "wake not heard")).toBe(false);
   });
 
   it("with the check off or unsure, is let go after 5 s of no speech", async () => {
@@ -706,7 +739,7 @@ describe("a wake from sleep with nothing after it", () => {
     const r = rig(
       () => {
         checks += 1;
-        if (checks > 1) return Promise.resolve(true);
+        if (checks > 1) return Promise.resolve(null);
         firstAsked.resolve();
         return first.promise;
       },
@@ -716,22 +749,24 @@ describe("a wake from sleep with nothing after it", () => {
     r.wake();
     r.push(1);
     await firstAsked.promise;
-    // He ends that window himself, then wakes her again; only then does the first check say "not the name".
+    // He ends that window himself and wakes her again; only then does the first check say it heard the name.
     r.core.activate("dismiss");
     await r.core.idle();
     r.wake();
     r.push(0.1);
     await r.core.idle();
-    first.resolve(false);
-    await r.core.idle();
+    // The newer wake's own check runs and is unsure; then the first one's late "heard" must change nothing.
     r.push(1);
     await r.core.idle();
+    first.resolve(true);
+    await r.core.idle();
+    r.push(4.2);
+    await r.core.idle();
     expect(checks).toBe(2);
-    expect(was(r.events, "wake not heard")).toBe(false);
-    expect(r.core.snapshot().machine.mode).toBe("command_window");
+    expect(was(r.events, "wake not heard")).toBe(true);
   });
 
-  it("does not end a dictation, a key recording or a question that came during it", async () => {
+  it("does not end a dictation, a key dictation or a question that came during it", async () => {
     const dictating = rig(
       async () => false,
       () => true,
@@ -741,11 +776,12 @@ describe("a wake from sleep with nothing after it", () => {
     dictating.push(0.1);
     await dictating.core.idle();
     expect(await dictating.core.setDictation(true)).toBe(true);
-    dictating.push(1.5);
+    dictating.push(5.5);
     await dictating.core.idle();
     expect(was(dictating.events, "wake not heard")).toBe(false);
     expect(dictating.core.snapshot().machine.mode).toBe("dictation");
 
+    // Recording or writing it out with the keys: the sidecar is busy.
     const keys = rig(
       async () => false,
       () => true,
@@ -755,7 +791,7 @@ describe("a wake from sleep with nothing after it", () => {
     );
     keys.push(2);
     keys.wake();
-    keys.push(1.5);
+    keys.push(5.5);
     await keys.core.idle();
     expect(was(keys.events, "wake not heard")).toBe(false);
 
@@ -769,7 +805,7 @@ describe("a wake from sleep with nothing after it", () => {
     await asking.core.idle();
     asking.core.confirm("Send it to Sam?");
     await asking.core.idle();
-    asking.push(1.5);
+    asking.push(5.5);
     await asking.core.idle();
     expect(was(asking.events, "wake not heard")).toBe(false);
     expect(asking.core.snapshot().machine.pending).not.toBe(null);
