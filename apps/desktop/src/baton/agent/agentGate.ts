@@ -15,6 +15,7 @@ import {
 import { decideTrust, type TrustAgent } from "@t3tools/baton-shared/trust";
 import type { ProjectRef } from "@t3tools/baton-shared/osPack";
 import { textIsFromConversation } from "@t3tools/baton-shared/conversation";
+import { namesShell } from "@t3tools/baton-shared/screenCompanion";
 import {
   chromeReads,
   hostForCall,
@@ -177,7 +178,17 @@ export const createAgentGate = (input: {
       name === "type_text" ||
       name === "press_keys" ||
       steps.some((s) => s.tool === "type_text" || s.tool === "press_keys");
-    const focus = typing ? await input.focusedWindow() : null;
+    // type_text into a named window sets that window's box by value: it is the window judged, not the
+    // one in front (0.1.65: Notepad named, a console in front, so it asked about a command line).
+    const named =
+      name === "type_text" && typeof call.input["window"] === "string"
+        ? call.input["window"].trim()
+        : "";
+    const focus = !typing
+      ? null
+      : named !== ""
+        ? { label: named, shell: namesShell(named) }
+        : await input.focusedWindow();
     const scope: TypingScope | null =
       name === "type_text" && focus !== null
         ? { window: focus.label, field: input.taint.field() }
