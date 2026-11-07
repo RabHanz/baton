@@ -63,6 +63,9 @@ const SECOND_LAUNCH_RAISE_MS = 900;
 const VOICE_LOG_MAX_BYTES = 5 * 1024 * 1024;
 const VOICE_LOG_MAX_FILES = 5;
 
+/** After launch work has settled, so the sessions' start does not compete with it. */
+const LAUNCH_WARM_MS = 5_000;
+
 export const startBatonDesktop = Effect.gen(function* () {
   adoptTessayaEnv(process.env);
   const ipc = yield* DesktopIpc.DesktopIpc;
@@ -620,8 +623,10 @@ export const startBatonDesktop = Effect.gen(function* () {
         trustWake,
         echo,
         speakerMode,
-      }) =>
-        (
+      }) => {
+        // The assistant's sessions start now, not at his first wake: a cold start took 27 s (0.1.68).
+        setTimeout(() => screen?.warm(), LAUNCH_WARM_MS).unref();
+        return (
           await createDesktopVoiceCore({
             assets: resolveVoiceAssets({
               stateDir: environment.stateDir,
@@ -659,7 +664,8 @@ export const startBatonDesktop = Effect.gen(function* () {
             scorers: onnx,
             ...(screen === null ? {} : { brain: screen }),
           })
-        ).core,
+        ).core;
+      },
     });
     markPhase("voice-start:end");
   }).pipe(Effect.catchDefect((cause) => Effect.logWarning("baton voice did not start", cause)));

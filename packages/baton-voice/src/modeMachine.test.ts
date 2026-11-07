@@ -316,6 +316,10 @@ describe("the name a sentence starts with", () => {
     expect(namedWake("Alfred, open it", names)).toBe("Alfred");
     expect(namedWake("To say yeah, what time is it", names)).toBe("Tessaya");
     expect(namedWake("what time is it", names)).toBe(null);
+    // 0.1.68: a US voice's "Tessaya" came back as these, and rode Freya's window.
+    expect(namedWake("Teseat, what time is it?", names)).toBe("Tessaya");
+    expect(namedWake("Teseot, what time is it?", names)).toBe("Tessaya");
+    expect(stripWake("Teseat, what time is it?", names)).toBe("what time is it?");
   });
 });
 
