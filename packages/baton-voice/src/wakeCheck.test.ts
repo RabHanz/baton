@@ -518,17 +518,33 @@ describe("right after launch, when the wake check is slow", () => {
     expect(r.routed).toEqual([{ text: "what time is it", wake: "Freya" }]);
   });
 
-  it("still drops a name with nothing scored after it, while its check runs", async () => {
+  it("starts no turn for a name with nothing after it, while its check runs", async () => {
     const r = launch();
     r.quiet(4.4);
-    r.name("Freya", 1_000);
+    // 9_000 is the name alone: recognition hears no sentence in it.
+    r.name("Freya", 9_000);
     r.quiet(2.5);
     r.confirm("Freya");
     await r.settle();
     r.quiet(1);
     await r.core.idle();
-    expect(r.events.some((e) => e.type === "dropped" && e.reason === "no speech")).toBe(true);
     expect(r.routed).toEqual([]);
+  });
+
+  it("keeps a command said after a pause behind the name, while the check still runs", async () => {
+    const r = launch();
+    r.quiet(4.4);
+    // 0.1.65: "Freya, bring Notepad to the front" came back as "To the front.": the name and its pause
+    // ended a sentence, and what followed went unheard until the late check confirmed the wake.
+    r.name("Freya", 9_000);
+    r.quiet(0.9);
+    r.say(1_000, 1.4);
+    r.quiet(2);
+    r.confirm("Freya");
+    await r.settle();
+    r.quiet(2);
+    await r.core.idle();
+    expect(r.routed).toEqual([{ text: "what time is it", wake: "Freya" }]);
   });
 
   it("ends the sentence promptly on silence a lagging detector has scored", async () => {

@@ -480,6 +480,12 @@ export const createVoiceCore = (input: {
     const checking = waitFor !== null;
     // Some speech, however little: a clip the detector scored as all silence is not worth recognising.
     if (parts === null || (spoken < msToSamples(seg.minSpeechMs) && !(checking && spoken > 0))) {
+      // Only the name and the pause after it, its check still running: once confirmed, the wake opens
+      // again from the audio kept since it fired, so "Freya, … bring Notepad to the front" keeps its words.
+      if (parts !== null && checking && fire !== null) {
+        fire.segment = "none";
+        return show();
+      }
       if (parts !== null) after(() => emit({ type: "dropped", text: "", reason: "no speech" }));
       return show();
     }
