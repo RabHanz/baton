@@ -334,8 +334,8 @@ describe("silence after a wake word", () => {
       });
     });
 
-    it("keeps his latest words for when a busy recogniser is free, and lets only an older wait go", async () => {
-      const r = scripted("Stop.");
+    const busy = (said: string) => {
+      const r = scripted(said);
       r.core.noteSpoken("A sentence.");
       r.hold();
       r.core.setSpeaking(true);
@@ -346,6 +346,11 @@ describe("silence after a wake word", () => {
         r.speech(false);
         r.push(0.6);
       }
+      return r;
+    };
+
+    it("keeps his latest words for when a busy recogniser is free, and lets only an older wait go", async () => {
+      const r = busy("Can you hear me");
       await settled();
       // The first is being recognised, the third waits, and the second, overtaken, is let go.
       expect(r.heard).toHaveLength(1);
@@ -354,10 +359,38 @@ describe("silence after a wake word", () => {
       ]);
       r.release();
       await settled();
+      expect(r.heard).toHaveLength(2);
+    });
+
+    it("forgets what waited once a stop is heard", async () => {
+      const r = busy("Stop.");
+      await settled();
       r.release();
       await settled();
-      expect(r.heard).toHaveLength(2);
-      expect(r.events.filter((e) => e.type === "stop_heard")).toHaveLength(2);
+      expect(r.heard).toHaveLength(1);
+      expect(r.events.filter((e) => e.type === "stop_heard")).toHaveLength(1);
+    });
+
+    it("recognises a waiting clip only while she is still speaking", async () => {
+      const r = scripted("Can you hear me");
+      r.core.noteSpoken("A sentence.");
+      r.hold();
+      r.core.setSpeaking(true);
+      r.push(0.5);
+      for (let i = 0; i < 2; i += 1) {
+        r.speech(true);
+        r.push(0.5);
+        r.speech(false);
+        r.push(0.6);
+      }
+      r.core.setSpeaking(false);
+      r.push(2);
+      r.release();
+      await settled();
+      expect(r.heard).toHaveLength(1);
+      expect(r.events.filter((e) => e.type === "dropped").map((e) => e.reason)).toContain(
+        "recogniser busy",
+      );
     });
 
     it("takes a clip that is only the command, even when her sentence has the word", async () => {

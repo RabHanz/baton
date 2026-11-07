@@ -684,6 +684,8 @@ export const createVoiceCore = (input: {
         if ((!whole || sheSaidIt) && echoesSpeech(said, hers)) {
           return emit({ type: "dropped", text: said, reason: "own voice" });
         }
+        // Stopped: whatever waited behind this clip was said over a voice that has gone.
+        stopWaiting = null;
         emit({ type: "stop_heard", text: said, at: now() });
       })
       .catch(() => emit({ type: "dropped", text: "", reason: "recognition failed" }))
@@ -691,7 +693,10 @@ export const createVoiceCore = (input: {
         stopBusy = false;
         const next = stopWaiting;
         stopWaiting = null;
-        if (next !== null && !disposed) recogniseStop(next);
+        if (next === null || disposed) return;
+        // Only while she still speaks: once she has stopped, the stop listener has nothing to stop.
+        if (hearingItself()) recogniseStop(next);
+        else emit({ type: "dropped", text: "", reason: "recogniser busy" });
       });
   };
   const watchForStop = (frame: Int16Array) => {
