@@ -210,7 +210,22 @@ const stageRuntimeExternals = Effect.fn("stageRuntimeExternals")(function* (inpu
     .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []))).filter(
     (entry) => entry !== platformKey,
   );
+  // onnxruntime-node (memory recall, MEM-13) bundles every OS's binaries (~290 MB); the archive keeps only its own target.
+  // Its install script, which would fetch CUDA files, never runs: the workspace's allowBuilds has it false.
+  const ortBin = "node_modules/onnxruntime-node/bin/napi-v6";
+  const ortTarget = `${input.platform === "mac" ? "darwin" : input.platform === "win" ? "win32" : input.platform}/${input.arch}`;
+  const foreignOrt: string[] = [];
+  for (const os of yield* fs
+    .readDirectory(path.join(input.stageDir, ortBin))
+    .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []))) {
+    for (const arch of yield* fs
+      .readDirectory(path.join(input.stageDir, ortBin, os))
+      .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []))) {
+      if (`${os}/${arch}` !== ortTarget) foreignOrt.push(`${ortBin}/${os}/${arch}`);
+    }
+  }
   for (const entry of [
+    ...foreignOrt,
     "package.json",
     "pnpm-workspace.yaml",
     "pnpm-lock.yaml",

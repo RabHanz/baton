@@ -14,6 +14,8 @@ const CLI_RUNTIME_EXTERNAL_PREFIXES = [
   "koffi",
   "@koromix/",
   "@napi-rs/keyring",
+  // Memory recall by meaning (MEM-13): the native runtime and its JS side load from disk beside the server.
+  "onnxruntime-",
   "@clerk/electron-passkeys",
   "node-gyp-build",
   "node-addon-api",
@@ -33,6 +35,12 @@ const CURSOR_RUNTIME_DEPENDENCIES = [
   "undici",
   "@fastify/busboy",
 ] as const;
+
+/** Dependencies only an install script uses; the workspace never runs it (pnpm-workspace.yaml), so nothing loads them. */
+export const INSTALL_ONLY_DEPENDENCIES: Readonly<Record<string, ReadonlyArray<string>>> = {
+  // onnxruntime-node's script/install.js downloads binaries with these; its dist needs only onnxruntime-common.
+  "onnxruntime-node": ["adm-zip", "global-agent"],
+};
 
 export function isRuntimeExternalCliDependency(id: string): boolean {
   return (

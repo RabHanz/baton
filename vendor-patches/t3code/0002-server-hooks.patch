@@ -202,6 +202,26 @@ index 1dd273dbe64ce41e473ec144e0b8cb754dc3bb9a..baa4f5acb50c7fd5afbf8009468d7eb4
            },
            Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
              failEnvironmentInternal("pairing_credential_issuance_failed", error),
+diff --git a/apps/server/src/binCli.ts b/apps/server/src/binCli.ts
+index 5ea04dfff18dd9f4d39587bee4ad9a4d601e11a4..34adeacffdf1e5ec4e7a43a6cc05a526c1ad4dc6 100644
+--- a/apps/server/src/binCli.ts
++++ b/apps/server/src/binCli.ts
+@@ -27,6 +27,7 @@ import { uninstallCommand } from "./cli/uninstall.ts";
+ import { serviceLauncherCommand } from "./cli/serviceLauncher.ts";
+ import { speechWorkerCommand } from "./cli/speechWorker.ts";
+ import { claudeHistoryCommand } from "./cli/claudeHistory.ts";
++import { memoryEmbedCommand } from "./cli/memoryEmbed.ts";
+ import { sshHelperCommand } from "./cli/sshHelper.ts";
+ import { serviceCommand } from "./cli/service.ts";
+ import { servicePreflightCommand } from "./cli/servicePreflight.ts";
+@@ -92,6 +93,7 @@ export const makeCli = ({ cloudEnabled = hasCloudPublicConfig } = {}) =>
+       uninstallCommand,
+       serviceLauncherCommand,
+       claudeHistoryCommand,
++      memoryEmbedCommand,
+       speechWorkerCommand,
+       sshHelperCommand,
+ 
 diff --git a/apps/server/src/mcp/McpToolAccess.ts b/apps/server/src/mcp/McpToolAccess.ts
 index b82d9bb5ae59cd97f81dbe2443d31a7e98c9085a..e0ef051b7dfa8a47e92362a8a15eeb7953d3e5e8 100644
 --- a/apps/server/src/mcp/McpToolAccess.ts

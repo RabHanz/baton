@@ -129,6 +129,12 @@
       "licence": "OFL-1.1-schibsted-grotesk",
       "holder": "The Schibsted-Grotesk Project Authors",
       "mention": "Schibsted Grotesk"
+    },
+    "model:all-MiniLM-L6-v2": {
+      "name": "all-MiniLM-L6-v2 (int8 ONNX, Xenova conversion)",
+      "licence": "Apache-2.0",
+      "holder": "sentence-transformers (UKP Lab), ONNX conversion by Xenova",
+      "mention": "all-MiniLM-L6-v2"
     }
   }
 }

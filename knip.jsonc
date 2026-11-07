@@ -77,6 +77,8 @@
       // CLI archive and desktop sidecar stage them from this manifest.
       "ignoreDependencies": [
         "@effect/platform-node-shared",
+        // Memory recall's model runtime, resolved from disk for its worker thread (BatonMemoryEmbedder.ts).
+        "onnxruntime-node",
         "@t3tools/web",
         "@napi-rs/keyring",
         "ffi-rs",
