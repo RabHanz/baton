@@ -592,6 +592,7 @@ export const startBatonDesktop = Effect.gen(function* () {
         }
         void speaker.sample(chooseVoice(picked), AUDITION_LINE);
       },
+      warmAssistant: () => screen?.warmAssistant(),
       onSpokenStop: () => {
         speaker.cancel();
         screen?.dismiss();

@@ -320,6 +320,8 @@ describe("the name a sentence starts with", () => {
     expect(namedWake("Teseat, what time is it?", names)).toBe("Tessaya");
     expect(namedWake("Teseot, what time is it?", names)).toBe("Tessaya");
     expect(stripWake("Teseat, what time is it?", names)).toBe("what time is it?");
+    // A spelling of the name at the start only, as one word: "the seat" is not her.
+    expect(namedWake("the seat, what time is it", names)).toBe(null);
   });
 });
 

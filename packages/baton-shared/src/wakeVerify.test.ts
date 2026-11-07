@@ -56,8 +56,6 @@ describe("the second check before a wake", () => {
       "To see you.",
       "Do say you.",
       "They say you.",
-      // Spellings of the name only at the start of a sentence: never close enough here.
-      "I'll take the seat",
       "I desire nothing",
       "the desired outcome",
       "Desiree called",
