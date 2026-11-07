@@ -258,6 +258,8 @@ const lastLine = (text: string): string | null => {
 export const startDictationSidecar = (input: {
   readonly binary: string;
   readonly onEvent: (event: DictationEvent) => void;
+  /** A recognition started or ended in the sidecar process `pid`. */
+  readonly recognising?: (pid: number, active: boolean) => void;
   /** Each clip's recognition, for the turn log: time in the model against time waiting for it. */
   readonly onRecognised?: (timing: {
     readonly audioMs: number;
@@ -438,7 +440,15 @@ export const startDictationSidecar = (input: {
         deviceWaiters.push(resolve);
         send({ cmd: "devices" });
       }),
-    transcribe: (wav) => call<string>({ cmd: "transcribe", wav }, true),
+    transcribe: async (wav) => {
+      const pid = child?.pid;
+      if (pid !== undefined) input.recognising?.(pid, true);
+      try {
+        return await call<string>({ cmd: "transcribe", wav }, true);
+      } finally {
+        if (pid !== undefined) input.recognising?.(pid, false);
+      }
+    },
     preload: () => call<number>({ cmd: "load" }, true),
     paste: (text) => call<void>({ cmd: "paste", text }),
     pasteInto: (text, target) => call<boolean>({ cmd: "paste", text, target }),

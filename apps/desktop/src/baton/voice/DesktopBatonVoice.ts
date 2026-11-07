@@ -362,6 +362,7 @@ import { VOICE_HOTKEYS } from "./voiceActivation.ts";
 import { ensureModel, modelPresent, PARAKEET_FAST_MODEL, PARAKEET_MODEL } from "./voiceModels.ts";
 import { hudView, utteranceCaption } from "./voiceHud.ts";
 import { createCpuLoad, loadBefore } from "./cpuLoad.ts";
+import { createRecogniserPriority, type RecogniserPriority } from "./recogniserPriority.ts";
 import type { AssistantActions, AssistantFocus, PhoneMirror } from "../screen/ScreenCompanion.ts";
 import { focusedFolder } from "../screen/focusedFolder.ts";
 import { createVoicePill, type VoicePill } from "./voicePill.ts";
@@ -2966,6 +2967,23 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     cpuReadings.push({ at: Date.now(), busy: cpuLoad() });
     cpuReadings.splice(0, Math.max(0, cpuReadings.length - CPU_READINGS_KEPT));
   }, CPU_SAMPLE_MS).unref();
+  let recogniserPid: number | null = null;
+  let recognisedAt: RecogniserPriority = "normal";
+  // fullscreen is read only while the resting bar is on; with it off, a game does not hold the priority back.
+  const recogniserPriority = createRecogniserPriority({
+    fullscreen: () => fullscreen,
+    set: (level) => {
+      if (recogniserPid === null || input.platform !== "win32") return;
+      try {
+        NodeOS.setPriority(
+          recogniserPid,
+          level === "above"
+            ? NodeOS.constants.priority.PRIORITY_ABOVE_NORMAL
+            : NodeOS.constants.priority.PRIORITY_NORMAL,
+        );
+      } catch {}
+    },
+  });
   /** The sidecar holds no key and no microphone until `configureDictation` gives it a model. */
   const startSidecar = async () => {
     if (binary === null || sidecar !== null) return;
@@ -2974,6 +2992,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     sidecar = startDictationSidecar({
       binary,
       onEvent: onDictation,
+      recognising: (pid, active) => {
+        recogniserPid = pid;
+        if (active) recognisedAt = recogniserPriority.begin();
+        else recogniserPriority.end();
+      },
       // A slow clip (0.1.61: 10 s for 1.3 s of audio) says how busy the machine was around then.
       onRecognised: (timing) =>
         input.onNote?.(
@@ -2985,8 +3008,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
                 // The machine before this clip went in: a high cpuBusy over a low baseline is recognition's own.
                 cpuBefore: loadBefore(cpuReadings, Date.now() - timing.roundTripMs),
                 cores: NodeOS.cpus().length,
+                priority: recognisedAt,
               }
-            : timing,
+            : { ...timing, priority: recognisedAt },
         ),
     });
     markPhase("dictation-sidecar-spawn:end");
@@ -6173,6 +6197,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     busy: () => speakingNow || !["sleeping", "listening", "muted"].includes(state),
     onSpeaking: (active) => {
       speakingNow = active;
+      recogniserPriority.speaking(active);
       core?.setSpeaking(active);
       pill.on({ type: "speaking", active });
     },
