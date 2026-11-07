@@ -320,9 +320,11 @@ const BLOCKED_NOTE =
 export const UNSURE_NOTE = "Herdr did not answer in time.";
 
 // ---------------------------------------------------------------------------------------------
-// The message queue. A message that cannot be delivered now is kept, in order, in a small file per
-// session in the live-queue folder (`liveQueueDir`), so a restart does not lose it; a drainer delivers it when the
-// pane takes input. The turn never waits for it (T3 would queue every later send behind it).
+// The message queue. A message that cannot be delivered now is appended to `inbound.ndjson` in the live-queue folder
+// (`liveQueueDir`); the server takes each line into its one queue (the weave table) and types it when the pane takes
+// input, so a restart of either side does not lose it. The turn never waits for it (T3 would queue every later send
+// behind it). The per-session files below are what the server writes for the thread to show (`note` items), and the
+// old queue the drainer still types from, except for a session the server owns (`<id>.server`).
 
 /** The server's `stateSubdir` rule (packages/baton-shared/src/stateDir.ts), so both sides use one folder. */
 export const liveQueueDir = (home) => {
@@ -362,6 +364,42 @@ export function enqueue(dir, sessionId, item) {
   const items = [...readQueue(dir, sessionId), { tries: 0, ...item }];
   writeQueue(dir, sessionId, items);
   return items.length;
+}
+
+/** Hands a message to the server's queue. One line per message, appended, so two bridges never overwrite each other. */
+export function appendInbound(dir, entry) {
+  NodeFS.mkdirSync(dir, { recursive: true });
+  NodeFS.appendFileSync(
+    NodePath.join(dir, "inbound.ndjson"),
+    `${JSON.stringify({ id: NodeCrypto.randomUUID(), at: Date.now(), ...entry })}\n`,
+    { mode: 0o600 },
+  );
+}
+
+const ownedFile = (dir, sessionId) =>
+  NodePath.join(dir, `${sessionId.replace(/[^A-Za-z0-9_-]/g, "_")}.server`);
+
+/** How many of the session's messages the server owns and has not typed yet; 0 when it owns none. */
+export function serverWaiting(dir, sessionId) {
+  try {
+    const marker = JSON.parse(NodeFS.readFileSync(ownedFile(dir, sessionId), "utf8"));
+    return Number.isInteger(marker?.waiting) && marker.waiting > 0 ? marker.waiting : 1;
+  } catch {
+    return 0;
+  }
+}
+
+/** Queues a message for the session behind what already waits; returns how many are now waiting. */
+export function queueForServer(dir, sessionId, item) {
+  const ahead =
+    serverWaiting(dir, sessionId) +
+    readQueue(dir, sessionId).filter((i) => i.kind !== "note").length;
+  appendInbound(dir, { sessionId, text: item.text, label: item.label ?? null });
+  // Owned from now, before the server has read the line, so the next message queues behind it rather than going first.
+  const temp = `${ownedFile(dir, sessionId)}.tmp`;
+  NodeFS.writeFileSync(temp, JSON.stringify({ waiting: ahead + 1 }), { mode: 0o600 });
+  NodeFS.renameSync(temp, ownedFile(dir, sessionId));
+  return ahead + 1;
 }
 
 export const queuedSessions = (dir) => {
@@ -486,6 +524,8 @@ async function drainLocked(dir, sessionId, deps) {
   }
   const items = readQueue(dir, sessionId);
   if (items.length === 0) return;
+  // The server owns what waits for this session: only it types, so nothing is typed twice.
+  if (serverWaiting(dir, sessionId) > 0) return;
   const live = deps.findLive(sessionId);
   if (items[0].held) {
     // A failed resume's hold ends once the session is back in a pane by any route; "resuming" ends with its resume.
@@ -532,22 +572,18 @@ async function drainLocked(dir, sessionId, deps) {
 }
 
 /**
- * A send to a stopped session: the message is queued and visible at once, the session is resumed, and the
- * queue is released and drained when it is ready. A failure keeps the message, held, with the reason.
+ * A send to a stopped session: the message goes to the server's queue at once and the session is resumed; the
+ * server types it once the session is up in a pane. A failure says why, and the message still waits there.
  */
 export async function sendToStopped(dir, sessionId, item, deps) {
-  enqueue(dir, sessionId, item);
-  holdQueue(dir, sessionId, "resuming");
+  queueForServer(dir, sessionId, item);
   deps.say(sessionId, resumingNote(item.shown));
   const result = await resumeSession(sessionId, deps);
   if (result.error !== undefined) {
-    holdQueue(dir, sessionId, result.error);
     deps.say(sessionId, resumeFailedNote(result.error, ""));
     return { state: "failed", error: result.error };
   }
-  releaseQueue(dir, sessionId);
   deps.say(sessionId, "Resumed in Herdr with its history. Sending now.");
-  await drainSession(dir, sessionId, deps);
   return { state: "resumed" };
 }
 
@@ -805,8 +841,7 @@ const say = (sessionId, text) =>
 
 /** One kept unbound message. The server stamps the thread (from `sessionId`, the thread's native id) if T3 gave none. */
 export const keptEntry = (params, folder, words) => ({
-  id: NodeCrypto.randomUUID(),
-  at: new Date().toISOString(),
+  unbound: true,
   cwd: folder ?? null,
   sessionId: params.sessionId,
   threadId: params._meta?.threadId ?? process.env.T3CODE_THREAD_ID ?? null,
@@ -826,11 +861,7 @@ async function prompt(params) {
         ? promptText(params.prompt).trim()
         : composeForSession(params.prompt, folder);
     try {
-      NodeFS.mkdirSync(QUEUE_DIR, { recursive: true });
-      NodeFS.appendFileSync(
-        NodePath.join(QUEUE_DIR, "unbound-messages.ndjson"),
-        `${JSON.stringify(keptEntry(params, folder, words))}\n`,
-      );
+      appendInbound(QUEUE_DIR, keptEntry(params, folder, words));
     } catch {}
     say(
       sessionId,
@@ -852,12 +883,7 @@ async function prompt(params) {
     // Stopped: it is resumed and the message goes when it is ready. "Not delivered" is for nothing that can be fixed.
     const words = promptText(params.prompt);
     if (resumesInFlight.has(sessionId)) {
-      const count = enqueue(QUEUE_DIR, sessionId, {
-        text: words.trim(),
-        shown: words.replace(/\s+/g, " ").trim().slice(0, 200),
-        at: new Date().toISOString(),
-        held: "resuming",
-      });
+      const count = queueForServer(QUEUE_DIR, sessionId, { text: words.trim() });
       say(
         sessionId,
         `Still resuming. ${count} message${count === 1 ? "" : "s"} kept; they go when it is ready.`,
@@ -881,8 +907,6 @@ async function prompt(params) {
           sessionId,
           result.error ?? "Resumed in Herdr with its history. Messages sent here now reach it.",
         );
-        if (result.error === undefined) releaseQueue(QUEUE_DIR, sessionId);
-        if (result.error === undefined) startDrainer();
       } else {
         await sendToStopped(QUEUE_DIR, sessionId, item, { ...resumeDeps, ...drainDeps });
       }
@@ -924,15 +948,21 @@ async function prompt(params) {
       }
     }
     // Messages already waiting go first: this one joins the end so the order he typed is kept.
-    if (live.status === "waiting" || readQueue(QUEUE_DIR, sessionId).length > 0) {
-      const count = enqueue(QUEUE_DIR, sessionId, { text, shown, at: new Date().toISOString() });
+    if (
+      live.status === "waiting" ||
+      serverWaiting(QUEUE_DIR, sessionId) > 0 ||
+      readQueue(QUEUE_DIR, sessionId).some((item) => item.kind !== "note")
+    ) {
+      const count = queueForServer(QUEUE_DIR, sessionId, {
+        text,
+        label: NodePath.basename(live.cwd),
+      });
       say(
         sessionId,
         live.status === "waiting"
           ? questionWaitingNote((await readPanePrompt(live.pane))?.question, count)
           : queuedNote("earlier messages are still waiting.", count),
       );
-      startDrainer();
       return { stopReason: "end_turn" };
     }
     const failure = await typeInto(live.pane, text);
@@ -948,14 +978,16 @@ async function prompt(params) {
       return { stopReason: "end_turn" };
     }
     if (failure !== null) {
-      const count = enqueue(QUEUE_DIR, sessionId, { text, shown, at: new Date().toISOString() });
+      const count = queueForServer(QUEUE_DIR, sessionId, {
+        text,
+        label: NodePath.basename(live.cwd),
+      });
       say(
         sessionId,
         failure === BLOCKED_NOTE
           ? questionWaitingNote((await readPanePrompt(live.pane))?.question, count)
           : queuedNote("Herdr did not take it yet.", count),
       );
-      startDrainer();
       return { stopReason: "end_turn" };
     }
     // The turn ends once Herdr has delivered the text. Holding it open until Claude Code went idle
@@ -993,19 +1025,17 @@ const resumeDeps = {
 
 let drainer = null;
 const drainDeps = { findLive: findLiveSession, typeInto, say };
-/** Delivers queued messages in the background; also at start-up, for what a restart left behind. */
+/**
+ * Always on: shows the notes the server writes for this thread (delivered, not delivered), and types what an older
+ * bridge left in a session's file unless the server owns that session.
+ */
 function startDrainer() {
   if (drainer !== null) return;
   const tick = async () => {
-    const names = queuedSessions(QUEUE_DIR);
-    for (const name of names) {
+    for (const name of queuedSessions(QUEUE_DIR)) {
       await drainSession(QUEUE_DIR, name.slice(0, -".json".length), drainDeps).catch(
         () => undefined,
       );
-    }
-    if (queuedSessions(QUEUE_DIR).length === 0) {
-      clearInterval(drainer);
-      drainer = null;
     }
   };
   drainer = setInterval(() => void tick(), QUEUE_EVERY_MS);

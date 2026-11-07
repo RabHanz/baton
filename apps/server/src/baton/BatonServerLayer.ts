@@ -90,6 +90,12 @@ const memoryLayer = BatonMemoryService.layer.pipe(
   ),
 );
 
+// One instance: the sessions list keeps its messages in this table, and two drainers would type a row twice.
+const weaveLayer = BatonWeaveService.layer.pipe(
+  Layer.provide(BatonWeaveBoxes.layer.pipe(Layer.provide(HerdrAdapter.layer))),
+  Layer.provide(BatonWeaveService.storesLayer),
+);
+
 const servicesInner = IntentService.layer.pipe(
   // The intent surface consumes the reactor, the rule service and the same narrow effects a
   // rule uses, rather than reaching the engine on its own: one sentence and one rule cause work
@@ -114,10 +120,9 @@ const servicesInner = IntentService.layer.pipe(
       BatonSessionCatalogService.layer.pipe(
         Layer.provide(AdoptedSessionService.layer.pipe(Layer.provide(HerdrAdapter.layer))),
         Layer.provide(BatonEngine.layer),
+        Layer.provide(weaveLayer),
       ),
-      BatonWeaveService.layer.pipe(
-        Layer.provide(BatonWeaveBoxes.layer.pipe(Layer.provide(HerdrAdapter.layer))),
-      ),
+      weaveLayer,
       // This server's live sessions and each linked environment's, for the desktop with T3's window closed (GEN-6).
       BatonSessionsAcross.layer.pipe(
         Layer.provide(AdoptedSessionService.layer.pipe(Layer.provide(HerdrAdapter.layer))),
@@ -169,6 +174,8 @@ export const workers = Layer.effectDiscard(
   Layer.provideMerge(LiveSessionMirror.layer),
   // A session that died mid-turn is resumed by itself, within the guardrails in AutoResume.ts.
   Layer.provideMerge(SessionWatchdog.layer),
+  // What waits to be typed into a live session goes on the server's own clock (item 5).
+  Layer.provideMerge(BatonWeaveService.drainer),
 );
 
 /** The phone page at /tessaya and its API. */

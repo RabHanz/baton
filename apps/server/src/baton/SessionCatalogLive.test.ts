@@ -5,7 +5,7 @@ import * as NodePath from "node:path";
 
 import { describe, expect, it } from "vite-plus/test";
 
-import { readKeptFile, scanTranscriptTimes, writeKeptFile } from "./SessionCatalogLive.ts";
+import { readKeptFile, scanTranscriptTimes } from "./SessionCatalogLive.ts";
 
 const ID = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const DAY = 24 * 60 * 60_000;
@@ -53,12 +53,12 @@ describe("scanTranscriptTimes", () => {
 });
 
 describe("the kept-messages file", () => {
-  it("round-trips, is empty when missing, and moves a corrupt or wrong-shaped file aside", () => {
+  it("reads, is empty when missing, and moves a corrupt or wrong-shaped file aside", () => {
     const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "kept-"));
     const file = NodePath.join(dir, "kept.json");
     try {
       expect(readKeptFile(file)).toEqual({ kept: {}, problem: null });
-      writeKeptFile(file, { s1: ["hello"] });
+      NodeFS.writeFileSync(file, JSON.stringify({ s1: ["hello"] }));
       expect(readKeptFile(file)).toEqual({ kept: { s1: ["hello"] }, problem: null });
       for (const bad of ["{not json", JSON.stringify({ s1: [1] })]) {
         NodeFS.writeFileSync(file, bad);

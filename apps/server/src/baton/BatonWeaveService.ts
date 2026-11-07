@@ -1,10 +1,10 @@
 /* oxlint-disable t3code/prefer-effect-fn -- Baton file predating the rule (D82) */
-// @effect-diagnostics cryptoRandomUUID:off
+// @effect-diagnostics cryptoRandomUUID:off nodeBuiltinImport:off
 /**
- * Weaving (D149): one session messages another by name. The server reads the target's pane first
- * and types only into an empty input; a busy or draft-holding target means the message waits in a
- * durable queue, in order, and goes when the pane can take it. Replies are read from the pane after
- * the message and kept as data. Every message is a row: who, when, text, delivered, replied.
+ * Weaving (D149): one session messages another by name, read first and typed only into an empty input, else queued in
+ * order. The table is also the one queue for everything waiting to be typed into a live session (item 5): `session|<id>`
+ * rows are typed by the server's drainer, `unbound` rows go through their thread once it binds (LiveSessionMirror), and
+ * `catalog` rows are sent by the sessions list on a send or Resume. One owner per row, so nothing is typed twice.
  */
 import {
   BatonWeaveError,
@@ -24,10 +24,31 @@ import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as Schedule from "effect/Schedule";
+import * as Semaphore from "effect/Semaphore";
 import * as SqlClient from "effect/sql/SqlClient";
+import * as NodeCrypto from "node:crypto";
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
 
+import * as ServerConfig from "../config.ts";
+import {
+  appendLiveQueue,
+  liveQueueDir,
+  moveAside,
+  readInbound,
+  readQueueFiles,
+  takeOverQueueFile,
+  takeQueueLock,
+  writeOwned,
+} from "./BatonLiveQueue.ts";
 import { BatonRecordService } from "./BatonRecordService.ts";
 import { BatonWeaveBoxes, type WeaveBox } from "./BatonWeaveBoxes.ts";
+import { sendOutcome } from "./SessionCatalog.ts";
+import { readKeptFile } from "./SessionCatalogLive.ts";
+import { pendingKept, readKept, readLedger } from "./UnboundMessages.ts";
 
 interface Row {
   readonly id: string;
@@ -43,6 +64,7 @@ interface Row {
   readonly delivered_at: number | null;
   readonly replied_at: number | null;
   readonly reply: string | null;
+  readonly source: string | null;
 }
 
 const fromRow = (r: Row): WeaveRecord => ({
@@ -65,6 +87,33 @@ const fromRow = (r: Row): WeaveRecord => ({
 const REPLY_WINDOW_MS = 6 * 3_600_000;
 const SCREEN_LINES = 60;
 const newId = (): string => globalThis.crypto.randomUUID().slice(0, 8);
+/** How often the server's drainer runs: the bridge's own drainer ran every 3 s. */
+const DRAIN_EVERY = "3 seconds";
+/** Settings key: how far into `inbound.ndjson` the server has imported. */
+const INBOUND_OFFSET = "weave.inbound.offset";
+/** A stable id for a row taken from an old store, so taking it again (a crash before the move) changes nothing. */
+const takenId = (...parts: ReadonlyArray<string>): string =>
+  `m-${NodeCrypto.createHash("sha1").update(parts.join("\u0000")).digest("hex").slice(0, 16)}`;
+const preview = (text: string): string => (text.length > 60 ? `${text.slice(0, 60)}…` : text);
+
+/** An unbound message waiting for its thread: `thread` once known, else the thread's native session id. */
+export interface UnboundRow {
+  readonly id: string;
+  readonly at: number;
+  readonly text: string;
+  readonly thread: string | null;
+  readonly native: string | null;
+}
+
+interface NewRow {
+  readonly id: string;
+  readonly from: string;
+  readonly toLabel: string;
+  readonly toPane: string;
+  readonly text: string;
+  readonly createdAt: number;
+  readonly source: "thread" | "unbound" | "catalog";
+}
 
 export class BatonWeaveService extends Context.Service<
   BatonWeaveService,
@@ -77,13 +126,48 @@ export class BatonWeaveService extends Context.Service<
     }) => Effect.Effect<BatonWeave, BatonWeaveError>;
     readonly list: (limit?: number) => Effect.Effect<ReadonlyArray<BatonWeave>>;
     readonly tick: Effect.Effect<{ delivered: number; replied: number }>;
+    /** Takes in what the old stores and the bridge left, then types what can go now. The drainer runs it. */
+    readonly deliver: Effect.Effect<number>;
+    /** The sessions list's kept messages, oldest first per session. */
+    readonly catalogKept: Effect.Effect<Record<string, ReadonlyArray<string>>>;
+    readonly setCatalogKept: (all: Record<string, ReadonlyArray<string>>) => Effect.Effect<void>;
+    readonly unbound: Effect.Effect<ReadonlyArray<UnboundRow>>;
+    readonly stampUnbound: (native: string, threadId: string) => Effect.Effect<void>;
+    /** Marks it sent before the send, so it is never sent twice; false when it was not waiting. */
+    readonly claimUnbound: (id: string) => Effect.Effect<boolean>;
+    readonly releaseUnbound: (id: string) => Effect.Effect<void>;
   }
 >()("t3/baton/BatonWeaveService") {}
+
+/**
+ * Where the bridge's files and the old stores are. Only the server provides it (`storesLayer`): without it nothing is
+ * read or written outside the table, so a test never touches the real live-queue folder.
+ */
+export class WeaveStores extends Context.Service<
+  WeaveStores,
+  { readonly liveQueueDir: () => string; readonly catalogFile: string }
+>()("t3/baton/BatonWeaveService/WeaveStores") {}
+
+export const storesLayer = Layer.effect(
+  WeaveStores,
+  Effect.map(Effect.serviceOption(ServerConfig.ServerConfig), (config) => ({
+    // Read each time: the folder can move to ~/.t3/tessaya while the server runs.
+    liveQueueDir,
+    // The sessions list kept its messages beside the auto-resume state (BatonSessionCatalogService).
+    catalogFile: NodePath.join(
+      Option.isSome(config) ? NodePath.dirname(config.value.dbPath) : NodeOS.homedir(),
+      "baton-catalog-kept.json",
+    ),
+  })),
+);
 
 export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const boxes = yield* BatonWeaveBoxes;
+  const stores = yield* Effect.serviceOption(WeaveStores);
   const nowMs = Clock.currentTimeMillis;
+  /** One drain at a time: the drainer, a send and a client's tick must never type the same row twice. */
+  const draining = yield* Semaphore.make(1);
 
   const get = (id: string) =>
     sql<Row>`SELECT * FROM fabric_weaves WHERE id = ${id}`.pipe(
@@ -104,6 +188,8 @@ export const make = Effect.gen(function* () {
       repliedAt?: number | null;
       reply?: string | null;
     },
+    /** A message of his own (a thread's, not a weave) is not Record news. */
+    quiet = false,
   ) {
     yield* sql`
       UPDATE fabric_weaves SET status = ${patch.status}, reason = ${patch.reason}, tries = ${patch.tries},
@@ -113,7 +199,7 @@ export const make = Effect.gen(function* () {
       WHERE id = ${id}
     `.pipe(Effect.orDie);
     // A retry that stays queued is not news; delivered, replied and lost are.
-    if (patch.status === "queued" || record._tag === "None") return;
+    if (patch.status === "queued" || quiet || record._tag === "None") return;
     const weave = yield* get(id);
     if (weave === null) return;
     yield* record.value.append({
@@ -133,6 +219,8 @@ export const make = Effect.gen(function* () {
     return at < 0 ? { box: "here", pane: key } : { box: key.slice(0, at), pane: key.slice(at + 1) };
   };
   const boxNamed = (name: string): WeaveBox | undefined => boxes.find((b) => b.name === name);
+  /** Addressed to a Claude session, not a pane: its pane is looked up each time it is typed. */
+  const bySession = (box: string) => box === "session" || box === "live";
 
   /** Only the pane and label are read by the adapter; no stored session is involved. */
   const synth = (c: AdoptedSessionCandidate): AdoptedSession =>
@@ -154,11 +242,84 @@ export const make = Effect.gen(function* () {
       },
     }) as unknown as AdoptedSession;
 
-  /** Looks at the target now and, if it can take the message, types it. */
-  const attempt = (rec: WeaveRecord) =>
+  /** A line in the session's own thread, which the bridge shows (a note is never typed). */
+  const note = (row: Row, sessionId: string, text: string) =>
+    row.source === "thread" && Option.isSome(stores)
+      ? Effect.sync(() =>
+          appendLiveQueue(stores.value.liveQueueDir(), sessionId, {
+            text,
+            shown: text,
+            kind: "note",
+          }),
+        )
+      : Effect.void;
+
+  /**
+   * A row for a Claude session: typed through Herdr's `agent prompt` into the pane found by the session's id, which
+   * refuses while a question is up. Only a definite refusal keeps it; an answer that may mean it was typed drops it.
+   */
+  const attemptSession = Effect.fn("BatonWeaveService.attemptSession")(function* (
+    row: Row,
+    sessionId: string,
+  ) {
+    const rec = fromRow(row);
+    const quiet = row.source !== null;
+    const now = yield* nowMs;
+    const here = boxes.find((b) => b.locate !== undefined);
+    const where = here?.locate === undefined ? null : yield* here.locate(sessionId);
+    const step = nextStep(rec, { present: where !== null, busy: false, input: "empty" }, now);
+    const wait = (reason: string, tries = rec.tries) =>
+      setState(rec.id, { status: "queued", reason, tries }, quiet).pipe(
+        Effect.as("waiting" as const),
+      );
+    if (step.do === "lose") {
+      yield* setState(rec.id, { status: "lost", reason: step.why, tries: rec.tries }, quiet);
+      yield* note(row, sessionId, `Not delivered: ${step.why}. Your message was: "${rec.text}"`);
+      return "lost" as const;
+    }
+    if (here === undefined || where === null)
+      return yield* wait("the session is not in a Herdr pane here now");
+    if (where.status === "blocked")
+      return yield* wait("it is waiting on a question or an approval in its terminal");
+    const sent = yield* here.adapter.sendInput({
+      session: synth({
+        runtime: "herdr",
+        label: rec.toLabel,
+        location: { workspace: "", pane: where.pane, host: null },
+        agentKind: "claude",
+        runtimeState: where.status,
+        state: null,
+      } as unknown as AdoptedSessionCandidate),
+      text: rec.text,
+      submit: true,
+    });
+    const outcome = sendOutcome(sent);
+    if (outcome === "sent") {
+      yield* setState(
+        rec.id,
+        { status: "delivered", reason: null, tries: rec.tries + 1, deliveredAt: now },
+        quiet,
+      );
+      yield* note(row, sessionId, `Delivered: ${preview(rec.text)}`);
+      return "delivered" as const;
+    }
+    if (outcome === "blocked")
+      return yield* wait("it is waiting on a question or an approval in its terminal");
+    if (outcome === "refused") return yield* wait(sent.detail, rec.tries + 1);
+    const unsure =
+      "Herdr did not answer in time, so it may already be in the session; it is not sent again in case it is";
+    yield* setState(rec.id, { status: "lost", reason: unsure, tries: rec.tries + 1 }, quiet);
+    yield* note(row, sessionId, `Maybe delivered: ${unsure}. Your message was: "${rec.text}"`);
+    return "lost" as const;
+  });
+
+  /** Looks at the target now and, if it can take the message, types it. Waiting does not use up a try. */
+  const attempt = (row: Row) =>
     Effect.gen(function* () {
+      const rec = fromRow(row);
       const now = yield* nowMs;
       const { box: boxName, pane } = splitKey(rec.toPane);
+      if (bySession(boxName)) return yield* attemptSession(row, pane);
       const box = boxNamed(boxName);
       const found = box === undefined ? null : yield* box.adapter.discover;
       const cand = found?.candidates.find((c) => c.location.pane === pane);
@@ -167,27 +328,21 @@ export const make = Effect.gen(function* () {
         yield* setState(rec.id, {
           status: step.do === "lose" ? "lost" : "queued",
           reason: step.do === "send" ? null : step.why,
-          tries: rec.tries + 1,
+          tries: rec.tries,
         });
         return step.do === "lose" ? ("lost" as const) : ("waiting" as const);
       }
       const busy = cand.runtimeState === "working" || cand.runtimeState === "blocked";
       const session = synth(cand);
-      const out = box.queueOnly
-        ? null
-        : yield* box.adapter.readOutput({ session, lines: SCREEN_LINES });
-      const input = box.queueOnly
-        ? "empty"
-        : out?.available
-          ? paneInputState(out.output)
-          : "unknown";
+      const out = yield* box.adapter.readOutput({ session, lines: SCREEN_LINES });
+      const input = out.available ? paneInputState(out.output) : "unknown";
       const step = nextStep(rec, { present: true, busy, input }, now);
       if (step.do === "send") {
         const sent = yield* box.adapter.sendInput({ session, text: rec.text, submit: true });
         if (sent.delivered) {
           yield* setState(rec.id, {
             status: "delivered",
-            reason: box.queueOnly ? sent.detail : null,
+            reason: null,
             tries: rec.tries + 1,
             deliveredAt: now,
           });
@@ -201,20 +356,203 @@ export const make = Effect.gen(function* () {
         return "waiting" as const;
       }
       if (step.do === "lose") {
-        yield* setState(rec.id, { status: "lost", reason: step.why, tries: rec.tries + 1 });
+        yield* setState(rec.id, { status: "lost", reason: step.why, tries: rec.tries });
         return "lost" as const;
       }
-      yield* setState(rec.id, { status: "queued", reason: step.why, tries: rec.tries + 1 });
+      yield* setState(rec.id, { status: "queued", reason: step.why, tries: rec.tries });
       return "waiting" as const;
     }).pipe(
       Effect.catchCause(() =>
-        setState(rec.id, {
-          status: "queued",
-          reason: "the pane could not be read",
-          tries: rec.tries + 1,
-        }).pipe(Effect.as("waiting" as const)),
+        setState(
+          row.id,
+          { status: "queued", reason: "the pane could not be read", tries: row.tries + 1 },
+          row.source !== null,
+        ).pipe(Effect.as("waiting" as const)),
       ),
     );
+
+  /** Oldest first; stops at the first message that cannot go yet, so the order is kept. */
+  const drainPane = Effect.fn("BatonWeaveService.drainPane")(function* (pane: string) {
+    const rows = yield* sql<Row>`
+        SELECT * FROM fabric_weaves WHERE status = 'queued' AND to_pane = ${pane}
+          AND (source IS NULL OR source = 'thread')
+        ORDER BY created_at, rowid
+      `.pipe(Effect.orDie);
+    let delivered = 0;
+    for (const row of rows) {
+      const r = yield* attempt(row);
+      if (r === "delivered") {
+        delivered += 1;
+        continue;
+      }
+      if (r === "lost") continue;
+      break;
+    }
+    return delivered;
+  });
+
+  const inboundOffset = sql<{ value: string }>`
+    SELECT value FROM fabric_settings WHERE key = ${INBOUND_OFFSET}
+  `.pipe(
+    Effect.map((rows) => Number(rows[0]?.value ?? 0)),
+    Effect.orDie,
+  );
+
+  /** Marks each session whose waiting messages the server types, for the bridge (`writeOwned`). */
+  const markOwned = Effect.gen(function* () {
+    if (Option.isNone(stores)) return;
+    const rows = yield* sql<{ to_pane: string; n: number }>`
+      SELECT to_pane, COUNT(*) AS n FROM fabric_weaves
+      WHERE status = 'queued' AND (source IS NULL OR source = 'thread')
+        AND (to_pane LIKE 'session|%' OR to_pane LIKE 'live|%')
+      GROUP BY to_pane
+    `.pipe(Effect.orDie);
+    const waiting = new Map(rows.map((r) => [splitKey(r.to_pane).pane, Number(r.n)]));
+    // Lines the bridge appended since the last import are the server's too, though not in the table yet.
+    const dir = stores.value.liveQueueDir();
+    for (const line of readInbound(dir, yield* inboundOffset).lines)
+      if (!line.unbound) waiting.set(line.sessionId, (waiting.get(line.sessionId) ?? 0) + 1);
+    yield* Effect.sync(() => writeOwned(dir, waiting));
+  });
+
+  const insertRows = (rows: ReadonlyArray<NewRow>) =>
+    Effect.forEach(
+      rows,
+      (r) => sql`
+        INSERT OR IGNORE INTO fabric_weaves (id, from_label, to_label, to_pane, text, status, tries, created_at, source)
+        VALUES (${r.id}, ${r.from}, ${r.toLabel}, ${r.toPane}, ${r.text}, 'queued', 0, ${r.createdAt}, ${r.source})
+      `,
+      { discard: true },
+    );
+
+  /**
+   * Takes in the old stores, in this order: the bridge's per-session files (under its drain lock, so no bridge is
+   * mid-send), the unbound file less what its ledger claimed, the sessions list's kept file. Each is moved aside after
+   * its rows commit; their ids are stable, so a crash before the move only takes the same rows again, which is a no-op.
+   * Then the lines the bridge appended to `inbound.ndjson` since last time.
+   */
+  const takeOver = Effect.fn("BatonWeaveService.takeOver")(function* () {
+    if (Option.isNone(stores)) return;
+    const dir = stores.value.liveQueueDir();
+    const catalogFile = stores.value.catalogFile;
+    const now = yield* nowMs;
+    if (readQueueFiles(dir).length > 0) {
+      const release = takeQueueLock(dir);
+      if (release !== null) {
+        yield* Effect.gen(function* () {
+          const files = readQueueFiles(dir);
+          yield* sql.withTransaction(
+            insertRows(
+              files.flatMap((q) =>
+                q.texts.map((t, i) => ({
+                  id: takenId("live", q.sessionId, String(i), t.at, t.text),
+                  from: "thread",
+                  toLabel: `session ${q.sessionId.slice(0, 8)}`,
+                  toPane: paneKey("session", q.sessionId),
+                  text: t.text,
+                  createdAt: now,
+                  source: "thread" as const,
+                })),
+              ),
+            ),
+          );
+          // Marked before the files move, while the bridge is still locked out.
+          yield* markOwned;
+          for (const q of files) takeOverQueueFile(q, now);
+        }).pipe(Effect.ensuring(Effect.sync(release)));
+      }
+    }
+    const keptFile = NodePath.join(dir, "unbound-messages.ndjson");
+    if (NodeFS.existsSync(keptFile)) {
+      const pending = pendingKept(readKept(dir), readLedger(dir));
+      yield* sql.withTransaction(
+        insertRows(
+          pending.map((e) => ({
+            id: `u-${e.id}`,
+            from: "thread",
+            toLabel: "its thread",
+            toPane:
+              e.thread !== null
+                ? paneKey("thread", e.thread)
+                : paneKey("unbound", e.sessionId ?? e.id),
+            text: e.text,
+            createdAt: now,
+            source: "unbound" as const,
+          })),
+        ),
+      );
+      moveAside(keptFile, now);
+      moveAside(NodePath.join(dir, "unbound-ledger.ndjson"), now);
+    }
+    if (NodeFS.existsSync(catalogFile)) {
+      const { kept, problem } = readKeptFile(catalogFile);
+      if (problem !== null) yield* Effect.logWarning("Tessaya kept messages", problem);
+      yield* sql.withTransaction(
+        insertRows(
+          Object.entries(kept).flatMap(([sessionId, texts]) =>
+            texts.map((text, i) => ({
+              id: takenId("catalog", sessionId, String(i), text),
+              from: "Sessions",
+              toLabel: `session ${sessionId.slice(0, 8)}`,
+              toPane: paneKey("session", sessionId),
+              text,
+              createdAt: now,
+              source: "catalog" as const,
+            })),
+          ),
+        ),
+      );
+      moveAside(catalogFile, now);
+    }
+    const offset = yield* inboundOffset;
+    const { lines, next } = readInbound(dir, offset);
+    if (next === offset && lines.length === 0) return;
+    yield* sql.withTransaction(
+      Effect.gen(function* () {
+        yield* insertRows(
+          lines.map((l) => ({
+            id: `in-${l.id}`,
+            from: "thread",
+            toLabel: l.label ?? `session ${l.sessionId.slice(0, 8)}`,
+            toPane: l.unbound
+              ? l.threadId !== null
+                ? paneKey("thread", l.threadId)
+                : paneKey("unbound", l.sessionId)
+              : paneKey("session", l.sessionId),
+            text: l.text,
+            createdAt: Math.min(l.at, now),
+            source: l.unbound ? ("unbound" as const) : ("thread" as const),
+          })),
+        );
+        yield* sql`
+          INSERT INTO fabric_settings (key, value) VALUES (${INBOUND_OFFSET}, ${String(next)})
+          ON CONFLICT (key) DO UPDATE SET value = excluded.value
+        `;
+      }),
+    );
+    // Marked at once, so a message the bridge gets next joins the end instead of going first.
+    yield* markOwned;
+  });
+
+  const deliverUnlocked = Effect.gen(function* () {
+    yield* takeOver().pipe(Effect.orDie);
+    const panes = yield* sql<{ to_pane: string }>`
+      SELECT DISTINCT to_pane FROM fabric_weaves
+      WHERE status = 'queued' AND (source IS NULL OR source = 'thread')
+    `.pipe(Effect.orDie);
+    let delivered = 0;
+    for (const { to_pane } of panes) delivered += yield* drainPane(to_pane);
+    if (panes.length > 0) yield* markOwned;
+    return delivered;
+  });
+  const deliver = draining.withPermits(1)(deliverUnlocked);
+
+  // Once at start, so the sessions list reads its kept messages from the table, not the file.
+  yield* takeOver().pipe(
+    Effect.catchCause((cause) =>
+      Effect.logWarning("Tessaya: old message stores not taken in", cause),
+    ),
+  );
 
   const send = Effect.fn("BatonWeaveService.send")(function* (input: {
     readonly to: string;
@@ -237,7 +575,8 @@ export const make = Effect.gen(function* () {
       found.candidates.map((c) => ({
         label: box.name === "here" ? c.label : `${box.name}:${c.label}`,
         ...(box.name === "here" ? {} : { alias: c.label }),
-        pane: paneKey(box.name, c.location.pane),
+        // A live session outside Herdr is addressed by its id: the server types it once it has a pane.
+        pane: paneKey(box.name === "live" ? "session" : box.name, c.location.pane),
         state: c.runtimeState,
         agentKind: c.agentKind,
       })),
@@ -256,10 +595,15 @@ export const make = Effect.gen(function* () {
               'queued', ${input.job ?? null}, 0, ${now})
     `.pipe(Effect.orDie);
     // Earlier messages to the same pane go first, so the order he sent them in is kept.
-    yield* drainPane(target.target.pane);
+    yield* draining.withPermits(1)(drainPane(target.target.pane));
     const sent = (yield* get(id))!;
-    if (input.from !== undefined && sent.status === "delivered") {
-      const line = `Sent to ${sent.toLabel}: "${sent.text.slice(0, 80)}"${sent.reason === null ? "" : ` (${sent.reason})`}`;
+    const line =
+      sent.status === "delivered"
+        ? `Sent to ${sent.toLabel}: "${sent.text.slice(0, 80)}"${sent.reason === null ? "" : ` (${sent.reason})`}`
+        : sent.status === "queued" && bySession(splitKey(sent.toPane).box)
+          ? `Queued for ${sent.toLabel}: "${sent.text.slice(0, 80)}" (${sent.reason ?? "it goes when it can"})`
+          : null;
+    if (input.from !== undefined && line !== null) {
       yield* Effect.forEach(boxes, (b) => b.notify?.(input.from!, line) ?? Effect.void, {
         discard: true,
       });
@@ -267,61 +611,41 @@ export const make = Effect.gen(function* () {
     return sent;
   });
 
-  /** Oldest first; stops at the first message that cannot go yet. */
-  const drainPane = Effect.fn("BatonWeaveService.drainPane")(function* (pane: string) {
-    const rows = yield* sql<Row>`
-        SELECT * FROM fabric_weaves WHERE status = 'queued' AND to_pane = ${pane} ORDER BY created_at, id
+  const tick = draining.withPermits(1)(
+    Effect.gen(function* () {
+      const delivered = yield* deliverUnlocked;
+      const now = yield* nowMs;
+      const waiting = yield* sql<Row>`
+        SELECT * FROM fabric_weaves WHERE status = 'delivered' AND source IS NULL
+          AND delivered_at > ${now - REPLY_WINDOW_MS}
       `.pipe(Effect.orDie);
-    let delivered = 0;
-    for (const row of rows) {
-      const r = yield* attempt(fromRow(row));
-      if (r === "delivered") {
-        delivered += 1;
-        continue;
+      let replied = 0;
+      for (const row of waiting) {
+        const { box: boxName, pane } = splitKey(row.to_pane);
+        const box = boxNamed(boxName);
+        if (box === undefined || bySession(boxName)) continue;
+        const text = yield* Effect.gen(function* () {
+          const found = yield* box.adapter.discover;
+          const cand = found.candidates.find((c) => c.location.pane === pane);
+          // Read only once it has stopped working, so a half-written answer is not taken as the reply.
+          if (cand === undefined || cand.runtimeState === "working") return null;
+          const out = yield* box.adapter.readOutput({ session: synth(cand), lines: 200 });
+          return out.available ? extractReply(out.output, row.text) : null;
+        }).pipe(Effect.catchCause(() => Effect.succeed(null)));
+        if (text !== null) {
+          yield* setState(row.id, {
+            status: "replied",
+            reason: null,
+            tries: row.tries,
+            repliedAt: now,
+            reply: text,
+          });
+          replied += 1;
+        }
       }
-      if (r === "lost") continue;
-      break;
-    }
-    return delivered;
-  });
-
-  const tick = Effect.gen(function* () {
-    const panes = yield* sql<{ to_pane: string }>`
-      SELECT DISTINCT to_pane FROM fabric_weaves WHERE status = 'queued'
-    `.pipe(Effect.orDie);
-    let delivered = 0;
-    for (const { to_pane } of panes) delivered += yield* drainPane(to_pane);
-
-    const now = yield* nowMs;
-    const waiting = yield* sql<Row>`
-      SELECT * FROM fabric_weaves WHERE status = 'delivered' AND delivered_at > ${now - REPLY_WINDOW_MS}
-    `.pipe(Effect.orDie);
-    let replied = 0;
-    for (const row of waiting) {
-      const { box: boxName, pane } = splitKey(row.to_pane);
-      const box = boxNamed(boxName);
-      if (box === undefined || box.queueOnly) continue;
-      const text = yield* Effect.gen(function* () {
-        const found = yield* box.adapter.discover;
-        const cand = found.candidates.find((c) => c.location.pane === pane);
-        // Read only once it has stopped working, so a half-written answer is not taken as the reply.
-        if (cand === undefined || cand.runtimeState === "working") return null;
-        const out = yield* box.adapter.readOutput({ session: synth(cand), lines: 200 });
-        return out.available ? extractReply(out.output, row.text) : null;
-      }).pipe(Effect.catchCause(() => Effect.succeed(null)));
-      if (text !== null) {
-        yield* setState(row.id, {
-          status: "replied",
-          reason: null,
-          tries: row.tries,
-          repliedAt: now,
-          reply: text,
-        });
-        replied += 1;
-      }
-    }
-    return { delivered, replied };
-  });
+      return { delivered, replied };
+    }),
+  );
 
   const list = (limit = 50) =>
     sql<Row>`SELECT * FROM fabric_weaves ORDER BY created_at DESC, id LIMIT ${limit}`.pipe(
@@ -329,7 +653,126 @@ export const make = Effect.gen(function* () {
       Effect.orDie,
     );
 
-  return BatonWeaveService.of({ send, list, tick });
+  const catalogRows = sql<{ id: string; to_pane: string; text: string }>`
+    SELECT id, to_pane, text FROM fabric_weaves WHERE source = 'catalog' AND status = 'queued'
+    ORDER BY created_at, rowid
+  `.pipe(Effect.orDie);
+
+  const catalogKept = Effect.map(catalogRows, (rows) => {
+    const all: Record<string, Array<string>> = {};
+    for (const r of rows) (all[splitKey(r.to_pane).pane] ??= []).push(r.text);
+    return all as Record<string, ReadonlyArray<string>>;
+  });
+
+  /**
+   * Makes the table hold exactly `all`. The sessions list only appends, sends from the front, or drops one, so each
+   * wanted text keeps the earliest matching row after the last one kept; the rest go, and new ones join the end.
+   */
+  const setCatalogKept = (all: Record<string, ReadonlyArray<string>>) =>
+    sql
+      .withTransaction(
+        Effect.gen(function* () {
+          const rows = yield* catalogRows;
+          const now = yield* nowMs;
+          const have = new Map<string, Array<{ id: string; text: string }>>();
+          for (const r of rows) {
+            const sid = splitKey(r.to_pane).pane;
+            have.set(sid, [...(have.get(sid) ?? []), r]);
+          }
+          for (const sid of new Set([...have.keys(), ...Object.keys(all)])) {
+            const existing = have.get(sid) ?? [];
+            const kept = new Set<string>();
+            let from = 0;
+            const added: Array<string> = [];
+            for (const text of all[sid] ?? []) {
+              const at = existing.findIndex((r, i) => i >= from && r.text === text);
+              if (at < 0) added.push(text);
+              else {
+                kept.add(existing[at]!.id);
+                from = at + 1;
+              }
+            }
+            for (const r of existing)
+              if (!kept.has(r.id)) yield* sql`DELETE FROM fabric_weaves WHERE id = ${r.id}`;
+            yield* insertRows(
+              added.map((text) => ({
+                id: `c-${newId()}${newId()}`,
+                from: "Sessions",
+                toLabel: `session ${sid.slice(0, 8)}`,
+                toPane: paneKey("session", sid),
+                text,
+                createdAt: now,
+                source: "catalog" as const,
+              })),
+            );
+          }
+        }),
+      )
+      .pipe(Effect.orDie);
+
+  const unbound = sql<{ id: string; created_at: number; text: string; to_pane: string }>`
+    SELECT id, created_at, text, to_pane FROM fabric_weaves WHERE source = 'unbound' AND status = 'queued'
+    ORDER BY created_at, rowid
+  `.pipe(
+    Effect.map((rows) =>
+      rows.map((r) => {
+        const { box, pane } = splitKey(r.to_pane);
+        return {
+          id: r.id,
+          at: r.created_at,
+          text: r.text,
+          thread: box === "thread" ? pane : null,
+          native: box === "unbound" ? pane : null,
+        };
+      }),
+    ),
+    Effect.orDie,
+  );
+
+  const stampUnbound = (native: string, threadId: string) =>
+    sql`
+      UPDATE fabric_weaves SET to_pane = ${paneKey("thread", threadId)}
+      WHERE source = 'unbound' AND status = 'queued' AND to_pane = ${paneKey("unbound", native)}
+    `.pipe(Effect.asVoid, Effect.orDie);
+
+  const claimUnbound = Effect.fn("BatonWeaveService.claimUnbound")(function* (id: string) {
+    const now = yield* nowMs;
+    const rows = yield* sql<{ id: string }>`
+      UPDATE fabric_weaves SET status = 'delivered', delivered_at = ${now}
+      WHERE id = ${id} AND source = 'unbound' AND status = 'queued' RETURNING id
+    `.pipe(Effect.orDie);
+    return rows.length > 0;
+  });
+
+  const releaseUnbound = (id: string) =>
+    sql`
+      UPDATE fabric_weaves SET status = 'queued', delivered_at = NULL WHERE id = ${id} AND source = 'unbound'
+    `.pipe(Effect.asVoid, Effect.orDie);
+
+  return BatonWeaveService.of({
+    send,
+    list,
+    tick,
+    deliver,
+    catalogKept,
+    setCatalogKept,
+    unbound,
+    stampUnbound,
+    claimUnbound,
+    releaseUnbound,
+  });
 });
 
 export const layer = Layer.effect(BatonWeaveService, make);
+
+/** The server's drainer: what waits is typed on the server's own clock, not when a client asks. */
+export const drainer = Layer.effectDiscard(
+  Effect.gen(function* () {
+    const weave = yield* BatonWeaveService;
+    yield* weave.deliver.pipe(
+      Effect.ignoreCause({ log: true }),
+      Effect.repeat(Schedule.spaced(DRAIN_EVERY)),
+      Effect.forkScoped,
+    );
+  }),
+);

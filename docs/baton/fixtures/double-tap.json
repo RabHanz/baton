@@ -20,10 +20,7 @@
           "at": 1000
         }
       ],
-      "outputs": [
-        "start",
-        "stop"
-      ],
+      "outputs": ["start", "stop"],
       "phase": "idle"
     },
     {
@@ -39,10 +36,7 @@
           "at": 400
         }
       ],
-      "outputs": [
-        "start",
-        "stop"
-      ],
+      "outputs": ["start", "stop"],
       "phase": "idle"
     },
     {
@@ -58,10 +52,7 @@
           "at": 150
         }
       ],
-      "outputs": [
-        "start",
-        "cancel"
-      ],
+      "outputs": ["start", "cancel"],
       "phase": "tapped"
     },
     {
@@ -77,10 +68,7 @@
           "at": 200
         }
       ],
-      "outputs": [
-        "start",
-        "stop"
-      ],
+      "outputs": ["start", "stop"],
       "phase": "tapped"
     },
     {
@@ -104,12 +92,7 @@
           "at": 380
         }
       ],
-      "outputs": [
-        "start",
-        "cancel",
-        "start",
-        "latch"
-      ],
+      "outputs": ["start", "cancel", "start", "latch"],
       "phase": "latched"
     },
     {
@@ -133,12 +116,7 @@
           "at": 700
         }
       ],
-      "outputs": [
-        "start",
-        "stop",
-        "start",
-        "latch"
-      ],
+      "outputs": ["start", "stop", "start", "latch"],
       "phase": "latched"
     },
     {
@@ -162,12 +140,7 @@
           "at": 500
         }
       ],
-      "outputs": [
-        "start",
-        "cancel",
-        "start",
-        "cancel"
-      ],
+      "outputs": ["start", "cancel", "start", "cancel"],
       "phase": "tapped"
     },
     {
@@ -191,12 +164,7 @@
           "at": 450
         }
       ],
-      "outputs": [
-        "start",
-        "stop",
-        "start",
-        "cancel"
-      ],
+      "outputs": ["start", "stop", "start", "cancel"],
       "phase": "tapped"
     },
     {
@@ -228,14 +196,7 @@
           "at": 500
         }
       ],
-      "outputs": [
-        "start",
-        "cancel",
-        "start",
-        "latch",
-        "unlatch",
-        "stop"
-      ],
+      "outputs": ["start", "cancel", "start", "latch", "unlatch", "stop"],
       "phase": "idle"
     },
     {
@@ -267,14 +228,7 @@
           "at": 7000
         }
       ],
-      "outputs": [
-        "start",
-        "cancel",
-        "start",
-        "latch",
-        "unlatch",
-        "stop"
-      ],
+      "outputs": ["start", "cancel", "start", "latch", "unlatch", "stop"],
       "phase": "idle"
     },
     {
@@ -314,16 +268,7 @@
           "at": 650
         }
       ],
-      "outputs": [
-        "start",
-        "cancel",
-        "start",
-        "latch",
-        "unlatch",
-        "stop",
-        "start",
-        "cancel"
-      ],
+      "outputs": ["start", "cancel", "start", "latch", "unlatch", "stop", "start", "cancel"],
       "phase": "tapped"
     },
     {
@@ -347,12 +292,7 @@
           "at": 801
         }
       ],
-      "outputs": [
-        "start",
-        "cancel",
-        "start",
-        "stop"
-      ],
+      "outputs": ["start", "cancel", "start", "stop"],
       "phase": "idle"
     },
     {
@@ -368,10 +308,7 @@
           "at": 100
         }
       ],
-      "outputs": [
-        "start",
-        "stop"
-      ],
+      "outputs": ["start", "stop"],
       "phase": "idle"
     },
     {
@@ -395,12 +332,7 @@
           "at": 300
         }
       ],
-      "outputs": [
-        "start",
-        "stop",
-        "start",
-        "stop"
-      ],
+      "outputs": ["start", "stop", "start", "stop"],
       "phase": "idle"
     },
     {
@@ -428,10 +360,7 @@
           "at": 1100
         }
       ],
-      "outputs": [
-        "start",
-        "stop"
-      ],
+      "outputs": ["start", "stop"],
       "phase": "idle"
     },
     {
@@ -471,14 +400,7 @@
           "at": 500
         }
       ],
-      "outputs": [
-        "start",
-        "cancel",
-        "start",
-        "latch",
-        "unlatch",
-        "stop"
-      ],
+      "outputs": ["start", "cancel", "start", "latch", "unlatch", "stop"],
       "phase": "idle"
     },
     {
@@ -510,12 +432,7 @@
           "at": 1260
         }
       ],
-      "outputs": [
-        "start",
-        "cancel",
-        "start",
-        "latch"
-      ],
+      "outputs": ["start", "cancel", "start", "latch"],
       "phase": "latched"
     },
     {
@@ -563,16 +480,7 @@
           "at": 970
         }
       ],
-      "outputs": [
-        "start",
-        "stop",
-        "start",
-        "stop",
-        "start",
-        "stop",
-        "start",
-        "stop"
-      ],
+      "outputs": ["start", "stop", "start", "stop", "start", "stop", "start", "stop"],
       "phase": "idle"
     }
   ]

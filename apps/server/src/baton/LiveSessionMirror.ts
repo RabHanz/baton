@@ -86,15 +86,8 @@ import * as ServerConfig from "../config.ts";
 import { appendResumeLog } from "./ResumeLog.ts";
 import { formOverview, pendingAskQuestions } from "./FormQuestions.ts";
 import { decideBinding } from "./BindingHealth.ts";
-import { liveQueueDir } from "./BatonLiveQueue.ts";
-import {
-  pendingKept,
-  readKept,
-  readLedger,
-  resendKept,
-  sessionOfThread,
-  stampKept,
-} from "./UnboundMessages.ts";
+import { BatonWeaveService } from "./BatonWeaveService.ts";
+import { resendKept, sessionOfThread, stampKept } from "./UnboundMessages.ts";
 import { staleAskIds } from "./StaleAsks.ts";
 import { splitPaneRef } from "./HerdrAdapterLive.ts";
 // @ts-expect-error -- plain JS shared with the live agent, which runs without a build; typed below
@@ -855,6 +848,7 @@ export const askRunId = (
 
 const make = Effect.gen(function* () {
   const engine = yield* BatonEngine;
+  const weave = yield* BatonWeaveService;
   const settings = yield* ServerSettingsService;
   const { attachmentsDir, stateDir, logsDir } = yield* ServerConfig.ServerConfig;
   // Every mirror decision lands in a file a person can read; the Effect log has no file on a desktop install.
@@ -1880,12 +1874,8 @@ const make = Effect.gen(function* () {
   /** Kept unbound messages go back through their thread once it is on its running session again. */
   const retryKept = (live: ReadonlyArray<ClaudeLiveSession>) =>
     Effect.gen(function* () {
-      // Read each pass: the folder can move to ~/.t3/tessaya while the server runs.
-      // Stamped once at the top of the tick, before any heal.
-      const keptDir = liveQueueDir();
-      const pending = pendingKept(readKept(keptDir), readLedger(keptDir));
       for (const threadId of new Set(
-        pending.flatMap((e) => (e.thread === null ? [] : [e.thread])),
+        (yield* weave.unbound).flatMap((row) => (row.thread === null ? [] : [row.thread])),
       )) {
         const sessionId = sessionOfThread(threadId);
         const session = live.find((s) => s.sessionId === sessionId);
@@ -1894,7 +1884,7 @@ const make = Effect.gen(function* () {
         if (shell === null) continue;
         const native = (yield* engine.activeProviderThread(shell.id))?.nativeThreadRef?.nativeId;
         const bound = shell.providerInstanceId === LIVE_INSTANCE_ID && native === sessionId;
-        const result = yield* resendKept(engine, { dir: keptDir, threadId, bound });
+        const result = yield* resendKept(engine, weave, { threadId, bound });
         if (result.sent > 0)
           mirrorLog(null, {
             event: "kept-resent",
@@ -1910,7 +1900,7 @@ const make = Effect.gen(function* () {
   const tick = Effect.gen(function* () {
     const live = yield* readAllProfileLiveSessions();
     // Before any heal rewrites a thread's native id, so kept messages still find their thread.
-    yield* stampKept(engine, liveQueueDir()).pipe(Effect.ignoreCause);
+    yield* stampKept(engine, weave).pipe(Effect.ignoreCause);
     mirrorLog("live-set", {
       event: "live-sessions",
       sessions: live

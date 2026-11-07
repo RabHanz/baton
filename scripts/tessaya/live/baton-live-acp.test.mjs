@@ -33,6 +33,8 @@ import {
   resumeSession,
   resumingNote,
   sendToStopped,
+  appendInbound,
+  serverWaiting,
   deliveredNote,
   lostNote,
   queuedNote,
@@ -299,14 +301,12 @@ NodeTest.test(
           { type: "image", mimeType: "image/png", data: Buffer.from("png").toString("base64") },
         ],
       });
-      const kept = NodeFS.readFileSync(
-        NodePath.join(dir, "queue", "unbound-messages.ndjson"),
-        "utf8",
-      )
+      const kept = NodeFS.readFileSync(NodePath.join(dir, "queue", "inbound.ndjson"), "utf8")
         .trim()
         .split("\n")
         .map((line) => JSON.parse(line))
         .find((entry) => entry.sessionId === lone);
+      NodeAssert.equal(kept.unbound, true);
       NodeAssert.match(kept.text, /^He attached image image-.*\n@.*\/other\/\.baton\/inbox\//);
       // A lost binding with exactly one running session in the folder is held and offers Reattach, never sent there.
       const near = (await call(9, "session/new", { cwd, mcpServers: [] })).result.sessionId;
@@ -316,7 +316,7 @@ NodeTest.test(
       });
       NodeAssert.doesNotMatch(NodeFS.readFileSync(log, "utf8"), /BETA/);
       NodeAssert.match(
-        NodeFS.readFileSync(NodePath.join(dir, "queue", "unbound-messages.ndjson"), "utf8"),
+        NodeFS.readFileSync(NodePath.join(dir, "queue", "inbound.ndjson"), "utf8"),
         new RegExp(`"sessionId":"${near}".*"text":"say BETA"`),
       );
     } finally {
@@ -610,8 +610,14 @@ const stoppedMachine = (over = {}) => {
   return { deps, said, typed, batonCalls };
 };
 
+const inboundOf = (dir) =>
+  NodeFS.readFileSync(NodePath.join(dir, "inbound.ndjson"), "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+
 NodeTest.test(
-  "a send to a stopped session is queued and shown, the session resumed in its folder, then the message delivered",
+  "a send to a stopped session goes to the server's queue and is shown, and the session is resumed in its folder",
   async () => {
     const dir = queueDir();
     const { deps, said, typed, batonCalls } = stoppedMachine();
@@ -619,27 +625,35 @@ NodeTest.test(
     NodeAssert.equal(result.state, "resumed");
     NodeAssert.deepEqual(batonCalls, [["--resume", "s6", "/work/shop"]]);
     NodeAssert.equal(said[0], resumingNote("carry on with the tests"));
-    NodeAssert.deepEqual(typed, [["fab-shop~p1", "carry on with the tests"]]);
-    NodeAssert.ok(said.includes(deliveredNote("carry on with the tests")));
+    // The server types it once the session is in a pane; the bridge never does.
+    NodeAssert.deepEqual(typed, []);
+    NodeAssert.deepEqual(
+      inboundOf(dir).map((line) => [line.sessionId, line.text]),
+      [["s6", "carry on with the tests"]],
+    );
+    NodeAssert.equal(serverWaiting(dir, "s6"), 1);
     NodeAssert.ok(!said.some((line) => line.startsWith("Not delivered")), said.join("|"));
-    NodeAssert.equal(readQueue(dir, "s6").length, 0);
   },
 );
 
-NodeTest.test("a resume that fails keeps the message, held and visible, and says why", async () => {
-  const dir = queueDir();
-  const { deps, said, typed } = stoppedMachine({
-    baton: async () => ({ ok: false, out: "herdr: no server" }),
-  });
-  const result = await sendToStopped(dir, "s7", msg("hello"), deps);
-  NodeAssert.equal(result.state, "failed");
-  NodeAssert.match(said.at(-1), /Could not resume: Herdr would not start it: herdr: no server\./);
-  NodeAssert.match(said.at(-1), /Your message is kept/);
-  NodeAssert.deepEqual(typed, []);
-  const kept = readQueue(dir, "s7");
-  NodeAssert.equal(kept.length, 1);
-  NodeAssert.ok(kept[0].held);
-});
+NodeTest.test(
+  "a resume that fails keeps the message in the server's queue, and says why",
+  async () => {
+    const dir = queueDir();
+    const { deps, said, typed } = stoppedMachine({
+      baton: async () => ({ ok: false, out: "herdr: no server" }),
+    });
+    const result = await sendToStopped(dir, "s7", msg("hello"), deps);
+    NodeAssert.equal(result.state, "failed");
+    NodeAssert.match(said.at(-1), /Could not resume: Herdr would not start it: herdr: no server\./);
+    NodeAssert.match(said.at(-1), /Your message is kept/);
+    NodeAssert.deepEqual(typed, []);
+    NodeAssert.deepEqual(
+      inboundOf(dir).map((line) => line.text),
+      ["hello"],
+    );
+  },
+);
 
 NodeTest.test(
   "a held message is never handed back as lost, however long the session stays gone",
@@ -792,10 +806,16 @@ NodeTest.test(
       "hello",
     );
     NodeAssert.equal(a.sessionId, "baton-unbound-1-2");
+    NodeAssert.equal(a.unbound, true);
     NodeAssert.equal(a.cwd, "/work");
     NodeAssert.equal(a.text, "hello");
-    NodeAssert.notEqual(a.id, b.id);
     NodeAssert.equal(b.threadId, "t1");
+    // Each line the server imports carries its own id, so it is never imported twice.
+    const dir = queueDir();
+    appendInbound(dir, a);
+    appendInbound(dir, b);
+    const [first, second] = inboundOf(dir);
+    NodeAssert.notEqual(first.id, second.id);
   },
 );
 
