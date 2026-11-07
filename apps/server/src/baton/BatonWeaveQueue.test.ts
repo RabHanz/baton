@@ -441,13 +441,13 @@ it("the folder lock: kept by its heartbeat, taken when stale or its process is g
   assert.isTrue(holdServerLock(dir, "a", at + 20_000).owned);
   assert.isFalse(holdServerLock(dir, "b", at + 20_000 + SERVER_LOCK_STALE_MS).owned);
   // Untouched for over 30 s: stale even though its pid (a reused one, say) is alive.
-  NodeFS.utimesSync(lock, new Date(at), new Date(at));
+  NodeFS.utimesSync(lock, at / 1000, at / 1000);
   assert.isTrue(holdServerLock(dir, "b", at + SERVER_LOCK_STALE_MS + 1).owned);
   assert.isFalse(holdServerLock(dir, "a", at + SERVER_LOCK_STALE_MS + 2).owned);
   // Fresh, but its process is gone.
   const later = at + 2 * SERVER_LOCK_STALE_MS;
   NodeFS.writeFileSync(lock, JSON.stringify({ pid: 2 ** 22 + 1, token: "dead" }));
-  NodeFS.utimesSync(lock, new Date(later), new Date(later));
+  NodeFS.utimesSync(lock, later / 1000, later / 1000);
   assert.isTrue(holdServerLock(dir, "c", later + 1_000).owned);
   assert.deepStrictEqual(
     NodeFS.readdirSync(dir).filter((n) => n.startsWith(".server.lock")),
