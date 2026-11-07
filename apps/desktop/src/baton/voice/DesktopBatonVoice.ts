@@ -1890,13 +1890,19 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const publishState = async (): Promise<void> => {
     const own = input.extras?.stateForServer?.();
     if (own === undefined) return;
-    const peers = ((await request({ kind: "memory", op: "syncPeers", args: {} }).catch(() => [])) ??
-      []) as ReadonlyArray<{ label?: unknown }>;
+    // Asking the window never reopens it: with it closed there is nothing new to say.
+    if ((await input.mainWindowUp?.()) !== true) return;
+    const peers = ((await request({ kind: "cloud", op: "environments", args: {} }).catch(
+      () => [],
+    )) ?? []) as ReadonlyArray<{ label?: unknown; state?: unknown }>;
     const state = desktopState({
       ...own,
       voice: settings,
       appVersion: Electron.app.getVersion(),
-      environments: peers.map((p) => ({ label: String(p.label ?? ""), state: "connected" })),
+      environments: peers.map((p) => ({
+        label: String(p.label ?? ""),
+        state: typeof p.state === "string" ? p.state : "unknown",
+      })),
     });
     const json = JSON.stringify(state);
     if (json === statePublished.json && Date.now() - statePublished.at < STATE_REFRESH_MS) return;
