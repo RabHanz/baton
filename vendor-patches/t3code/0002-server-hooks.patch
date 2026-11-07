@@ -421,10 +421,44 @@ index bcec0a13cf20a6572335497ea0482405ca7abf88..107672a1455cb4e68b5331b156aed88e
          ? yield* contextHandoffService
              .prepareLegacyImport({
 diff --git a/apps/server/src/orchestration-v2/ProviderTurnStartService.ts b/apps/server/src/orchestration-v2/ProviderTurnStartService.ts
-index 54b16d7aa2aef6d888a9b5eecb787bac19eaa0e6..582e726ff2785fce526b9cf4f0f76921d45bd59d 100644
+index 54b16d7aa2aef6d888a9b5eecb787bac19eaa0e6..e3e955efd3e550c4b96debe9d184b29261607816 100644
 --- a/apps/server/src/orchestration-v2/ProviderTurnStartService.ts
 +++ b/apps/server/src/orchestration-v2/ProviderTurnStartService.ts
-@@ -1698,6 +1698,9 @@ export const layer: Layer.Layer<
+@@ -46,6 +46,7 @@ import {
+   latestNativeContextUsage,
+ } from "@t3tools/provider-core/server/handoffBudget";
+ import { deliverContextHandoffs, withInlineContext } from "./ContextHandoffDelivery.ts";
++import { takesNoContextHandoff } from "../baton/BatonLiveInstance.ts";
+ import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+ import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+ import * as ProjectionStore from "./ProjectionStore.ts";
+@@ -1283,7 +1284,10 @@ export const layer: Layer.Layer<
+             handoffs: [...handoffs, ...resumedRetryHandoff],
+             providerThread: { ...resumed.success, id: providerThread.id },
+             budget: context.budget,
+-            deferInline: isCompactionCommandMessage(message) || goalCommand,
++            deferInline:
++              isCompactionCommandMessage(message) ||
++              goalCommand ||
++              takesNoContextHandoff(run.providerInstanceId),
+             alreadyDeliveredItemIds: context.deliveredItemIds,
+             persist: () => Effect.void,
+           }).pipe(
+@@ -1578,11 +1582,11 @@ export const layer: Layer.Layer<
+         function* (turnInput: Parameters<typeof session.startTurn>[0], compact = false) {
+           const delivery = yield* deliverContextHandoffs({
+             handoffs: [...effectiveHandoffs, ...retryHandoff],
+-            deferInline: compact || goalCommand,
++            deferInline: compact || goalCommand || takesNoContextHandoff(run.providerInstanceId),
+             providerThread: runningProviderThread,
+             budget,
+             alreadyDeliveredItemIds: deliveredItemIds,
+-            ...(session.injectHistory === undefined
++            ...(session.injectHistory === undefined || takesNoContextHandoff(run.providerInstanceId)
+               ? {}
+               : {
+                   inject: (history: ProviderAdapter.ProviderAdapterV2HistoricalContext) =>
+@@ -1698,6 +1702,9 @@ export const layer: Layer.Layer<
            ) + 1,
          nativeThreadHasTurns:
            nativeInputRunIds.size > 0 ||
