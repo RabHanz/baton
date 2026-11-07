@@ -132,5 +132,15 @@ describe("the voice log", () => {
     // Over her voice: the score is kept for tuning, and no wake is hung on it.
     expect(lines.at(-1)).toMatchObject({ kind: "dropped", score: 1.05 });
     expect(lines.at(-1)).not.toHaveProperty("wake");
+    // A wake with nothing after it: the speech detector's view of it is kept, to tell noise from speech.
+    log.event({
+      type: "dropped",
+      text: "",
+      reason: "wake not heard",
+      score: 1.052,
+      vadPeak: 0.04,
+      vadMean: 0.01,
+    });
+    expect(lines.at(-1)).toMatchObject({ reason: "wake not heard", vadPeak: 0.04, vadMean: 0.01 });
   });
 });

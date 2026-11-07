@@ -117,6 +117,9 @@ export type VoiceCoreEvent =
       readonly reason: string;
       /** The wake model's score, for a wake set aside as her own voice. */
       readonly score?: number;
+      /** For a wake with nothing after it: the speech detector's highest and mean probability from the name on. */
+      readonly vadPeak?: number;
+      readonly vadMean?: number;
     }
   /** He said only a dismissal ("never mind"): the window ended at once, no model was asked. */
   | { readonly type: "dismissed"; readonly text: string; readonly at: number }
@@ -191,6 +194,8 @@ const ECHO_TAIL_MS = 500;
 const WAKE_LOOKBACK_MS = 1_600;
 /** The wake word's own tail reads as speech: it opens no turn by itself. */
 const WAKE_TAIL_MS = 200;
+/** A wake only the model heard, with no speech after it for this long, is let go quietly (not the whole window). */
+const QUIET_WAKE_MS = 3_000;
 /** Audio kept behind the newest frame, so a wake scored late (a busy computer just after launch) still finds the name and what followed. */
 const RECENT_MS = 30_000;
 /** However long the speech after held words takes to recognise, they are let go after this. */
@@ -551,9 +556,14 @@ export const createVoiceCore = (input: {
         fire.segment = "none";
         return show();
       }
-      if (parts !== null) after(() => emit({ type: "dropped", text: "", reason: "no speech" }));
+      if (parts !== null) {
+        after(() => emit({ type: "dropped", text: "", reason: "no speech", ...vadOf(wakeHold) }));
+        checkLoneWake();
+      }
       return show();
     }
+    // He has started talking: the window is his, however long he pauses later.
+    wakeHold = null;
     const pcm = joined(parts);
     const endAt = now();
     after(() => {
@@ -896,6 +906,69 @@ export const createVoiceCore = (input: {
     return made;
   };
 
+  /**
+   * A wake the model made and nothing has followed yet. `confirmed`: the recogniser heard the name (the check ran
+   * before it was accepted, or on its own audio when nothing came after it). Held until he starts talking.
+   */
+  interface WakeHold {
+    readonly firedAt: number;
+    readonly word: string | null;
+    readonly score: number;
+    readonly acceptedAt: number;
+    confirmed: boolean;
+    checking: boolean;
+    vadPeak: number;
+    vadSum: number;
+    vadFrames: number;
+  }
+  let wakeHold: WakeHold | null = null;
+  const vadOf = (hold: WakeHold | null) =>
+    hold === null || hold.vadFrames === 0
+      ? {}
+      : {
+          vadPeak: Math.round(hold.vadPeak * 1000) / 1000,
+          vadMean: Math.round((hold.vadSum / hold.vadFrames) * 1000) / 1000,
+        };
+  /** The audio a wake check reads: the name and what came just before it. */
+  const nameAudio = (firedAt: number) =>
+    joined(
+      recent
+        .filter((r) => r.end > firedAt - msToSamples(WAKE_LOOKBACK_MS) && r.end <= firedAt)
+        .map((r) => r.frame),
+    );
+  /** Let a wake go with no sound and no pill: nothing showed it was him. */
+  const dropLoneWake = (hold: WakeHold) => {
+    if (wakeHold !== hold) return;
+    wakeHold = null;
+    emit({
+      type: "dropped",
+      text: "",
+      reason: "wake not heard",
+      score: hold.score,
+      ...vadOf(hold),
+    });
+    enqueue(() => dispatch({ type: "dismiss", at: now() }));
+  };
+  /**
+   * Nothing came after the name. A wake the model was sure of skipped the check, and with no words there is no
+   * text to show it was the name either: so the recogniser reads the name's own audio now (a saturated model
+   * scores noise like his voice).
+   */
+  const checkLoneWake = () => {
+    const hold = wakeHold;
+    if (hold === null || hold.confirmed || hold.checking || input.verifyWake === undefined) return;
+    hold.checking = true;
+    void input
+      .verifyWake(nameAudio(hold.firedAt), hold.word, hold.score)
+      .catch(() => true)
+      .then((heardName) => {
+        hold.checking = false;
+        if (disposed || wakeHold !== hold) return;
+        if (heardName) hold.confirmed = true;
+        else dropLoneWake(hold);
+      });
+  };
+
   const acceptWake = (
     score: number,
     firedAt: number,
@@ -904,6 +977,22 @@ export const createVoiceCore = (input: {
     checkMs?: number,
     open = true,
   ) => {
+    // A wake from sleep is held until he talks, or until its name is heard. A cut-in has speech by definition,
+    // and one in an open window or under her question leaves that window as it was.
+    wakeHold =
+      speaking || hearingItself() || machine.mode !== "sleeping" || machine.pending !== null
+        ? null
+        : {
+            firedAt,
+            word,
+            score,
+            acceptedAt: samples,
+            confirmed: checkMs !== undefined,
+            checking: false,
+            vadPeak: 0,
+            vadSum: 0,
+            vadFrames: 0,
+          };
     if (speaking || hearingItself()) {
       // Only over her voice itself, not its echo after: then there is nothing of hers to carry on from.
       const said = speaking ? heardUntil(played, sounding, Date.now()) : "";
@@ -964,19 +1053,7 @@ export const createVoiceCore = (input: {
         // cue, flash the pill and extend the window): recognise what was just said first.
         const checkFrom = samples;
         const fire: Fire = {
-          verdict: input
-            .verifyWake(
-              joined(
-                recent
-                  .filter(
-                    (r) => r.end > firedAt - msToSamples(WAKE_LOOKBACK_MS) && r.end <= firedAt,
-                  )
-                  .map((r) => r.frame),
-              ),
-              wakeWord,
-              score,
-            )
-            .catch(() => true),
+          verdict: input.verifyWake(nameAudio(firedAt), wakeWord, score).catch(() => true),
           made: false,
           segment: "none",
           ok: null,
@@ -1062,8 +1139,25 @@ export const createVoiceCore = (input: {
     if (hearingItself()) watchForStop(frame);
     else if (stopFrames.length > 0) clearStop();
 
+    // Silence since a wake nothing confirmed: the model alone does not hold the window open (QUIET_WAKE_MS).
+    if (
+      wakeHold !== null &&
+      !wakeHold.confirmed &&
+      !wakeHold.checking &&
+      segment === null &&
+      transcribing === 0 &&
+      samples - wakeHold.acceptedAt >= msToSamples(QUIET_WAKE_MS)
+    )
+      dropLoneWake(wakeHold);
+
     if (listening() && !hearingItself()) {
       const speech = input.vad.isSpeech(frame);
+      const probability = wakeHold === null ? undefined : input.vad.probability?.();
+      if (wakeHold !== null && probability !== undefined) {
+        wakeHold.vadPeak = Math.max(wakeHold.vadPeak, probability);
+        wakeHold.vadSum += probability;
+        wakeHold.vadFrames += 1;
+      }
       // Counted from what the detector has scored, not its last answer: frames it has not reached (a burst after a
       // stall) are neither speech nor silence yet.
       const scored = input.vad.scored?.();

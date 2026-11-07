@@ -108,6 +108,9 @@ export const makeVoiceTurnLog = (
             text: event.text,
             reason: event.reason,
             ...(event.score === undefined ? {} : { score: event.score }),
+            ...(event.vadPeak === undefined
+              ? {}
+              : { vadPeak: event.vadPeak, vadMean: event.vadMean }),
           });
         case "stop_heard":
           return note("stop", { text: event.text });

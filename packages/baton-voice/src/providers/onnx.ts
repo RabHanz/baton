@@ -321,5 +321,6 @@ export const createSileroVad = async (
     reset: s.reset,
     drain: s.drain,
     scored: s.scored,
+    probability: s.last,
   };
 };

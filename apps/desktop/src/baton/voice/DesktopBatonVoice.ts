@@ -3273,6 +3273,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         case "dropped":
           // Set aside over her voice: the pill keeps saying she is speaking.
           if (OVER_HER_VOICE.has(event.reason)) return null;
+          // A wake nothing showed was him (no words, and not the name to the recogniser): gone without a sound.
+          if (event.reason === "wake not heard") {
+            pill.on({ type: "dismissed" }, { silent: true });
+            return null;
+          }
           return { type: event.reason === "wake not confirmed" ? "unconfirmed" : "resume" };
         case "stop_heard":
           input.onSpokenStop?.();

@@ -8,7 +8,7 @@ const FRAME = 320;
 const frames = (seconds: number) => Math.round((seconds * 16_000) / FRAME);
 
 const rig = (
-  verify: (pcm: Int16Array, word: string | null, score: number) => Promise<boolean>,
+  verify: ((pcm: Int16Array, word: string | null, score: number) => Promise<boolean>) | undefined,
   trustWake?: (word: string, score: number) => boolean,
   /** The echo guard hears someone over her voice. */
   nearEnd = false,
@@ -21,7 +21,7 @@ const rig = (
   const events: VoiceCoreEvent[] = [];
   const core = createVoiceCore({
     waitMs: () => 0,
-    verifyWake: verify,
+    ...(verify === undefined ? {} : { verifyWake: verify }),
     ...(trustWake === undefined ? {} : { trustWake }),
     ...(nearEnd
       ? {
@@ -44,7 +44,12 @@ const rig = (
       lastWord: () => "Sebastian",
       firedAgo: () => firedAgo,
     },
-    vad: { name: "fake", reset: () => {}, isSpeech: () => speech },
+    vad: {
+      name: "fake",
+      reset: () => {},
+      isSpeech: () => speech,
+      probability: () => (speech ? 0.9 : 0.02),
+    },
     stt: {
       name: "fake",
       transcribe: async (pcm) => {
@@ -583,5 +588,77 @@ describe("right after launch, when the wake check is slow", () => {
     r.quiet(0.2);
     expect(r.events.some((e) => e.type === "dropped" && e.reason === "own voice")).toBe(false);
     expect(r.events.some((e) => e.type === "wake" && e.word === "Freya")).toBe(true);
+  });
+});
+
+describe("a wake with nothing after it", () => {
+  it("checks a sure wake on the name's own audio, and lets it go without a sound when the name is not there", async () => {
+    let checks = 0;
+    const r = rig(
+      async () => {
+        checks += 1;
+        return false;
+      },
+      () => true,
+    );
+    r.push(2);
+    r.wake();
+    r.push(0.1);
+    await r.core.idle();
+    expect(r.core.snapshot().machine.mode).toBe("command_window");
+    r.push(1.4);
+    await r.core.idle();
+    expect(checks).toBe(1);
+    const dropped = r.events.find((e) => e.type === "dropped" && e.reason === "wake not heard");
+    expect(dropped).toMatchObject({ vadPeak: 0.02, vadMean: 0.02 });
+    expect(r.events.some((e) => e.type === "dismissed")).toBe(false);
+    // Gone well inside the window it would have held (8 s by default).
+    expect(r.core.snapshot().machine.mode).toBe("sleeping");
+  });
+
+  it("keeps the window open for a pause after a name the recogniser heard", async () => {
+    const r = rig(
+      async () => true,
+      () => true,
+    );
+    r.push(2);
+    r.wake();
+    r.push(0.1);
+    await r.core.idle();
+    r.push(5);
+    await r.core.idle();
+    expect(r.events.some((e) => e.type === "dropped" && e.reason === "wake not heard")).toBe(false);
+    expect(r.core.snapshot().machine.mode).toBe("command_window");
+  });
+
+  it("lets a wake only the model heard go after 3 s of silence, and keeps one he speaks after", async () => {
+    const quiet = rig(undefined);
+    quiet.push(2);
+    quiet.wake();
+    quiet.push(0.1);
+    await quiet.core.idle();
+    expect(quiet.core.snapshot().machine.mode).toBe("command_window");
+    quiet.push(3.4);
+    await quiet.core.idle();
+    expect(quiet.events.some((e) => e.type === "dropped" && e.reason === "wake not heard")).toBe(
+      true,
+    );
+    expect(quiet.core.snapshot().machine.mode).toBe("sleeping");
+
+    const talking = rig(undefined);
+    talking.push(2);
+    talking.wake();
+    talking.push(0.1);
+    await talking.core.idle();
+    talking.push(0.9);
+    talking.speak(true);
+    talking.push(1);
+    talking.speak(false);
+    talking.push(3);
+    await talking.core.idle();
+    expect(talking.events.some((e) => e.type === "dropped" && e.reason === "wake not heard")).toBe(
+      false,
+    );
+    expect(talking.events.some((e) => e.type === "transcript")).toBe(true);
   });
 });
