@@ -1,12 +1,13 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
   compactQuiet,
   dictationAtLaunch,
   holdFramesUntil,
-  oneAtATime,
+  serialQueue,
   startWarmUp,
   warmUpVoice,
+  within,
 } from "./warmUp.ts";
 
 describe("warming the voice models before the microphone opens", () => {
@@ -261,25 +262,68 @@ describe("when dictation loads at launch", () => {
   });
 });
 
-describe("starting the voice engine once", () => {
-  it("shares a start asked for again while the first is still warming, and allows a new one after", async () => {
+describe("starting and stopping the voice engine", () => {
+  /** The shape of the voice start: a warm-up that waits, an off that cancels it, and a stop that tears down. */
+  const engine = (listDevices: () => Promise<void> = async () => undefined) => {
+    const queue = serialQueue();
+    // Each start's warm-up ends when the test says so, whether or not that start has reached it yet.
+    const ends = Array.from({ length: 3 }, () => Promise.withResolvers<void>());
+    const warmUps = ends.map((d) => d.resolve);
+    let running = false;
+    let offAsked = false;
     let builds = 0;
-    let finish!: () => void;
-    const start = oneAtATime(async () => {
+    const startNow = async () => {
+      if (running) return;
       builds += 1;
-      await new Promise<void>((resolve) => (finish = resolve));
-    });
-    const first = start.run();
-    const second = start.run();
-    expect(second).toBe(first);
-    expect(start.pending()).toBe(first);
-    finish();
+      await ends[builds - 1]!.promise;
+      if (offAsked) return;
+      await within(listDevices(), 1_000, "The microphone list");
+      running = true;
+    };
+    return {
+      start: () => {
+        offAsked = false;
+        return queue(startNow);
+      },
+      stop: () => {
+        offAsked = true;
+        return queue(async () => void (running = false));
+      },
+      warmUps,
+      running: () => running,
+      builds: () => builds,
+    };
+  };
+  it("ends running after on, off, on during the warm-up, with one engine at a time", async () => {
+    const voice = engine();
+    const first = voice.start();
+    const off = voice.stop();
+    const again = voice.start();
+    voice.warmUps.shift()!();
     await first;
-    expect(start.pending()).toBeNull();
-    expect(builds).toBe(1);
-    const later = start.run();
-    finish();
-    await later;
-    expect(builds).toBe(2);
+    await off;
+    voice.warmUps.shift()!();
+    await again;
+    expect(voice.running()).toBe(true);
+    expect(voice.builds()).toBe(2);
+  });
+
+  it("gives up on a microphone list that never answers, and stop still runs", async () => {
+    vi.useFakeTimers();
+    try {
+      const hung = engine(() => new Promise<void>(() => undefined));
+      const started = hung.start();
+      const rejected = expect(started).rejects.toThrow("did not answer");
+      hung.warmUps.shift()!();
+      await vi.advanceTimersByTimeAsync(0);
+      // Queued behind a start whose microphone list hangs: it still runs once that start gives up.
+      const stopped = hung.stop();
+      await vi.advanceTimersByTimeAsync(1_000);
+      await rejected;
+      await stopped;
+      expect(hung.running()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
