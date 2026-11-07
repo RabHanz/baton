@@ -74,9 +74,18 @@ describe("resolveBatonIntent — switching the Claude account", () => {
       const result = resolve(text);
       expect(result.outcome, text).toBe("resolved");
       if (result.outcome !== "resolved") continue;
-      expect(result.command).toEqual({ kind: "switch_account", accountLabel: "optima" });
+      expect(result.command).toMatchObject({ kind: "switch_account", accountLabel: "optima" });
       expect(result.risk).toBe("medium");
     }
+  });
+
+  it("moves the focused work, else the one that moved last", () => {
+    const focused = resolve("use the optima account", { focusedWorkSessionId: "ws-search" });
+    const fallback = resolve("use the optima account");
+    expect(focused.outcome === "resolved" && focused.command).toMatchObject({
+      workSessionId: "ws-search",
+    });
+    expect(fallback.outcome === "resolved" && fallback.workSessionId).not.toBeNull();
   });
 
   it("does not take a session handoff or a focus request for one", () => {

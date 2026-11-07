@@ -1,8 +1,15 @@
 import type { BatonAccount, BatonAccountPool } from "@t3tools/baton-contracts";
+import { ProviderInstanceId, ThreadId, type ServerProvider } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
+import { at, v2Shell } from "./__fixtures__/v2ThreadShell.ts";
 import { respawnPlan } from "./HerdrRespawn.ts";
-import { limitReached, rotationTick, sourceWindowResetsAt } from "./AccountRotationReactor.ts";
+import {
+  limitReached,
+  planThreadMoves,
+  rotationTick,
+  sourceWindowResetsAt,
+} from "./AccountRotationReactor.ts";
 
 const now = "2026-10-26T12:00:00.000Z";
 const resets = "2026-10-26T15:00:00.000Z";
@@ -71,6 +78,85 @@ describe("the automatic rotation trigger (D63)", () => {
       now,
     });
     expect(decision).toEqual({ outcome: "hold", reason: "already-rotated-this-window" });
+  });
+});
+
+const GROUP = "claude:home:/home/dev/.claude";
+const instance = (
+  id: string,
+  used: number | null,
+  extra: Partial<Record<string, unknown>> = {},
+): ServerProvider =>
+  ({
+    instanceId: ProviderInstanceId.make(id),
+    driver: "claudeAgent",
+    displayName: id,
+    enabled: true,
+    installed: true,
+    auth: { status: "authenticated" },
+    continuation: { groupKey: GROUP },
+    ...(used === null
+      ? {}
+      : {
+          usageLimits: {
+            checkedAt: now,
+            windows: [
+              {
+                id: "five_hour",
+                kind: "session",
+                label: "Session",
+                usedPercent: used,
+                resetsAt: resets,
+              },
+            ],
+          },
+        }),
+    ...extra,
+  }) as unknown as ServerProvider;
+
+const thread = (id: string, instanceId: string, status: "running" | "idle") =>
+  v2Shell({
+    id: ThreadId.make(id),
+    status,
+    providerInstanceId: ProviderInstanceId.make(instanceId),
+    createdAt: at(now),
+  });
+
+describe("native rotation of T3 threads (L-76)", () => {
+  const plan = (providers: ReadonlyArray<ServerProvider>, last = new Map<string, string>()) =>
+    planThreadMoves({
+      providers,
+      shells: [
+        thread("busy", "a", "running"),
+        thread("idle", "a", "idle"),
+        thread("ok", "b", "running"),
+      ],
+      lastAutoRotationAt: last,
+      now,
+    });
+
+  it("moves the working threads of a spent instance to the one with most room, and leaves idle ones", () => {
+    const moves = plan([instance("a", 97), instance("b", 40), instance("c", 10)]);
+    expect(moves.map((move) => [move.from?.key, move.target.key, move.threadIds])).toEqual([
+      ["a", "c", ["busy"]],
+    ]);
+  });
+
+  it("never moves onto an instance with unread limits, signed out, or with other transcripts", () => {
+    expect(
+      plan([
+        instance("a", 100),
+        instance("b", 40, { usageLimits: undefined, displayName: "b" }),
+        instance("c", null),
+        instance("d", 0, { auth: { status: "unauthenticated" } }),
+        instance("e", 0, { continuation: { groupKey: "claude:home:/elsewhere" } }),
+      ]).filter((move) => move.from?.key === "a"),
+    ).toEqual([]);
+  });
+
+  it("holds a second move inside the same limit window", () => {
+    const last = new Map([["a", "2026-10-26T11:00:00.000Z"]]);
+    expect(plan([instance("a", 100), instance("c", 10)], last)).toEqual([]);
   });
 });
 

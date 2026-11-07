@@ -627,11 +627,20 @@ export function resolveBatonIntent(
   for (const pattern of SWITCH_ACCOUNT) {
     const accountLabel = pattern.exec(text)?.[1]?.trim();
     if (accountLabel) {
+      const target = resolveTarget(null, vocabulary);
+      const work = target.kind === "one" ? target.workSession : null;
       return resolved({
-        command: { kind: "switch_account", accountLabel: accountLabel as never },
-        description: `Switch Claude on this environment to ${accountLabel}.`,
+        command: {
+          kind: "switch_account",
+          accountLabel: accountLabel as never,
+          workSessionId: (work?.id ?? null) as never,
+        },
+        description:
+          work === null
+            ? `Move work to ${accountLabel}.`
+            : `Move ${label(work)} to ${accountLabel}.`,
         risk: "medium",
-        workSessionId: null,
+        workSessionId: work?.id ?? null,
       });
     }
   }

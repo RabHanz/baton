@@ -52,6 +52,7 @@ import type * as RpcGroup from "effect/rpc/RpcGroup";
 import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import { AccountPoolService } from "./AccountPoolService.ts";
+import { AccountRotationPolicy } from "./AccountRotationPolicy.ts";
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { BatonEngine } from "./BatonEngine.ts";
 import * as ServerConfig from "../config.ts";
@@ -86,6 +87,7 @@ const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 export type BatonServices =
   | WorkSessionService
   | AccountPoolService
+  | AccountRotationPolicy
   | OrchestrationRuleService
   | BatonOrchestrationReactor
   | BatonIntentService
@@ -235,6 +237,14 @@ export const makeHandlers = Effect.gen(function* () {
         ),
       ),
     [BATON_ACCOUNT_WS_METHODS.threadAccountUse]: (input) => run(threadAccountUse(input)),
+    [BATON_ACCOUNT_WS_METHODS.onLimit]: () =>
+      run(Effect.flatMap(AccountRotationPolicy, (policy) => policy.read)).pipe(
+        Effect.map((policy) => ({ policy })),
+      ),
+    [BATON_ACCOUNT_WS_METHODS.setOnLimit]: (input) =>
+      run(Effect.flatMap(AccountRotationPolicy, (policy) => policy.set(input.policy))).pipe(
+        Effect.map((policy) => ({ policy })),
+      ),
     [BATON_WS_METHODS.workSessionList]: (input) =>
       run(
         Effect.flatMap(WorkSessionService, (ws) =>

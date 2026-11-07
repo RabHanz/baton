@@ -17,6 +17,7 @@
  * engine. One place creates threads, whatever asked for them.
  */
 import {
+  accountRefusal,
   type BatonFleetEntry,
   type BatonIntentCommand,
   type OrchestrationRuleId,
@@ -39,8 +40,9 @@ import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { BatonIntentExecutor, type IntentExecution } from "./IntentService.ts";
 import { BatonOrchestrationReactor, OrchestrationEffectsService } from "./OrchestrationReactor.ts";
 import { OrchestrationRuleService } from "./OrchestrationRuleService.ts";
-import { ProviderDriverKind } from "@t3tools/contracts";
-import { AccountPoolService } from "./AccountPoolService.ts";
+import type { ServerProvider } from "@t3tools/contracts";
+import { instanceAccount } from "./AccountRotationReactor.ts";
+import { ThreadAccountMoves } from "./ThreadAccountMoves.ts";
 import { BatonEngine } from "./BatonEngine.ts";
 import { WorkSessionService } from "./WorkSessionService.ts";
 
@@ -56,6 +58,14 @@ const failed = (reply: string, workSessionId: WorkSessionId | null = null): Inte
   failed: true,
 });
 
+/** What a person may call a Claude instance: its name, its id's suffix, or its address's local part. */
+const accountNames = (provider: ServerProvider): ReadonlyArray<string> =>
+  [
+    provider.displayName,
+    provider.instanceId.replace(/^claudeAgent_?/, ""),
+    provider.auth.email?.split("@")[0],
+  ].flatMap((name) => (name === undefined || name === "" ? [] : [name.toLowerCase()]));
+
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* () {
   const workSessions = yield* WorkSessionService;
@@ -65,7 +75,7 @@ export const make = Effect.gen(function* () {
   const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
   const hostname = yield* HostProcessHostname;
   const engine = yield* BatonEngine;
-  const accountPool = yield* AccountPoolService;
+  const moves = yield* ThreadAccountMoves;
   // Named rather than inferred: `Effect.Effect.Context<...>` resolves to `any`
   // here and takes the requirement channel of every caller with it.
   const fleetContext = yield* Effect.context<
@@ -315,29 +325,66 @@ export const make = Effect.gen(function* () {
         }
 
         case "switch_account": {
-          const driver = ProviderDriverKind.make("claudeAgent");
-          const pool = yield* accountPool
-            .read(driver)
+          const workSessionId = command.workSessionId ?? null;
+          if (workSessionId === null) return failed("Say which work to move to that account.");
+          const workSession = yield* workSessions
+            .get(workSessionId)
             .pipe(Effect.catchCause(() => Effect.succeed(null)));
-          if (pool === null) return failed("No accounts can be switched on this environment.");
-          const wanted = command.accountLabel.toLowerCase();
-          const target = pool.accounts.find((account) => account.label.toLowerCase() === wanted);
+          if (workSession === null) return failed("That work is no longer here.");
+          const providers = yield* providerRegistry.getProviders.pipe(
+            Effect.catchCause(() => Effect.succeed([])),
+          );
+          const claude = providers.filter((provider) => provider.driver === "claudeAgent");
+          const target = claude.find((provider) =>
+            accountNames(provider).includes(command.accountLabel.toLowerCase()),
+          );
           if (target === undefined) {
-            const known = pool.accounts.map((account) => account.label).join(", ");
-            return failed(`There is no account called ${command.accountLabel}. Here: ${known}.`);
-          }
-          return yield* accountPool
-            .activate({ driver, key: target.key, reason: "manual", workSessionId: null })
-            .pipe(
-              Effect.as(
-                done(
-                  `Claude on this environment now runs as ${target.label}. Threads move at their next turn.`,
-                ),
-              ),
-              Effect.catchCause(() =>
-                Effect.succeed(failed(`Could not switch to ${target.label}.`)),
-              ),
+            const known = claude.map((provider) => provider.displayName ?? provider.instanceId);
+            return failed(
+              `There is no account called ${command.accountLabel}. Here: ${known.join(", ")}.`,
+              workSessionId,
             );
+          }
+          const account = instanceAccount(target, false);
+          const refusal = target.enabled
+            ? accountRefusal(account)
+            : `${account.label} is turned off`;
+          if (refusal !== null) return failed(`${refusal}.`, workSessionId);
+          const threadIds = [
+            ...new Set(
+              workSession.providerSessions
+                .filter((session) => session.detachedAt === null)
+                .map((session) => session.threadId),
+            ),
+          ];
+          const group = target.continuation?.groupKey;
+          let moved = 0;
+          let later = 0;
+          for (const threadId of threadIds) {
+            const shell = yield* engine.threadShell(threadId);
+            const from = providers.find(
+              (provider) => provider.instanceId === shell?.providerInstanceId,
+            );
+            // Another home has other transcripts: the move would start the conversation over.
+            if (group === undefined || from?.continuation?.groupKey !== group) continue;
+            const result = yield* moves
+              .request({ threadId, instanceId: target.instanceId })
+              .pipe(Effect.catchCause(() => Effect.succeed(null)));
+            if (result?.timing === "now") moved += 1;
+            if (result?.timing === "next-turn") later += 1;
+          }
+          if (moved + later === 0) {
+            return failed(
+              `None of this work's threads can move to ${account.label}.`,
+              workSessionId,
+            );
+          }
+          return done(
+            later === 0
+              ? `This work now runs as ${account.label}.`
+              : `This work moves to ${account.label}; a running turn finishes first.`,
+            workSessionId,
+          );
         }
 
         case "answer_gate": {

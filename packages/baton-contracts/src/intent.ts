@@ -139,12 +139,14 @@ export const BatonIntentCommand = Schema.Union([
     confirmed: Schema.Boolean,
   }),
   /**
-   * The one member that names its target in words: the pool is a process read, so the vocabulary
-   * does not carry it, and the executor matches the label against the live pool.
+   * The one member that names its target in words: the executor matches the label against this
+   * environment's Claude instances, and moves the work's threads to that one (L-76).
    */
   Schema.Struct({
     kind: Schema.Literal("switch_account"),
     accountLabel: TrimmedNonEmptyString,
+    /** The work whose threads move. Absent on intents recorded before L-76. */
+    workSessionId: Schema.optionalKey(Schema.NullOr(WorkSessionId)),
   }),
 ]);
 export type BatonIntentCommand = typeof BatonIntentCommand.Type;
