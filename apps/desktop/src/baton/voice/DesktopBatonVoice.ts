@@ -1904,13 +1904,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   );
   /** When Tessaya started: a timed job whose time came before this, the same day, was missed (its missed-run choice). */
   const voiceStartedAt = Date.now();
-  // The server copy is shared by his devices; it only follows while the window exists, since asking opens it.
+  // The server copy is shared by his devices. Without this machine's server door it follows only while the
+  // window exists, since asking through a closed one would open it.
   const commitmentSync = createCommitmentSync({
     store: commitments,
     call: (op, args) => requestKept({ kind: "commitments", op, args }),
   });
   const syncCommitments = async (): Promise<void> => {
-    if (mainContents === null || mainContents.isDestroyed()) return;
+    if (input.direct === undefined && (mainContents === null || mainContents.isDestroyed())) return;
     await commitmentSync.sync();
   };
   setInterval(() => void syncCommitments(), COMMIT_SYNC_MS).unref();
@@ -1926,7 +1927,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     args: Readonly<Record<string, unknown>>,
   ) => {
     if (op === "weave_list") {
-      await requestKept({ kind: "weave", op: "tick", args: {} }).catch(() => undefined);
+      // Through the window, a list first delivers what is due; the server's own drainer does that otherwise.
+      if (mainContents !== null && !mainContents.isDestroyed())
+        await requestKept({ kind: "weave", op: "tick", args: {} }).catch(() => undefined);
       const out = (await requestKept({ kind: "weave", op: "list", args: {} })) as {
         items?: ReadonlyArray<WeaveRecord>;
       } | null;
@@ -4473,9 +4476,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         cloudLoginsRow(cloudNow(), Date.now()),
       ],
       weaves:
-        // Weaves are read only through T3's window, so only while it is up.
         (
-          (mainContents !== null && !mainContents.isDestroyed()
+          (serverReachable()
             ? await requestKept({ kind: "weave", op: "list", args: { limit: 10 } }).catch(
                 () => null,
               )
