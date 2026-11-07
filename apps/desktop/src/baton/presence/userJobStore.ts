@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off
+// @effect-diagnostics nodeBuiltinImport:off globalDate:off
 /** His own standing jobs (KIRO-1), in user-jobs.json beside the built-ins' state; on this computer, as theirs are. */
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
@@ -8,6 +8,7 @@ import {
   MAX_USER_JOBS,
   isUserJob,
   type UserJob,
+  type UserJobRun,
 } from "@t3tools/baton-shared/userJobs";
 
 import { writeJsonFile } from "../writing/jsonStore.ts";
@@ -15,8 +16,11 @@ import { writeJsonFile } from "../writing/jsonStore.ts";
 interface Saved {
   readonly next: number;
   readonly jobs: ReadonlyArray<UserJob>;
+  /** The latest runs, every job's together. */
+  readonly runs?: ReadonlyArray<UserJobRun>;
 }
 type Patch = Partial<Pick<UserJob, "on" | "instruction" | "title" | "missed">>;
+const KEEP_RUNS = 200;
 
 export const createUserJobStore = (
   dir: string,
@@ -43,7 +47,7 @@ export const createUserJobStore = (
       onSkipped(
         `${saved.jobs.length - jobs.length} entries in user-jobs.json were not jobs and are skipped`,
       );
-    return { next: saved.next, jobs };
+    return { next: saved.next, jobs, runs: Array.isArray(saved.runs) ? saved.runs : [] };
   };
   const write = (saved: Saved) => writeJsonFile(file, saved);
   return {
@@ -63,7 +67,7 @@ export const createUserJobStore = (
           ok: false,
           why: `${MAX_PROPOSALS} proposals already wait for his yes on the Trust page.`,
         };
-      write({ next: saved.next + 1, jobs: [...saved.jobs, job] });
+      write({ ...saved, next: saved.next + 1, jobs: [...saved.jobs, job] });
       return { ok: true };
     },
     /**
@@ -84,10 +88,17 @@ export const createUserJobStore = (
         ...found,
         ...patch,
         ...(patch.on === true ? { proposed: false } : {}),
+        // Switched on now: a timed job whose time already passed today waits for tomorrow.
+        ...(patch.on === true && !found.on ? { enabledAt: Date.now() } : {}),
         ...(patch.instruction !== undefined ? { from: "him" as const } : {}),
       };
       write({ ...saved, jobs: saved.jobs.map((j) => (j.id === id ? next : j)) });
       return next;
+    },
+    runs: (): ReadonlyArray<UserJobRun> => read().runs ?? [],
+    saveRun: (run: UserJobRun): void => {
+      const saved = read();
+      write({ ...saved, runs: [...(saved.runs ?? []), run].slice(-KEEP_RUNS) });
     },
     remove: (id: string): boolean => {
       const saved = read();

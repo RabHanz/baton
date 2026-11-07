@@ -237,6 +237,7 @@ import {
   missedRunOf,
   runStandingJobs,
   statusOf,
+  STANDING_RUN_TIMEOUT_MS,
   type BuiltInId,
   type StandingJobDef,
 } from "../presence/standingJobs.ts";
@@ -363,7 +364,12 @@ import { ensureModel, modelPresent, PARAKEET_FAST_MODEL, PARAKEET_MODEL } from "
 import { hudView, utteranceCaption } from "./voiceHud.ts";
 import { createCpuLoad, loadBefore } from "./cpuLoad.ts";
 import { createRecogniserPriority, type RecogniserPriority } from "./recogniserPriority.ts";
-import type { AssistantActions, AssistantFocus, PhoneMirror } from "../screen/ScreenCompanion.ts";
+import type {
+  AssistantActions,
+  AssistantFocus,
+  PhoneMirror,
+  ScreenCompanion,
+} from "../screen/ScreenCompanion.ts";
 import { focusedFolder } from "../screen/focusedFolder.ts";
 import { createVoicePill, type VoicePill } from "./voicePill.ts";
 import { frameLevel, isCancelPhrase, type TurnEvent } from "@t3tools/baton-shared/voiceTurn";
@@ -426,7 +432,12 @@ import { DICTATION_SETTLE_MS, dictationAtLaunch, holdFramesUntil, startWarmUp } 
 import { makeTestAudioInput, type TestAudioEvent } from "./testAudio.ts";
 import { startVoiceLoop, type VoiceLoop } from "./voiceLoop.ts";
 import { createUserJobStore } from "../presence/userJobStore.ts";
-import { whenText, type UserJob } from "@t3tools/baton-shared/userJobs";
+import {
+  dueUserJobs,
+  whenText,
+  type UserJob,
+  type UserJobSignals,
+} from "@t3tools/baton-shared/userJobs";
 import {
   CLOUD_STT_PROVIDERS,
   PROVIDER_LABEL,
@@ -837,6 +848,8 @@ export const resampleTo16k = (pcm: Int16Array, rate: number): Int16Array => {
 export interface TrayExtras extends BrainVoiceHook {
   /** A question about something that is not his words (a run's log): an ordinary turn, the text marked as not his. */
   readonly askAbout?: (text: string) => void;
+  /** One run of his own standing job (KIRO-1), as an unattended turn his own turns stop. */
+  readonly runStanding?: ScreenCompanion["runStanding"];
   /** The lead's nightly learning pass over the turns these Record rows trace. */
   readonly learnNightly?: (rows: ReadonlyArray<BatonRecordEntry>) => Promise<string>;
   /** The phone's words run as a typed ask; the reply comes back. "device" words are never his own. */
@@ -854,7 +867,7 @@ export interface TrayExtras extends BrainVoiceHook {
   readonly setActions: (actions: AssistantActions) => void;
   readonly notice: (text: string) => void;
   /** An unprompted line: a card, and aloud when `speak` and spoken answers are on. */
-  readonly announce: (text: string, speak: boolean) => void;
+  readonly announce: (text: string, speak: boolean, spoken?: string) => void;
   /** Registers or drops the Transforms shortcuts. */
   readonly setTransformHotkeys?: (on: boolean) => void;
   readonly writtenOnly: () => boolean;
@@ -1888,6 +1901,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const userJobStore = createUserJobStore(input.stateDir, (why) =>
     input.onNote?.("user_jobs_skipped", { why }),
   );
+  /** When Tessaya started: a timed job whose time came before this, the same day, was missed (its missed-run choice). */
+  const voiceStartedAt = Date.now();
   // The server copy is shared by his devices; it only follows while the window exists, since asking opens it.
   const commitmentSync = createCommitmentSync({
     store: commitments,
@@ -4016,10 +4031,86 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       standingRunning = false;
     }
   };
+  /** When each waiting session's wait began, kept while it waits: the wait's id stays the same from pass to pass. */
+  const waitStarts = new Map<string, number>();
+  let cappedNoted = "";
+  /**
+   * His own jobs that are due (KIRO-1), one at a time, each as an unattended turn judged by standingVerdict. The whole
+   * pass has 15 minutes, so the built-ins after it are never starved; each run has the standing-run limit.
+   */
+  const userJobPass = async (signals: UserJobSignals): Promise<void> => {
+    const runStanding = input.extras?.runStanding;
+    if (runStanding === undefined) return;
+    const { due, capped } = dueUserJobs({
+      jobs: userJobStore.list(),
+      runs: userJobStore.runs(),
+      now: new Date(),
+      startedAt: new Date(voiceStartedAt),
+      signals,
+    });
+    const day = new Date().toDateString();
+    if (capped.length > 0 && cappedNoted !== day) {
+      cappedNoted = day;
+      input.extras?.notice(
+        "Some of your own standing jobs reached today's limit of runs; they start again tomorrow.",
+      );
+      input.onNote?.("user_job_capped", { capped });
+    }
+    const pass = new AbortController();
+    const budget = setTimeout(() => pass.abort(), 15 * 60_000);
+    try {
+      for (const { job, key } of due) {
+        if (pass.signal.aborted) break;
+        const owner = ownerOf({ ...BUILT_INS[0]!, owner: job.owner });
+        const result = await runStanding(
+          {
+            title: job.title,
+            instruction: job.instruction,
+            from: job.from,
+            tools: job.tools,
+            judge: (tool) => standingVerdict(tool, owner),
+          },
+          pass.signal,
+          STANDING_RUN_TIMEOUT_MS,
+        );
+        const at = Date.now();
+        userJobStore.saveRun({
+          id: job.id,
+          key,
+          at,
+          status: result.status,
+          text: result.text.slice(0, 2_000),
+        });
+        // The answer is on screen and in the Record; aloud only that it is done, so read data never speaks for it.
+        if (result.status === "ok")
+          input.extras?.announce(
+            `${job.title}: ${result.text}`,
+            !silenced(new Date(at)),
+            `${job.title} is done; it's on screen.`,
+          );
+        input.onNote?.("user_job_run", { id: job.id, status: result.status });
+        void input
+          .direct?.("baton.record.append", {
+            kind: "standing_job",
+            actor: owner.name,
+            subject: job.title,
+            outcome:
+              result.status === "ok" ? "ran" : result.status === "cancelled" ? "held" : "failed",
+            detail: result.text.slice(0, 2_000),
+          })
+          .catch(() => undefined);
+      }
+    } finally {
+      clearTimeout(budget);
+    }
+    if (due.length > 0) render();
+  };
   const standingPass = async (): Promise<void> => {
     void refreshRules();
     const state = standingStore.load();
-    if (!Object.values(state.on).some(Boolean)) return;
+    const builtInsOn = Object.values(state.on).some(Boolean);
+    const userJobsOn = userJobStore.list().some((j) => j.on && !j.proposed);
+    if (!builtInsOn && !userJobsOn) return;
     // Jobs and the watch come from this machine's server, so T3's window need not be up (nor is it opened).
     if (!serverReachable()) return;
     const now = Date.now();
@@ -4030,6 +4121,30 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         } | null
       )?.jobs ?? [];
     const findings = await watchFindings();
+    const ci = await ciRuns();
+    const waiting = findings.filter((f) => f.kind === "unanswered");
+    for (const id of waitStarts.keys())
+      if (!waiting.some((f) => f.workSessionId === id)) waitStarts.delete(id);
+    for (const f of waiting)
+      if (!waitStarts.has(f.workSessionId))
+        waitStarts.set(f.workSessionId, now - f.minutes * 60_000);
+    await userJobPass({
+      waiting: waiting.map((f) => ({
+        id: f.workSessionId,
+        since: waitStarts.get(f.workSessionId)!,
+        minutes: f.minutes,
+      })),
+      failedBuilds: triggersFromCi(ci, now).map((t) => t.id),
+      finishedJobs: jobs
+        .filter(
+          (j) =>
+            j.group === "done" &&
+            j.phase === "approved" &&
+            now - Date.parse(j.lastActivityAt) < 2 * INITIATIVE_MS,
+        )
+        .map((j) => j.workSessionId),
+    });
+    if (!builtInsOn) return;
     const result = await runStandingJobs(
       {
         state,
@@ -4043,7 +4158,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           return verdict.verdict === "allow" ? null : verdict.why;
         },
         findings,
-        ci: await ciRuns(),
+        ci,
         jobs,
       },
       {
@@ -4505,7 +4620,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           what: `${whenText(j.trigger)[0]!.toUpperCase()}${whenText(j.trigger).slice(1)}: ${j.instruction}`,
           owner: j.owner === "executive" ? leadName() : j.owner,
           on: j.on,
-          count: standingStore.load().runs.filter((r) => (r.id as string) === j.id).length,
+          count: userJobStore.runs().filter((r) => r.id === j.id).length,
+          ...(() => {
+            const last = userJobStore
+              .runs()
+              .filter((r) => r.id === j.id)
+              .at(-1);
+            return last === undefined ? {} : { lastRun: { status: last.status, at: last.at } };
+          })(),
           instruction: j.instruction,
           proposed: j.proposed,
           from: j.from,
@@ -5682,7 +5804,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       else if (act?.kind === "userJobText")
         userJobOp("user_job_update", { id: act.id, instruction: act.text }, true);
       else if (act?.kind === "userJobDelete") userJobOp("user_job_delete", { id: act.id }, true);
-      else if (act?.kind === "missed") {
+      else if (act?.kind === "userJobWhy") {
+        const job = userJobStore.get(act.id);
+        const run = userJobStore
+          .runs()
+          .filter((r) => r.id === act.id)
+          .at(-1);
+        if (job !== undefined && run !== undefined)
+          input.extras?.askAbout?.(askWhyPrompt(job.title, run.status, run.at, run.text));
+      } else if (act?.kind === "missed") {
         const job = BUILT_INS.find((j) => j.id === act.id);
         if (job?.trigger.kind === "time") standingStore.setMissed(job.id, act.missed);
         else if (act.id.startsWith("user:")) userJobStore.update(act.id, { missed: act.missed });
