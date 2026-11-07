@@ -105,4 +105,27 @@ describe("a paired device's turn, overlapping one of his", () => {
     expect(await slot.host.type("a".repeat(100))).toContain("Stopped");
     expect(typed).toEqual([]);
   });
+
+  it("may propose a standing job, never set one up, change or remove one of his", async () => {
+    const ops: string[] = [];
+    const host = {
+      jobs: async (op: string) => (ops.push(op), "ok"),
+      memory: async () => "",
+      remember: async () => "",
+      forget: async () => "",
+    } as unknown as ToolHost;
+    const slot = createOutsideSlot({
+      host,
+      memoryCall: async () => ({ items: [], hits: [] }),
+      notes: { list: () => [] } as never,
+      focusedWindow: async () => ({ label: "notepad.exe: notes", shell: false }),
+      confirm: async () => false,
+      record: () => undefined,
+    });
+    await slot.host.jobs("user_job_create", { title: "t" });
+    const refused = await slot.host.jobs("user_job_delete", { id: "user:1" });
+    await slot.host.jobs("user_job_update", { id: "user:1", on: true });
+    expect(ops).toEqual(["user_job_propose"]);
+    expect(refused).toContain("Only he can");
+  });
 });

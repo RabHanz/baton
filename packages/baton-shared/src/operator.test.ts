@@ -151,6 +151,12 @@ describe("Baton's own tools (D143)", () => {
         off,
       ).verdict,
     ).toBe("ask");
+    // His own standing jobs (KIRO-1): changing or removing one asks every time, even in a turn that read nothing.
+    for (const tool of ["job_update", "job_delete"]) {
+      expect(
+        judgeToolCall({ tool: `mcp__baton__${tool}`, input: { id: "user:1" } }, off).verdict,
+      ).toBe("ask");
+    }
     const note = { tool: "mcp__baton__memory_remember", input: { text: "likes tea" } };
     expect(judgeToolCall(note, off).verdict).toBe("allow");
     expect(judgeToolCall(note, read).verdict).toBe("ask");

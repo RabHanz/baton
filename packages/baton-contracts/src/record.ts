@@ -51,6 +51,7 @@ export const BatonRecordAppendInput = Schema.Union([
   appendRow("assistant_turn", ["answered", "failed"]),
   appendRow("turn_trace", ["answered", "failed"]),
   appendRow("approval", ["approved", "declined"]),
-  appendRow("standing_job", ["ran", "held", "failed"]),
+  // "proposed": a device or another agent proposed one of his own standing jobs (KIRO-1); it is off until he says yes.
+  appendRow("standing_job", ["ran", "held", "failed", "proposed"]),
 ]);
 export const BatonRecordAppendResult = Schema.Struct({});

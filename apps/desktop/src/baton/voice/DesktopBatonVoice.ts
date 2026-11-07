@@ -425,6 +425,8 @@ import { loginItemOn, setLoginItem } from "./loginItem.ts";
 import { DICTATION_SETTLE_MS, dictationAtLaunch, holdFramesUntil, startWarmUp } from "./warmUp.ts";
 import { makeTestAudioInput, type TestAudioEvent } from "./testAudio.ts";
 import { startVoiceLoop, type VoiceLoop } from "./voiceLoop.ts";
+import { createUserJobStore } from "../presence/userJobStore.ts";
+import { whenText, type UserJob } from "@t3tools/baton-shared/userJobs";
 import {
   CLOUD_STT_PROVIDERS,
   PROVIDER_LABEL,
@@ -1883,6 +1885,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const commitments = createCommitmentStore(input.stateDir, Date.now, undefined, () =>
     setTimeout(() => void syncCommitments(), COMMIT_SYNC_SOON_MS).unref(),
   );
+  const userJobStore = createUserJobStore(input.stateDir, (why) =>
+    input.onNote?.("user_jobs_skipped", { why }),
+  );
   // The server copy is shared by his devices; it only follows while the window exists, since asking opens it.
   const commitmentSync = createCommitmentSync({
     store: commitments,
@@ -2059,6 +2064,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (op === "commit_add" || op === "commit_done" || op === "commit_list") {
         return runCommitOp(commitments, op, args, Date.now());
       }
+      if (op === "user_job_save" || op === "user_job_update" || op === "user_job_delete") {
+        const said = userJobOp(op, args);
+        render();
+        return said;
+      }
       if (op === "weave_send" || op === "weave_list") return weaveOp(op, args);
       if (op === "note_add") {
         try {
@@ -2187,6 +2197,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       }
       // Rewrites of the selection are answered by the companion, which holds the keyboard.
       if (op === "text_transform" || op === "text_undo" || op === "text_command")
+        return "That is not available here.";
+      // The card for his yes is the companion's (createUserJob); only the save reaches here.
+      if (op === "user_job_create" || op === "user_job_propose")
         return "That is not available here.";
       const value = (await requestKept({ kind: "job", op, args })) as {
         jobs?: ReadonlyArray<BatonJob>;
@@ -3920,6 +3933,53 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
 
   // Standing jobs (each off until he turns it on in Trust, the brief on as it was): counted, logged in
   // the Record under their owner, and never send, post or spend. Rules and schedules run on the server.
+  /** His own standing jobs (KIRO-1): saved here only after his yes (the card) or as an off proposal (a device). */
+  const userJobOp = (
+    op: "user_job_save" | "user_job_update" | "user_job_delete",
+    args: Readonly<Record<string, unknown>>,
+    /** From the Trust page, where he sees it: the only way a proposal is switched on. */
+    fromTrust = false,
+  ): string => {
+    const id = typeof args["id"] === "string" ? args["id"] : "";
+    if (op === "user_job_save") {
+      const draft = args["job"] as Omit<UserJob, "on" | "proposed" | "id" | "from">;
+      const proposed = args["proposed"] === true;
+      const newId = userJobStore.nextId();
+      const added = userJobStore.add({
+        ...draft,
+        id: newId,
+        on: !proposed,
+        proposed,
+        from: proposed ? "device" : "him",
+      });
+      if (!added.ok) return `Nothing was saved: ${added.why}`;
+      if (!proposed)
+        return `Saved as ${newId}, ${whenText(draft.trigger)}. He can switch it off or remove it on the Trust page.`;
+      // Every proposal is on the Record, whoever made it.
+      void input
+        .direct?.("baton.record.append", {
+          kind: "standing_job",
+          actor: "a paired device or agent",
+          subject: draft.title,
+          outcome: "proposed",
+          detail: `${whenText(draft.trigger)}: ${draft.instruction}`.slice(0, 2_000),
+        })
+        .catch(() => undefined);
+      return `Proposed as ${newId}: it is off until he approves it on his Trust page. Say so; it does not run yet.`;
+    }
+    if (op === "user_job_delete")
+      return userJobStore.remove(id) ? `Removed ${id}.` : `There is no job ${id} of his.`;
+    const patch = {
+      ...(typeof args["on"] === "boolean" ? { on: args["on"] } : {}),
+      ...(typeof args["instruction"] === "string" && args["instruction"].trim() !== ""
+        ? { instruction: args["instruction"].trim().slice(0, 1_000) }
+        : {}),
+    };
+    const next = userJobStore.update(id, patch, { approve: fromTrust });
+    if (next === null) return `There is no job ${id} of his.`;
+    if ("refused" in next) return next.refused;
+    return `${next.title} is ${next.on ? "on" : "off"}: ${next.instruction}`;
+  };
   const standingStore = createStandingStore(input.stateDir, () => {
     // The old switch's last brief day (`y-m-d`, local), so an upgrade after six does not brief twice.
     const old = (settings as { briefDay?: unknown }).briefDay;
@@ -4437,6 +4497,19 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           owner: leadName(),
           on: rule.status === "enabled",
           count: rule.firedCount,
+        })),
+        ...userJobStore.list().map((j) => ({
+          kind: "user" as const,
+          id: j.id,
+          title: j.title,
+          what: `${whenText(j.trigger)[0]!.toUpperCase()}${whenText(j.trigger).slice(1)}: ${j.instruction}`,
+          owner: j.owner === "executive" ? leadName() : j.owner,
+          on: j.on,
+          count: standingStore.load().runs.filter((r) => (r.id as string) === j.id).length,
+          instruction: j.instruction,
+          proposed: j.proposed,
+          from: j.from,
+          ...(j.trigger.kind === "time" ? { missed: j.missed } : {}),
         })),
         ...(jobsCache ?? [])
           .filter((j) => j.terms.scheduleTaskId !== null)
@@ -5604,9 +5677,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       else if (act?.kind === "standing") {
         if (BUILT_INS.some((j) => j.id === act.id))
           standingStore.setOn(act.id as BuiltInId, act.on);
-      } else if (act?.kind === "missed") {
+      } else if (act?.kind === "userJob")
+        userJobOp("user_job_update", { id: act.id, on: act.on }, true);
+      else if (act?.kind === "userJobText")
+        userJobOp("user_job_update", { id: act.id, instruction: act.text }, true);
+      else if (act?.kind === "userJobDelete") userJobOp("user_job_delete", { id: act.id }, true);
+      else if (act?.kind === "missed") {
         const job = BUILT_INS.find((j) => j.id === act.id);
         if (job?.trigger.kind === "time") standingStore.setMissed(job.id, act.missed);
+        else if (act.id.startsWith("user:")) userJobStore.update(act.id, { missed: act.missed });
       } else if (act?.kind === "quiet") {
         const job = BUILT_INS.find((j) => j.id === act.id);
         if (job?.trigger.kind === "event") standingStore.setQuiet(job.id, act.on);

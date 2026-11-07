@@ -90,10 +90,15 @@ export const createOutsideSlot = (input: {
       "A paired device's request cannot set up a plan. Do one step at a time; each asks him.",
     guided: async () => "A paired device's request cannot start a lesson on his screen.",
     // A weave never carries a secret, and a device's turn never offers one to his vault.
+    // A device or another agent may propose a standing job, never set one up or change his: it waits, off, for his yes.
     jobs: async (op, args) =>
       op === "weave_send" && detectSecret(String(args["text"] ?? "")) !== null
         ? "That looks like a secret, and a weave never carries one. Nothing was sent."
-        : input.host.jobs(op, args),
+        : op === "user_job_create"
+          ? input.host.jobs("user_job_propose", args)
+          : op === "user_job_update" || op === "user_job_delete"
+            ? "Only he can change or remove his standing jobs; they are on his Trust page."
+            : input.host.jobs(op, args),
   };
   return {
     gate,

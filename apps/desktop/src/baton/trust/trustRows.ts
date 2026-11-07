@@ -126,7 +126,8 @@ const LOG = "What it did for you";
 const PLAYS = "Standing jobs";
 
 export interface StandingRow {
-  readonly kind: "built_in" | "rule" | "schedule";
+  /** "user": one of his own (KIRO-1), editable and removable here. */
+  readonly kind: "built_in" | "rule" | "schedule" | "user";
   /** A built-in job's id, a rule's id, or a scheduled job's id. */
   readonly id: string;
   readonly title: string;
@@ -141,6 +142,12 @@ export interface StandingRow {
   readonly missed?: "once" | "skip";
   /** A built-in event job: stays quiet unless what it would report changed. */
   readonly quiet?: boolean;
+  /** His own job: what it does each time, editable here. */
+  readonly instruction?: string;
+  /** His own job a device or another agent proposed: off until he switches it on. */
+  readonly proposed?: boolean;
+  /** Who wrote its words; a device's are run as data until he rewrites them. */
+  readonly from?: "him" | "device";
 }
 
 const ranLine = (n: number) => `Ran ${n === 1 ? "once" : `${n} times`}.`;
@@ -175,6 +182,37 @@ export const ago = (iso: string | undefined, now: number): string => {
         ? `last used ${Math.round(m / 60)} h ago`
         : `last used ${Math.round(m / 1440)} days ago`;
 };
+
+/** One of his own jobs: on or off (switching on approves a proposal), what it does, and a way to remove it. */
+const userJobRows = (j: StandingRow): ReadonlyArray<HomeControl> => [
+  {
+    id: `trust.userjob:${j.id}`,
+    section: PLAYS,
+    label: j.proposed === true ? `${j.title} (proposed, not yet yours)` : j.title,
+    hint:
+      j.proposed === true
+        ? `A paired device or another agent proposed this. ${j.what} Switch it on to set it up; it runs as ${j.owner}.`
+        : `${j.what} ${j.owner}'s standing job${j.from === "device" ? ", in words a device wrote (run as data, not as yours, until you rewrite them)" : ", yours"}. ${ranLine(j.count)} It only reads and reports.`,
+    kind: "toggle",
+    on: j.on === true,
+  },
+  {
+    id: `trust.userjobtext:${j.id}`,
+    section: PLAYS,
+    label: "What it does each time",
+    kind: "editor",
+    text: j.instruction ?? "",
+    // Nothing to go back to: his own words are the only version.
+    mine: false,
+  },
+  {
+    id: `trust.userjobdel:${j.id}`,
+    section: PLAYS,
+    label: "Remove this job",
+    kind: "action",
+    button: "Remove",
+  },
+];
 
 const standingRow = (j: StandingRow): HomeControl => {
   const counted = j.kind === "schedule" ? `Used ${j.count} turns so far.` : ranLine(j.count);
@@ -318,7 +356,7 @@ export const trustControls = (data: TrustData, now: number): ReadonlyArray<HomeC
   );
   rows.push(
     ...data.standing.flatMap((j): ReadonlyArray<HomeControl> => [
-      standingRow(j),
+      ...(j.kind === "user" ? userJobRows(j) : [standingRow(j)]),
       ...(j.missed === undefined
         ? []
         : [
@@ -398,13 +436,25 @@ export type TrustAction =
     }
   | { readonly kind: "unschedule"; readonly jobId: string }
   | { readonly kind: "missed"; readonly id: string; readonly missed: "once" | "skip" }
-  | { readonly kind: "quiet"; readonly id: string; readonly on: boolean };
+  | { readonly kind: "quiet"; readonly id: string; readonly on: boolean }
+  | { readonly kind: "userJob"; readonly id: string; readonly on: boolean }
+  | { readonly kind: "userJobText"; readonly id: string; readonly text: string }
+  | { readonly kind: "userJobDelete"; readonly id: string };
 
 export const trustAction = (id: string, value: unknown): TrustAction | null => {
   if (id === "trust.filter") {
     const f = FILTERS.find((x) => x.value === value);
     return f === undefined ? null : { kind: "filter", filter: f.value };
   }
+  const uj = /^trust\.userjob:(user:\d+)$/.exec(id);
+  if (uj !== null) return { kind: "userJob", id: uj[1]!, on: value === true };
+  const ut = /^trust\.userjobtext:(user:\d+):save$/.exec(id);
+  if (ut !== null)
+    return typeof value === "string" && value.trim() !== ""
+      ? { kind: "userJobText", id: ut[1]!, text: value.trim().slice(0, 1_000) }
+      : null;
+  const ud = /^trust\.userjobdel:(user:\d+)$/.exec(id);
+  if (ud !== null) return { kind: "userJobDelete", id: ud[1]! };
   const sj = /^trust\.(standing|rule):(.+)$/.exec(id);
   if (sj !== null) return { kind: sj[1] as "standing" | "rule", id: sj[2]!, on: value === true };
   const mr = /^trust\.missed:(.+)$/.exec(id);
@@ -442,10 +492,11 @@ export const describeTrust = (data: TrustData, now: number): string => {
       : `Standing permissions: ${data.grants.map((g) => `${g.title} (${CHANNEL_WORDS[g.channel] ?? g.channel})`).join("; ")}.`,
     `Standing jobs: ${
       data.standing
-        .filter((j) => j.on !== false)
+        // His own are all named, with their ids, so he can switch one on, off or remove it by voice.
+        .filter((j) => j.on !== false || j.kind === "user")
         .map(
           (j) =>
-            `${j.title} (${j.owner}, ${j.kind === "schedule" ? `${j.count} turns` : `ran ${j.count}`})`,
+            `${j.title} (${j.owner}, ${j.kind === "schedule" ? `${j.count} turns` : `ran ${j.count}`}${j.kind === "user" ? `, his own, id ${j.id}${j.proposed === true ? ", proposed" : j.on === false ? ", off" : ""}` : ""})`,
         )
         .join("; ") || "none on"
     }.`,

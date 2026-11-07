@@ -163,6 +163,39 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     first: ["rule_create"],
   },
   {
+    id: "standing-job-morning",
+    source: "KIRO-1: a standing job from one sentence, on a schedule",
+    said: "every morning at 8, check CI on tessaya and tell me what broke",
+    first: ["job_create"],
+    not: ["commit_add", "rule_create"],
+    // The schedule is read from his words: 8 in the morning.
+    goal: "job_create",
+    maxCalls: 2,
+    goalArgs: ['"hour":8'],
+  },
+  {
+    id: "standing-job-waiting",
+    source: "KIRO-1: a standing job from one sentence, on an event",
+    said: "whenever a session's been waiting on me for 20 minutes, remind me",
+    first: ["job_create"],
+    not: ["commit_add"],
+  },
+  {
+    id: "standing-job-switch-off",
+    source:
+      "KIRO-1 review: changing one of his own jobs reaches job_update (or finds its id first)",
+    said: "switch off my morning CI check job",
+    first: ["job_update", "trust_show"],
+    not: ["job_create", "job_delete", "permission_off"],
+  },
+  {
+    id: "remind-once-not-a-job",
+    source: "KIRO-1: a one-off reminder stays a reminder, not a standing job",
+    said: "remind me at 5 to call mum",
+    first: ["commit_add"],
+    not: ["job_create"],
+  },
+  {
     id: "anything-stuck",
     model: "haiku",
     source: "agentPrompt status rules",
