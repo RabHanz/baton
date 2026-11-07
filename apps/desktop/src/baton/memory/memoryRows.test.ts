@@ -122,3 +122,13 @@ describe("an item's history on the Memory page", () => {
     expect(none.some((c) => c.id === "m.history.none:m1")).toBe(true);
   });
 });
+
+describe("his lessons on the Memory page", () => {
+  it("counts them against the cap", () => {
+    const lessons = [1, 2].map((n) =>
+      item({ id: `c${n}`, kind: "correction", source: "user", text: `Lesson ${n}` }),
+    );
+    const row = memoryControls(state({ items: lessons })).find((c) => c.id === "m.lessons");
+    expect(row?.kind === "check" && row.detail).toContain("2 of 50");
+  });
+});

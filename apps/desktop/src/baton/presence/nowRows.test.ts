@@ -138,3 +138,62 @@ describe("the Now area", () => {
     expect(prompt.startsWith("Read only: change nothing and start nothing.")).toBe(true);
   });
 });
+
+describe("what a standing job's run used", () => {
+  it("says the model and the turns on its Now line, and Ask why works for one of his own jobs", () => {
+    const rows = nowControls(
+      {
+        ...EMPTY_NOW,
+        loaded: true,
+        runs: [
+          {
+            id: "user:3",
+            title: "Morning CI check",
+            at: 2000,
+            status: "ok",
+            text: "All green.",
+            model: "sonnet",
+            turns: 3,
+          },
+          {
+            id: "morning_brief",
+            title: "Brief",
+            at: 1500,
+            status: "ok",
+            text: "Built.",
+            model: "no model",
+            turns: 0,
+          },
+          {
+            id: "ci_look",
+            title: "Build failed",
+            at: 1000,
+            status: "ok",
+            text: "Looked.",
+            model: "the look job's worker",
+            turns: null,
+          },
+          {
+            id: "user:4",
+            title: "Waiting nudge",
+            at: 900,
+            status: "error",
+            text: "Boom.",
+            model: "sonnet",
+            turns: 1,
+          },
+        ],
+      },
+      5000,
+    );
+    const line = (id: string) => {
+      const r = rows.find((x) => x.id.startsWith("now.run:") && x.label === id);
+      return r?.kind === "check" ? r.detail : "";
+    };
+    expect(line("Morning CI check")).toContain("On sonnet, 3 turns.");
+    expect(line("Brief")).toContain("No model.");
+    expect(line("Build failed")).toContain("its turns are on that job");
+    expect(rows.some((r) => r.id === "now.why:user:4:900")).toBe(true);
+    expect(nowAction("now.why:user:4:900")).toEqual({ kind: "why", job: "user:4", at: 900 });
+  });
+});

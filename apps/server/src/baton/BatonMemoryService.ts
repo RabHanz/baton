@@ -29,6 +29,8 @@ import {
   type MemoryVersion,
   type MemoryVersionBy,
   MEMORY_VERSIONS_KEPT,
+  LESSONS_CAP,
+  isLesson,
   type MemoryQuery,
 } from "@t3tools/baton-shared/memory";
 import { DEFAULT_OS_PACK, mayRecall } from "@t3tools/baton-shared/osPack";
@@ -632,10 +634,19 @@ export const make = Effect.gen(function* () {
     const hits =
       blended !== null
         ? blended
-        : (yield* listAll({ kinds: ["note", "preference", "correction", "decision"] }))
-            .filter((item) => item.pinned || item.source === "user" || item.confidence >= 0.6)
-            .slice(0, 40)
-            .map((item) => ({ item, score: effectiveConfidence(item, now) }));
+        : yield* Effect.map(
+            listAll({ kinds: ["note", "preference", "correction", "decision"] }),
+            (all) => {
+              const kept = all.filter(
+                (item) => item.pinned || item.source === "user" || item.confidence >= 0.6,
+              );
+              // His lessons have their own room (the newest LESSONS_CAP), so other memories never crowd them out.
+              return [
+                ...kept.filter(isLesson).slice(0, LESSONS_CAP),
+                ...kept.filter((item) => !isLesson(item)).slice(0, 40),
+              ].map((item) => ({ item, score: effectiveConfidence(item, now) }));
+            },
+          );
     const ranked = hits
       // Another project's items stay out of a turn that names its project.
       .filter(

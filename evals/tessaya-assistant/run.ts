@@ -17,6 +17,7 @@ import {
   modelOf,
   personaFor,
 } from "../../packages/baton-shared/src/osPack.ts";
+import { memoryBlock } from "../../packages/baton-shared/src/memory.ts";
 import { chooseTurnBrain } from "../../packages/baton-shared/src/turnTier.ts";
 import { assistantCases, type AssistantCase } from "./cases.ts";
 import { casePasses, firstTool, type Sample } from "./grade.ts";
@@ -43,6 +44,30 @@ const extra =
   values["extra-notes"] === undefined
     ? undefined
     : NodeFS.readFileSync(values["extra-notes"], "utf8");
+
+/** A case's remembered items as the live recall block (lessons first), added to the turn as a live recall is. */
+const recalledFor = (c: AssistantCase): string | undefined =>
+  c.remembered === undefined
+    ? undefined
+    : memoryBlock(
+        c.remembered.map((r, i) => ({
+          id: `r${i}`,
+          kind: r.kind,
+          text: r.text,
+          source: r.his ? ("user" as const) : ("thread" as const),
+          sourceRef: null,
+          scope: "global" as const,
+          scopeRef: null,
+          confidence: r.his ? 1 : 0.8,
+          pinned: r.pinned === true,
+          createdAt: `2026-11-0${i + 1}T00:00:00.000Z`,
+          updatedAt: `2026-11-0${i + 1}T00:00:00.000Z`,
+          lastUsedAt: null,
+          expiresAt: null,
+          supersededBy: null,
+          proposed: false,
+        })),
+      ).block;
 
 const sample = async (c: AssistantCase): Promise<Sample> => {
   const face =
@@ -73,7 +98,11 @@ const sample = async (c: AssistantCase): Promise<Sample> => {
     // As a live session gets it: the pack's frame names the specialists.
     notes: assistantFrame(DEFAULT_OS_PACK),
     ...(c.answers === undefined ? {} : { answers: c.answers }),
-    ...(extra === undefined ? {} : { extra }),
+    ...(() => {
+      const recalled = recalledFor(c);
+      const all = [extra, recalled].filter((x): x is string => x !== undefined && x !== "");
+      return all.length === 0 ? {} : { extra: all.join("\n\n") };
+    })(),
     env: process.env,
     // oxlint-disable-next-line t3code/no-global-process-runtime -- a plain script, not Effect code
     platform: process.platform,

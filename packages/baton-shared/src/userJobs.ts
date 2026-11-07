@@ -201,6 +201,9 @@ export interface UserJobRun {
   readonly at: number;
   readonly status: "ok" | "error" | "timeout" | "cancelled";
   readonly text: string;
+  /** The model it ran on and the model turns it used (one, plus one for each tool call). */
+  readonly model?: string;
+  readonly turns?: number;
 }
 
 /** Each event the desktop saw this pass, by its own id, so one event is run for once, however long it lasts. */

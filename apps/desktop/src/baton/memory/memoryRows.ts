@@ -1,5 +1,7 @@
 /** The Memory area of Tessaya's window (D150): the bar, then one row per memory, grouped by kind. */
 import {
+  isLesson,
+  LESSONS_CAP,
   whyRemembered,
   type MemoryItem,
   type MemoryKind,
@@ -157,7 +159,22 @@ export const memoryControls = (s: MemoryTabState): ReadonlyArray<HomeControl> =>
     row(i, sectionOf(i)),
     ...(s.history?.id === i.id ? historyRows(i, sectionOf(i), s.history.versions) : []),
   ]);
-  if (rows.length > 0) return [bar, ...rows];
+  // His lessons: how many, against the cap, and what they do.
+  const lessons = live.filter(isLesson).length;
+  const lessonRow: ReadonlyArray<HomeControl> =
+    lessons === 0
+      ? []
+      : [
+          {
+            id: "m.lessons",
+            section: "Corrections",
+            label: "Lessons you taught",
+            kind: "check",
+            status: "ok",
+            detail: `${lessons} of ${LESSONS_CAP}${lessons > LESSONS_CAP ? `: the newest ${LESSONS_CAP} are used` : ""}. They come first in what she recalls, and win where another memory disagrees.`,
+          },
+        ];
+  if (rows.length > 0) return [bar, ...lessonRow, ...rows];
   return [
     bar,
     {

@@ -30,8 +30,21 @@ export interface NowData {
     readonly at: number;
     readonly status: "ok" | "error" | "timeout" | "cancelled";
     readonly text: string;
+    /** What it ran on and how many model turns, when known (KIRO-4c). */
+    readonly model?: string;
+    readonly turns?: number | null;
   }>;
 }
+
+/** "On sonnet, 3 turns." / "No model." / "On the look job's worker (its turns are on the job)." */
+export const usedLine = (model: string | undefined, turns: number | null | undefined): string =>
+  model === undefined
+    ? ""
+    : model === "no model"
+      ? " No model."
+      : turns === null || turns === undefined
+        ? ` On ${model} (its turns are on that job).`
+        : ` On ${model}, ${turns} turn${turns === 1 ? "" : "s"}.`;
 
 export const EMPTY_NOW: NowData = {
   loaded: false,
@@ -206,7 +219,7 @@ export const nowControls = (data: NowData, now: number): ReadonlyArray<HomeContr
     ...data.declined.map((d, i) => note(`now.held:${i}`, HELD, d.title, WHY[d.why] ?? d.why)),
     ...(data.runs ?? []).map((r, i): HomeControl => {
       const when = new Date(r.at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
-      const line = `${STATUS_WORDS[r.status]}, ${when}. ${r.text}`;
+      const line = `${STATUS_WORDS[r.status]}, ${when}. ${r.text}${usedLine(r.model, r.turns)}`;
       return r.status === "error" || r.status === "timeout"
         ? {
             id: `now.why:${r.id}:${r.at}`,
@@ -241,7 +254,8 @@ export const nowAction = (id: string) => {
   if (c !== null) return { kind: "commitment", id: c[1]!, drop: c[2] !== undefined } as const;
   const i = /^now\.int:(.+)$/.exec(id);
   if (i !== null) return { kind: "continue", id: i[1]! } as const;
-  const w = /^now\.why:([a-z_]+):(\d+)$/.exec(id);
+  // A built-in's id, or one of his own jobs (user:3).
+  const w = /^now\.why:([a-z_]+|user:\d+):(\d+)$/.exec(id);
   if (w !== null) return { kind: "why", job: w[1]!, at: Number(w[2]) } as const;
   const a = /^now\.allow:(.+)$/.exec(id);
   return a === null ? null : ({ kind: "allow", topic: a[1]! } as const);
