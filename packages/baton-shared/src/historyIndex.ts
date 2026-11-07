@@ -9,7 +9,8 @@ import * as NodeChildProcess from "node:child_process";
 export const HISTORY_ENV = "BATON_HISTORY_SEARCH";
 const OUTPUT_MAX = 6_000;
 const SESSION = /^[0-9a-fA-F][0-9a-fA-F-]{5,63}$/;
-const TIMEOUT_MS = 15_000;
+// Under the server's deadline for a peer's answer, which is under the desktop's wait for its own server.
+const TIMEOUT_MS = 8_000;
 
 export type HistoryAnswer =
   | { readonly ok: true; readonly text: string }
@@ -32,9 +33,6 @@ export const askHistory = (
       ),
     ),
 ): Promise<HistoryAnswer> => {
-  const script = env[HISTORY_ENV];
-  if (script === undefined || script.trim() === "")
-    return Promise.resolve({ ok: false, why: NOT_HERE });
   let args: string[];
   if (ask.session !== undefined) {
     if (!SESSION.test(ask.session))
@@ -48,6 +46,10 @@ export const askHistory = (
     if (words.length === 0) return Promise.resolve({ ok: false, why: "Say what to search for." });
     args = words;
   }
+  // Checked after the words, so a bad ask is refused here rather than passed to another server.
+  const script = env[HISTORY_ENV];
+  if (script === undefined || script.trim() === "")
+    return Promise.resolve({ ok: false, why: NOT_HERE });
   return run(script, args).then(
     (out) => ({ ok: true as const, text: out.slice(0, OUTPUT_MAX) }),
     () => ({ ok: false as const, why: "The history search did not answer." }),
@@ -88,6 +90,30 @@ const tidy = (text: string): string =>
     .replace(/^[\s:|\-–]+/, "")
     .trim()
     .slice(0, QUOTE_MAX);
+
+/** The output without the hits `drop` refuses, each header-led block judged whole by its venture and its text. */
+export const keepHistory = (
+  output: string,
+  drop: (venture: string | null, text: string) => boolean,
+): string => {
+  const out: string[] = [];
+  let block: string[] = [];
+  let venture: string | null = null;
+  const flush = () => {
+    if (block.length > 0 && !drop(venture, block.join("\n"))) out.push(...block);
+    block = [];
+  };
+  for (const line of output.split(/\r?\n/)) {
+    const head = HEADER.exec(line);
+    if (head !== null) {
+      flush();
+      venture = ventureOf(head[2]!);
+    }
+    block.push(line);
+  }
+  flush();
+  return out.join("\n");
+};
 
 /** One finding per hit. Reads the index's header-then-snippet blocks; any other line that names a session is taken whole. */
 export const parseLearnings = (output: string, max = 20): ReadonlyArray<FoundLearning> => {

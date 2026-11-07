@@ -1,6 +1,4 @@
-import { detectSecret } from "@t3tools/baton-shared/memory";
-
-export const REDACTED = "[redacted: looks like a secret]";
+import { detectSecret, REDACTED } from "@t3tools/baton-shared/memory";
 
 /** What a dictation or spoken turn may keep in History: itself, or a mark when it looks like a secret. */
 export const redactForHistory = (

@@ -272,14 +272,27 @@ export const refuseToStore = (
   if (clean.length > MEMORY_TEXT_MAX) return `a memory is at most ${MEMORY_TEXT_MAX} characters`;
   const secret = detectSecret(clean);
   if (secret !== null) return `that looks like ${secret}, so I did not keep it`;
-  if (privateTexts.length > 0) {
-    const mine = wordRuns(clean, 8);
-    if (mine.size > 0 && privateTexts.some((p) => [...wordRuns(p, 8)].some((r) => mine.has(r)))) {
-      return "that is the text of your private operating-system pack, which stays out of memory";
-    }
+  if (sharesPrivateText(clean, privateTexts)) {
+    return "that is the text of your private operating-system pack, which stays out of memory";
   }
   return null;
 };
+
+/** Whether the text copies 8 words in a row from one of the private pack files. */
+export const sharesPrivateText = (text: string, privateTexts: ReadonlyArray<string>): boolean => {
+  if (privateTexts.length === 0) return false;
+  const mine = wordRuns(text, 8);
+  return mine.size > 0 && privateTexts.some((p) => [...wordRuns(p, 8)].some((r) => mine.has(r)));
+};
+
+export const REDACTED = "[redacted: looks like a secret]";
+
+/** Each line that looks like a secret replaced by a mark; every other line kept as it is. */
+export const redactSecretLines = (text: string): string =>
+  text
+    .split("\n")
+    .map((line) => (detectSecret(line) === null ? line : REDACTED))
+    .join("\n");
 
 // ---------- confidence, decay, conflicts ----------
 

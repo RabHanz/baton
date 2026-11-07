@@ -13,6 +13,7 @@ import {
   BatonMemorySyncPushResult,
   type BatonMemorySyncPeer,
 } from "@t3tools/baton-contracts";
+import { NOT_HERE } from "@t3tools/baton-shared/historyIndex";
 import type { MemoryChange } from "@t3tools/baton-shared/memory";
 import { syncOriginAllowed } from "@t3tools/baton-shared/syncOrigin";
 import * as Context from "effect/Context";
@@ -32,6 +33,10 @@ const SECRET = "tessaya-memory-sync-peers";
 const ENABLED_KEY = "memory_sync";
 const EVERY = "10 minutes";
 const PEER_TIMEOUT_MS = 15_000;
+/** Longer than a peer's own history script may run, shorter than the search's whole deadline. */
+const HISTORY_PEER_TIMEOUT_MS = 10_000;
+export const SYNC_OFF =
+  "Memory sync is off on this server, so it does not ask his other servers, and the history index is not here. Turn memory sync on in Memory to search past work.";
 
 /** Where a credential may go, judged on the origin it came from. */
 export const originAllowed = (origin: string): boolean => {
@@ -128,11 +133,14 @@ export class BatonMemorySync extends Context.Service<
       input: { readonly environmentId: string } & typeof StoredPeer.Type,
     ) => Effect.Effect<void, BatonMemorySyncError>;
     readonly forget: (environmentId: string) => Effect.Effect<void, BatonMemorySyncError>;
-    /** The first paired peer whose own history index answered; none when no peer has one or none answered. */
+    /**
+     * The first paired peer whose own index found it (`found`), or else a reached peer's own reason; none when no peer
+     * answered. With sync off no peer is asked.
+     */
     readonly history: (ask: {
       readonly query?: string;
       readonly session?: string;
-    }) => Effect.Effect<Option.Option<string>>;
+    }) => Effect.Effect<Option.Option<typeof BatonMemoryHistorySearchResult.Type>>;
     readonly run: Effect.Effect<{
       readonly servers: number;
       readonly applied: number;
@@ -183,6 +191,7 @@ export const make = Effect.gen(function* () {
     environmentId: string,
     peer: typeof StoredPeer.Type,
     refused: Map<string, string>,
+    timeoutMs = PEER_TIMEOUT_MS,
   ) =>
     Effect.fn("BatonMemorySync.peerCall")(function* <A>(
       method: string,
@@ -196,7 +205,7 @@ export const make = Effect.gen(function* () {
           fetch(url, {
             method: "POST",
             redirect: "error",
-            signal: AbortSignal.timeout(PEER_TIMEOUT_MS),
+            signal: AbortSignal.timeout(timeoutMs),
             headers: { authorization: `Bearer ${peer.token}`, "content-type": "application/json" },
             body: JSON.stringify(input),
           }),
@@ -303,16 +312,35 @@ export const make = Effect.gen(function* () {
         return rest;
       }),
     history: Effect.fn("BatonMemorySync.history")(function* (ask) {
-      const now = DateTime.toEpochMillis(yield* DateTime.now);
-      for (const [id, peer] of live(yield* readPeers, now)) {
-        const answer = yield* peerCall(id, peer, new Map())(
-          BATON_MEMORY_WS_METHODS.historySearch,
-          ask,
-          BatonMemoryHistorySearchResult,
-        );
-        if (Option.isSome(answer) && answer.value.found) return Option.some(answer.value.text);
-      }
-      return Option.none<string>();
+      if (!(yield* enabled)) return Option.some({ found: false, text: SYNC_OFF });
+      const peers = live(yield* readPeers, DateTime.toEpochMillis(yield* DateTime.now));
+      if (peers.length === 0) return Option.none();
+      const reasons: Array<string> = [];
+      // All at once, the first found wins. A refused credential is left for the sync round to drop, so the map is thrown away.
+      return yield* Effect.raceAll(
+        peers.map(([id, peer]) =>
+          peerCall(
+            id,
+            peer,
+            new Map(),
+            HISTORY_PEER_TIMEOUT_MS,
+          )(BATON_MEMORY_WS_METHODS.historySearch, ask, BatonMemoryHistorySearchResult).pipe(
+            Effect.flatMap((answer) => {
+              if (Option.isSome(answer) && answer.value.found) return Effect.succeed(answer);
+              // A peer without the index is no answer; one whose index failed says why.
+              if (Option.isSome(answer) && answer.value.text !== NOT_HERE)
+                reasons.push(answer.value.text);
+              return Effect.fail("not found" as const);
+            }),
+          ),
+        ),
+      ).pipe(
+        Effect.orElseSucceed(() =>
+          reasons[0] === undefined
+            ? Option.none<typeof BatonMemoryHistorySearchResult.Type>()
+            : Option.some({ found: false, text: reasons[0] }),
+        ),
+      );
     }),
     run,
   });

@@ -152,10 +152,10 @@ index d18a827c14228c32d19c9fbef9511422fc1e706f..f349a56a9a1572dc64ecf56fa0136c02
      const response = authScopeResponse(AuthStandardClientScopes);
      expect(decodeOldScopes(response.scopes)).toEqual(response.scopes);
 diff --git a/packages/contracts/src/auth.ts b/packages/contracts/src/auth.ts
-index 555fa7e90b268550d27fbf2a447be89f4be8fc4b..bef4a952ea97fe1badb8fe3e5088b18c9b32c284 100644
+index 555fa7e90b268550d27fbf2a447be89f4be8fc4b..1d48535a23d749062b46ff737c99f6580600365a 100644
 --- a/packages/contracts/src/auth.ts
 +++ b/packages/contracts/src/auth.ts
-@@ -46,6 +46,25 @@ export const AuthAccessReadScope = "access:read" as const;
+@@ -46,6 +46,26 @@ export const AuthAccessReadScope = "access:read" as const;
  export const AuthAccessWriteScope = "access:write" as const;
  export const AuthRelayReadScope = "relay:read" as const;
  export const AuthRelayWriteScope = "relay:write" as const;
@@ -174,14 +174,15 @@ index 555fa7e90b268550d27fbf2a447be89f4be8fc4b..bef4a952ea97fe1badb8fe3e5088b18c
 +/** The desktop app's own session takes the remote calls and answers them; no client holds it. */
 +export const AuthBatonHandsHostScope = "baton:hands-host" as const;
 +/**
-+ * Tessaya memory sync with another of the Director's servers, walls included. A credential holding it holds nothing
-+ * else (`AuthGrantScopes`), so it can sync and do nothing more; it is minted on the server it reads.
++ * Tessaya memory sync with another of the Director's servers, walls included, and a search of that server's history
++ * index (secrets marked, walled hits left out). A credential holding it holds nothing else (`AuthGrantScopes`), so it
++ * can do only these; it is minted on the server it reads.
 + */
 +export const AuthBatonMemorySyncScope = "baton:memory-sync" as const;
  export const AuthEnvironmentScope = Schema.Literals([
    AuthOrchestrationReadScope,
    AuthOrchestrationOperateScope,
-@@ -64,16 +83,30 @@ export const AuthEnvironmentScope = Schema.Literals([
+@@ -64,16 +84,30 @@ export const AuthEnvironmentScope = Schema.Literals([
    AuthAccessWriteScope,
    AuthRelayReadScope,
    AuthRelayWriteScope,
@@ -214,7 +215,7 @@ index 555fa7e90b268550d27fbf2a447be89f4be8fc4b..bef4a952ea97fe1badb8fe3e5088b18c
  export type AuthGrantScopes = typeof AuthGrantScopes.Type;
  
  const legacyScopes = new Set<AuthEnvironmentScope>([
-@@ -109,10 +142,20 @@ const legacyParents: Partial<Record<AuthEnvironmentScope, AuthEnvironmentScope>>
+@@ -109,10 +143,20 @@ const legacyParents: Partial<Record<AuthEnvironmentScope, AuthEnvironmentScope>>
    [AuthTerminalReadScope]: AuthTerminalOperateScope,
  };
  

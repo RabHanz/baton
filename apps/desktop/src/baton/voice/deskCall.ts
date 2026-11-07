@@ -21,6 +21,7 @@ const MEMORY_OPS = new Set([
   "export",
   "learn",
   "import",
+  "pull",
   "syncState",
   "syncSetEnabled",
   "syncAddPeer",
@@ -31,8 +32,9 @@ const MEMORY_OPS = new Set([
 const COMMITMENT_OPS = new Set(["list", "upsert"]);
 const WEAVE_OPS = new Set(["send", "list"]);
 const CLOUD_OPS = new Set(["read", "act", "approve"]);
-/** This server's own memory sync: only its door answers, whether or not the window is open. */
+/** This server's own memory sync, and running the learnings pull: only its door answers, whether or not the window is open. */
 const SERVER_ONLY = new Set([
+  "pull",
   "syncState",
   "syncSetEnabled",
   "syncAddPeer",

@@ -292,6 +292,17 @@ describe("a memory-sync credential", () => {
       expect(missingBatonScope(tag, [AuthBatonMemorySyncScope]), tag).not.toBeNull();
     }
     expect(memoryViewerOf({ scopes: [AuthBatonMemorySyncScope] })).toBe("server");
+    // Through walls, or running the pull now: the desktop app's own session only.
+    const search = BATON_MEMORY_WS_METHODS.historySearch;
+    expect(missingBatonScope(search, [AuthBatonMemorySyncScope], { admin: true })).toBe(
+      AuthBatonHandsHostScope,
+    );
+    expect(missingBatonScope(search, [AuthBatonHandsHostScope], { admin: true })).toBeNull();
+    const pull = BATON_MEMORY_WS_METHODS.pull;
+    expect(missingBatonScope(pull, AuthStandardClientScopes, { action: "run" })).toBe(
+      AuthBatonHandsHostScope,
+    );
+    expect(missingBatonScope(pull, AuthStandardClientScopes, { action: "status" })).toBeNull();
   });
 
   it("is issued alone: a grant that mixes it with anything else is refused", () => {

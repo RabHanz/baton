@@ -267,6 +267,8 @@ export const BatonMemoryPullInput = Schema.Struct({
 export const BatonMemoryHistorySearchInput = Schema.Struct({
   query: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(300))),
   session: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(64))),
+  /** His own view, through walls: the desktop app only. */
+  admin: Schema.optionalKey(Schema.Boolean),
 });
 /** `found` is false when no server with the index answered; `text` then says why in plain words. */
 export const BatonMemoryHistorySearchResult = Schema.Struct({
