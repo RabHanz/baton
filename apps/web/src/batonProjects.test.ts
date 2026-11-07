@@ -10,6 +10,7 @@ import {
   batonRowStatusPill,
   batonSessionSummaries,
   buildBatonProjects,
+  paneWaiting,
   type EnvironmentLive,
 } from "./batonProjects";
 
@@ -193,5 +194,41 @@ describe("the sessions Tessaya's own window lists", () => {
       account: null,
     });
     expect(running).toMatchObject({ state: "working", pane: null, account: "alex" });
+  });
+  it("knows from the live rows when a pane is waiting on a question, so nothing is typed at it", () => {
+    const groups = buildBatonProjects({
+      environments: [
+        env("e1", "box", {
+          herdr: [
+            {
+              label: "api",
+              location: { workspace: "w", pane: "s~1" },
+              state: "needs_input",
+              runtimeState: "running",
+            } as never,
+          ],
+        }),
+      ],
+      resolveWorkProject: () => null,
+    });
+    expect(paneWaiting(groups, "e1", "s~1")).toBe(true);
+    expect(paneWaiting(groups, "e1", "s~2")).toBe(false);
+    expect(paneWaiting(groups, "e2", "s~1")).toBe(false);
+  });
+  it("files a linked server's work under the project that server resolved", () => {
+    const entry = {
+      workSessionId: "w1",
+      title: "Fix login",
+      projectId: "p1",
+      state: "running",
+      needsUser: false,
+      threads: [],
+      project: { key: "github.com/x/shop", label: "Shop" },
+    } as unknown as BatonFleetEntry;
+    const groups = buildBatonProjects({
+      environments: [env("box", "box", { entries: [entry] })],
+      resolveWorkProject: () => null,
+    });
+    expect(groups.map((group) => group.label)).toEqual(["Shop"]);
   });
 });

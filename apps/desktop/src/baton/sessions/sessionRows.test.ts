@@ -85,9 +85,8 @@ describe("the assistant's session tools", () => {
   it("types nothing into a session that waits on him, whatever its pane runs", () => {
     expect(sendRefusal(row("k", { state: "waiting", urgent: true }))).toContain("nothing was sent");
     expect(sendRefusal(row("k", { state: "waiting" }))).toBeNull();
-    expect(sendRefusal(row("k", { access: "read-only" }))).toBe(
-      "orbit is linked read-only, so nothing can be sent to it.",
-    );
+    // Another computer's session is typed into over T3's own session to it, so the link's access does not apply.
+    expect(sendRefusal(row("k", { access: "read-only" }))).toBeNull();
   });
   it("types into this computer.s panes through its server, and never sends another computer.s over it", () => {
     const pane = (environmentId: string) => ({ environmentId, pane: "s~1" });

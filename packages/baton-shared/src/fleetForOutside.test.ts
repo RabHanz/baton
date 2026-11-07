@@ -84,4 +84,16 @@ describe("the fleet an outside agent reads", () => {
     expect(out.entries.map((e) => e.title)).toEqual(["Payroll", "Tidy the README"]);
     expect(out.entries.map((e) => e.state)).toEqual(["running", "idle"]);
   });
+  it("gives a linked server of his each entry's project and account, and keeps the Claude account, still saying nothing", () => {
+    const out = fleetForOutside(fleet, DEFAULT_OS_PACK, () => null, {
+      project: (id) => (id === "p-shop" ? { key: "github.com/x/shop", label: "Shop" } : null),
+      account: (entry) => (entry.workSessionId === "w2" ? "Work Max" : null),
+    });
+    expect(out.entries.map((e) => [e.project?.label ?? null, e.account])).toEqual([
+      [null, null],
+      ["Shop", "Work Max"],
+    ]);
+    expect(out.claudeSessions?.[0]?.account).toBe("alex@example.com");
+    expect(JSON.stringify(out)).not.toContain("hunter2");
+  });
 });

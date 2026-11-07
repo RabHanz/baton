@@ -18,6 +18,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   batonRowStatusPill,
   buildBatonProjects,
+  paneWaiting,
   type BatonProjectGroup,
   type BatonSessionRow,
 } from "../../batonProjects";
@@ -132,9 +133,11 @@ export function BatonProjectsBlock(props: BatonProjectsBlockProps): ReactNode {
     label: (id: string) => props.resolveEnvironmentLabel(id as EnvironmentId) ?? id,
   });
   const answerWindow = useRef({ open: props.onOpenThreadById, send: sendToPane });
+  const liveGroups = useRef<ReadonlyArray<BatonProjectGroup>>([]);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the shell's handler on the latest callbacks
   useEffect(() => {
     answerWindow.current = { open: props.onOpenThreadById, send: sendToPane };
+    liveGroups.current = groups;
     catalogDeps.current = {
       localEnvironmentId: localEnvironmentId as string | null,
       commands: {
@@ -176,6 +179,13 @@ export function BatonProjectsBlock(props: BatonProjectsBlockProps): ReactNode {
         answerWindow.current.open(request.environmentId as EnvironmentId, request.threadId);
         return { ok: true, detail: "Opened." };
       }
+      // Read from this window's live fleets: Tessaya's list can be seconds old, and keys typed at a question answer it.
+      if (paneWaiting(liveGroups.current, request.environmentId, request.pane))
+        return {
+          ok: false,
+          detail:
+            "That session is waiting on a question or an approval in its terminal, so nothing was sent. Answer it there first, then send again.",
+        };
       const result = await answerWindow.current.send({
         environmentId: request.environmentId as EnvironmentId,
         input: { pane: request.pane, text: request.text },
@@ -188,6 +198,7 @@ export function BatonProjectsBlock(props: BatonProjectsBlockProps): ReactNode {
       unsubscribe();
       sessionListenerClaimed = false;
     };
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- subscribes once; the latest rows come through liveGroups
   }, []);
   // The first session is selected until the user picks one, so the composer always has a target.
   const selected =

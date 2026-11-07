@@ -24,6 +24,7 @@ const ANSWER_MS = 4_000;
 const ATTEMPTS = 3;
 /** How often the list is read from this machine's server; each read asks every linked environment. */
 const DOOR_LIST_MS = 30_000;
+const HERE_LIST_MS = 5_000;
 
 export interface SessionsBridge {
   readonly rows: () => ReadonlyArray<BatonSessionSummary>;
@@ -94,8 +95,11 @@ export const createSessionsBridge = (input: {
   const windowClosed = async () => !(await mainWindowUp());
   // Never opens the window.
   let here: { readonly environmentId: string; readonly label: string } | null = null;
-  const readDoor = async () => {
-    const value = (await direct("baton.sessions.across", {}).catch(() => null)) as {
+  /** `hereOnly`: this computer's rows alone, which replace only its own; the others keep their last reading. */
+  const readDoor = async (hereOnly = false) => {
+    const value = (await direct("baton.sessions.across", hereOnly ? { hereOnly: true } : {}).catch(
+      () => null,
+    )) as {
       sessions?: unknown;
       unreachable?: ReadonlyArray<{ label?: unknown }>;
       here?: { environmentId?: unknown; label?: unknown };
@@ -104,10 +108,15 @@ export const createSessionsBridge = (input: {
       // The last answer stays, said to be old.
       notes = ["This computer's server did not answer, so these sessions may be out of date."];
     } else {
-      rows = value.sessions.filter(isRow);
+      const fresh = value.sessions.filter(isRow);
+      rows = hereOnly ? [...fresh, ...rows.filter((row) => row.access !== null)] : fresh;
       const { environmentId, label } = value.here ?? {};
       if (typeof environmentId === "string" && typeof label === "string")
         here = { environmentId, label };
+      if (hereOnly) {
+        input.onChange();
+        return;
+      }
       notes = (value.unreachable ?? []).flatMap((peer) =>
         typeof peer.label === "string"
           ? [`${peer.label} isn't answering, so its sessions are not listed.`]
@@ -121,8 +130,13 @@ export const createSessionsBridge = (input: {
       (row) =>
         row.pane?.environmentId === environmentId || row.thread?.environmentId === environmentId,
     )?.box ?? "that computer";
+  // This computer's own rows every few seconds, so a new question or approval shows quickly; other computers every 30 s.
+  let ticks = 0;
   setTimeout(() => void readDoor(), 2_000).unref();
-  setInterval(() => void readDoor(), DOOR_LIST_MS).unref();
+  setInterval(() => {
+    ticks += 1;
+    void readDoor(ticks % (DOOR_LIST_MS / HERE_LIST_MS) !== 0);
+  }, HERE_LIST_MS).unref();
 
   const ask = async (
     request: unknown,
@@ -170,6 +184,13 @@ export const createSessionsBridge = (input: {
         if (body.length === 0) return "Nothing to send.";
         const call = doorSend(row, body);
         if (typeof call !== "string") {
+          // Read the row again just before typing: keys typed at a question that came up since would answer it.
+          await readDoor(true);
+          const now = rows.find((s) => s.key === row.key);
+          if (now === undefined)
+            return `${row.session} is no longer running here, so nothing was sent.`;
+          const refusedNow = sendRefusal(now);
+          if (refusedNow !== null) return refusedNow;
           const sent = (await direct(call.method, call.input).catch((error: unknown) => ({
             delivered: false,
             detail: error instanceof Error ? error.message : "Not sent.",

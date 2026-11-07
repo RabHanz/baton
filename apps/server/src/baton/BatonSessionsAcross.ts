@@ -12,6 +12,7 @@ import {
 import {
   batonSessionSummaries,
   buildBatonProjects,
+  workAccount,
   type BatonSessionRow,
 } from "@t3tools/baton-shared/batonProjects";
 import { batonProjectKey } from "@t3tools/baton-shared/jobPlacement";
@@ -45,7 +46,7 @@ export interface ListedEnvironment {
   readonly access: AuthMcpClientAccess | null;
 }
 
-/** The rows for every environment that answered; projects and accounts are known only for this server. */
+/** The rows for every environment that answered; a linked server resolved its own rows' projects and accounts. */
 export const summariesAcross = (input: {
   readonly environments: ReadonlyArray<ListedEnvironment>;
   readonly projects: ReadonlyArray<OrchestrationProjectShell>;
@@ -59,11 +60,10 @@ export const summariesAcross = (input: {
   const access = new Map(input.environments.map((env) => [env.environmentId, env.access]));
   const account = (row: BatonSessionRow): string | null => {
     if (row.kind === "claude") return row.account;
-    if (row.kind !== "work" || row.environmentId !== here) return null;
-    const instance = row.entry.threads.find(
-      (thread) => thread.threadId === row.entry.activeThreadId,
-    )?.providerInstanceId;
-    return (instance == null ? null : labels.get(instance)?.trim()) || null;
+    if (row.kind !== "work") return null;
+    return row.environmentId === here
+      ? workAccount(row.entry, (id) => labels.get(id))
+      : (row.entry.account ?? null);
   };
   const groups = buildBatonProjects({
     environments: input.environments.map((env) => ({
@@ -126,7 +126,12 @@ export const peerFleets = Effect.fn("BatonSessionsAcross.peerFleets")(function* 
 
 export class BatonSessionsAcross extends Context.Service<
   BatonSessionsAcross,
-  { readonly list: Effect.Effect<BatonSessionsAcrossResult, WorkSessionError> }
+  {
+    /** `hereOnly`: this server's own rows alone, cheap and fresh, for a check just before typing. */
+    readonly list: (input: {
+      readonly hereOnly?: boolean | undefined;
+    }) => Effect.Effect<BatonSessionsAcrossResult, WorkSessionError>;
+  }
 >()("t3/baton/BatonSessionsAcross") {}
 
 export const make = Effect.gen(function* () {
@@ -139,15 +144,16 @@ export const make = Effect.gen(function* () {
     | PeerLinks.PeerLinks
     | PeerMcpClient.PeerMcpClient
   >();
-  const list = Effect.gen(function* () {
+  const list = Effect.fn("BatonSessionsAcross.list")(function* (hereOnly: boolean) {
     const descriptor = yield* (yield* ServerEnvironment.ServerEnvironment).getDescriptor;
     const fleet = yield* FleetQuery.getFleet({});
     const engine = yield* BatonEngine;
     const peerLinks = yield* PeerLinks.PeerLinks;
     // Linked environments switched off in settings are not read at all.
-    const links = (yield* peerLinks.enabled)
-      ? yield* peerLinks.list.pipe(Effect.orElseSucceed(() => []))
-      : [];
+    const links =
+      !hereOnly && (yield* peerLinks.enabled)
+        ? yield* peerLinks.list.pipe(Effect.orElseSucceed(() => []))
+        : [];
     const peers = yield* peerFleets(links);
     return {
       here: { environmentId: descriptor.environmentId, label: descriptor.label },
@@ -161,9 +167,18 @@ export const make = Effect.gen(function* () {
       }),
       unreachable: peers.unreachable,
     };
-  }).pipe(Effect.provideContext(local), Effect.withSpan("BatonSessionsAcross.list"));
+  });
   // Callers share one listing in flight and its answer for a few seconds, so a looping client cannot multiply peer calls.
-  return BatonSessionsAcross.of({ list: yield* Effect.cachedWithTTL(list, "5 seconds") });
+  const across = yield* Effect.cachedWithTTL(
+    Effect.provideContext(list(false), local),
+    "5 seconds",
+  );
+  const here = Effect.provideContext(list(true), local);
+  return BatonSessionsAcross.of({
+    list: Effect.fn("BatonSessionsAcross.listFor")(function* (input) {
+      return yield* input.hereOnly === true ? here : across;
+    }),
+  });
 });
 
 export const layer = Layer.effect(BatonSessionsAcross, make);

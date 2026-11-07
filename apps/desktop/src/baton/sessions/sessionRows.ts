@@ -106,11 +106,9 @@ export const describeSession = (row: BatonSessionSummary, now: number): string =
  * an approval, and keys typed there answer it; Herdr's own refusal only covers panes it knows run an agent.
  */
 export const sendRefusal = (row: BatonSessionSummary): string | null =>
-  row.access === "read-only"
-    ? `${row.box} is linked read-only, so nothing can be sent to it.`
-    : row.urgent
-      ? `${row.session} is waiting on a question or an approval in its terminal, so nothing was sent. Answer it there first, then send again.`
-      : null;
+  row.urgent
+    ? `${row.session} is waiting on a question or an approval in its terminal, so nothing was sent. Answer it there first, then send again.`
+    : null;
 
 /**
  * Typing into a row's pane through this machine's server, or why not. His words reach another machine's session only

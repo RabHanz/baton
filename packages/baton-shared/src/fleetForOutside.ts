@@ -10,6 +10,11 @@ export const fleetForOutside = (
   fleet: BatonFleet,
   pack: OsPack,
   projectTitle: (projectId: string) => string | null,
+  /** For a linked server of his: each entry's project and account, which it cannot resolve itself; accounts are kept. */
+  linked?: {
+    readonly project: (projectId: string) => BatonProjectRef | null;
+    readonly account: (entry: BatonFleet["entries"][number]) => string | null;
+  },
 ): BatonFleet => {
   const walled = (project: string | null | undefined) => project != null && isWalled(pack, project);
   const refLabel = (ref: BatonProjectRef | undefined) => ref?.label ?? null;
@@ -22,6 +27,12 @@ export const fleetForOutside = (
         ...entry,
         title: hidden && project !== null ? project : entry.title,
         synopsis: null,
+        ...(linked === undefined
+          ? {}
+          : (() => {
+              const ref = linked.project(entry.projectId);
+              return { ...(ref === null ? {} : { project: ref }), account: linked.account(entry) };
+            })()),
         threads: entry.threads.map((thread) => ({
           ...thread,
           title: hidden && project !== null ? project : thread.title,
@@ -53,7 +64,7 @@ export const fleetForOutside = (
               ...rest,
               cwd: project ?? "-",
               name: walled(project) ? project : session.name,
-              account: null,
+              account: linked === undefined ? null : session.account,
             };
           }),
         }),
