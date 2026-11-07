@@ -292,47 +292,76 @@ index 95d8b2d57e09faa9301be955e21e004cd64727e1..090ecfa67b3478d44621b1fce2f9375d
    objc-js: false
    "react-native-enriched-markdown@file:apps/mobile/deps/react-native-enriched-markdown-1.2.0-t3.16-29ddd424.tgz": true
 diff --git a/scripts/build-cli-archive.ts b/scripts/build-cli-archive.ts
-index 1244b9491fb73ebd1a000ee885d9a8a99b0786d5..19380a767504ff4760dfc13370d1093a7e4294af 100644
+index 1244b9491fb73ebd1a000ee885d9a8a99b0786d5..914971e516d4150e77ff0c87e804db0f47faa36a 100644
 --- a/scripts/build-cli-archive.ts
 +++ b/scripts/build-cli-archive.ts
-@@ -210,7 +210,22 @@ const stageRuntimeExternals = Effect.fn("stageRuntimeExternals")(function* (inpu
+@@ -28,6 +28,7 @@ import {
+ } from "./build-desktop-artifact.ts";
+ import { assertLinuxArm64PageCompatibility } from "./lib/linux-arm64-sea.ts";
+ import { selectCliRuntimeExternalDependencies } from "./lib/cli-external-packages.ts";
++import { ONNXRUNTIME_BIN_DIR, foreignOnnxRuntimeDirs } from "./lib/onnxruntime-binaries.ts";
+ import { signWithJsign } from "./lib/windows-jsign.ts";
+ import { windowsSystemTar } from "./lib/windows-tar.ts";
+ import { resolveCatalogDependencies } from "./lib/resolve-catalog.ts";
+@@ -210,7 +211,21 @@ const stageRuntimeExternals = Effect.fn("stageRuntimeExternals")(function* (inpu
      .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []))).filter(
      (entry) => entry !== platformKey,
    );
 +  // onnxruntime-node (memory recall, MEM-13) bundles every OS's binaries (~290 MB); the archive keeps only its own target.
 +  // Its install script, which would fetch CUDA files, never runs: the workspace's allowBuilds has it false.
-+  const ortBin = "node_modules/onnxruntime-node/bin/napi-v6";
-+  const ortTarget = `${input.platform === "mac" ? "darwin" : input.platform === "win" ? "win32" : input.platform}/${input.arch}`;
-+  const foreignOrt: string[] = [];
++  const installedOrt: string[] = [];
 +  for (const os of yield* fs
-+    .readDirectory(path.join(input.stageDir, ortBin))
++    .readDirectory(path.join(input.stageDir, ONNXRUNTIME_BIN_DIR))
 +    .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []))) {
 +    for (const arch of yield* fs
-+      .readDirectory(path.join(input.stageDir, ortBin, os))
++      .readDirectory(path.join(input.stageDir, ONNXRUNTIME_BIN_DIR, os))
 +      .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []))) {
-+      if (`${os}/${arch}` !== ortTarget) foreignOrt.push(`${ortBin}/${os}/${arch}`);
++      installedOrt.push(`${os}/${arch}`);
 +    }
 +  }
++  const foreignOrt = foreignOnnxRuntimeDirs(installedOrt, input.platform, input.arch);
    for (const entry of [
 +    ...foreignOrt,
      "package.json",
      "pnpm-workspace.yaml",
      "pnpm-lock.yaml",
+@@ -521,6 +536,12 @@ const buildCliArchive = Effect.fn("buildCliArchive")(function* (input: {
+     resourceMonitorDir,
+     "Build the resource monitor or pass --resource-monitor-dir.",
+   );
++  // Memory recall by meaning (MEM-13): the model sits beside the executable, where the server looks for it.
++  const memoryModelDir = path.join(repoRoot, "apps/server/resources/memory-model");
++  yield* requireInput(
++    path.join(memoryModelDir, "model_quantized.onnx"),
++    "Run `node scripts/tessaya/fetch-memory-model.mjs` first.",
++  );
+ 
+   const stem = cliArchiveStem(input.version, input.platform, input.arch);
+   const stageRoot = yield* fs.makeTempDirectoryScoped({ prefix: "t3-cli-archive-" });
+@@ -531,6 +552,7 @@ const buildCliArchive = Effect.fn("buildCliArchive")(function* (input: {
+   yield* fs.copyFile(builtExecutable, path.join(contentDir, executableName));
+   yield* stageWebClient(webClient, path.join(contentDir, "client"));
+   yield* fs.copy(resourceMonitorDir, path.join(contentDir, "resource-monitor"));
++  yield* fs.copy(memoryModelDir, path.join(contentDir, "memory-model"));
+   yield* stageRuntimeExternals({
+     repoRoot,
+     stageDir: contentDir,
 diff --git a/scripts/build-desktop-artifact.test.ts b/scripts/build-desktop-artifact.test.ts
-index 02f19b07b4531a4cd2760c99e642f694f56ab138..10ac17adf8f2a419995c13ee7e20fa85cee57353 100644
+index 02f19b07b4531a4cd2760c99e642f694f56ab138..7244389061b6f0f7a953345b7b6369faa013a4ed 100644
 --- a/scripts/build-desktop-artifact.test.ts
 +++ b/scripts/build-desktop-artifact.test.ts
-@@ -56,6 +56,9 @@ import {
+@@ -56,6 +56,10 @@ import {
    WindowsDesktopBuildPrerequisitesMissingError,
    WindowsPackagedPayloadValidationError,
    stageCursorSdkPlatformPackages,
 +  BATON_VOICE_PAYLOAD_FILES,
 +  TESSAYA_ART_PAYLOAD_FILES,
++  MEMORY_MODEL_PAYLOAD_FILES,
 +  batonSidecarBuild,
    WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT,
    WINDOWS_SERVER_ASAR_IGNORE_GLOBS,
    WINDOWS_SERVER_ASAR_RESOURCE,
-@@ -158,6 +161,14 @@ const makeWindowsPayloadFixture = Effect.fn("test.makeWindowsPayloadFixture")(fu
+@@ -158,6 +162,18 @@ const makeWindowsPayloadFixture = Effect.fn("test.makeWindowsPayloadFixture")(fu
    const stageDistDir = path.join(tempDir, "dist");
    const packagedAppDir = path.join(stageDistDir, "win-unpacked");
    const resourcesDir = path.join(packagedAppDir, "resources");
@@ -344,10 +373,14 @@ index 02f19b07b4531a4cd2760c99e642f694f56ab138..10ac17adf8f2a419995c13ee7e20fa85
 +  for (const file of TESSAYA_ART_PAYLOAD_FILES) {
 +    yield* fs.writeFileString(path.join(resourcesDir, "tessaya", file), "art");
 +  }
++  yield* fs.makeDirectory(path.join(resourcesDir, "memory-model"), { recursive: true });
++  for (const file of MEMORY_MODEL_PAYLOAD_FILES) {
++    yield* fs.writeFileString(path.join(resourcesDir, "memory-model", file), "model");
++  }
    yield* fs.makeDirectory(path.join(resourcesDir, "resource-monitor"), { recursive: true });
    yield* fs.copyFile(generatedAsarPath, path.join(resourcesDir, WINDOWS_SERVER_ASAR_RESOURCE));
    if (input.copyUnpackedNatives) {
-@@ -1292,6 +1303,38 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
+@@ -1292,6 +1308,56 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
          assert.deepStrictEqual(resourceMonitorError.missingFiles, [
            "resource-monitor/t3-resource-monitor.exe",
          ]);
@@ -383,10 +416,28 @@ index 02f19b07b4531a4cd2760c99e642f694f56ab138..10ac17adf8f2a419995c13ee7e20fa85
 +        assert.instanceOf(artError, WindowsPackagedPayloadValidationError);
 +        assert.equal(artError.reason, "tessaya-art-missing");
 +        assert.deepStrictEqual(artError.missingFiles, ["tessaya/sting-madder-dark.webp"]);
++
++        // A build that never fetched the memory model (MEM-13) is refused, naming the file.
++        yield* fs.writeFileString(
++          path.join(fixture.packagedAppDir, "resources/tessaya/sting-madder-dark.webp"),
++          "art",
++        );
++        yield* fs.remove(
++          path.join(fixture.packagedAppDir, "resources/memory-model/model_quantized.onnx"),
++        );
++        const modelError = yield* validateWindowsPackagedPayload({
++          stageDistDir: fixture.stageDistDir,
++          appExecutableName: fixture.appExecutableName,
++          targetArch: "x64",
++          appVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
++        }).pipe(Effect.flip);
++        assert.instanceOf(modelError, WindowsPackagedPayloadValidationError);
++        assert.equal(modelError.reason, "memory-model-missing");
++        assert.deepStrictEqual(modelError.missingFiles, ["memory-model/model_quantized.onnx"]);
        }),
      ),
    );
-@@ -1828,3 +1871,18 @@ it.effect.skipIf(!symlinksSupported)("preserves relative links when replacing di
+@@ -1828,3 +1894,18 @@ it.effect.skipIf(!symlinksSupported)("preserves relative links when replacing di
      assert.equal(yield* fs.readFileString(path.join(output, app, "Current")), "rebuilt-app");
    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
  );
@@ -406,19 +457,28 @@ index 02f19b07b4531a4cd2760c99e642f694f56ab138..10ac17adf8f2a419995c13ee7e20fa85
 +  assert.include(batonSidecarBuild("mac", "x64")[0]!.cmake, "CMAKE_OSX_ARCHITECTURES=x86_64");
 +});
 diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
-index 599c6b809a18ff4ce320c9780c87bd244d94dad3..511a535d150bae20ceaa50c0653f4150d547fa52 100644
+index 599c6b809a18ff4ce320c9780c87bd244d94dad3..40f55c891e6a237428abd7a16841283ae4770c8d 100644
 --- a/scripts/build-desktop-artifact.ts
 +++ b/scripts/build-desktop-artifact.ts
-@@ -749,6 +749,8 @@ const WindowsPackagedPayloadValidationReason = Schema.Literals([
+@@ -15,6 +15,7 @@ import {
+   type DirectoryRecord,
+ } from "@electron/asar";
+ 
++import { ONNXRUNTIME_BIN_DIR, foreignOnnxRuntimeDirs } from "./lib/onnxruntime-binaries.ts";
+ import { fromYaml } from "@t3tools/shared/schemaYaml";
+ import * as HostProcess from "@t3tools/shared/HostProcess";
+ import { clerkFrontendApiHostnameFromPublishableKey } from "@t3tools/shared/relayAuth";
+@@ -749,6 +750,9 @@ const WindowsPackagedPayloadValidationReason = Schema.Literals([
    "sidecar-invalid",
    "unpacked-native-missing",
    "resource-monitor-missing",
 +  "baton-voice-missing",
 +  "tessaya-art-missing",
++  "memory-model-missing",
    "wsl-runtime-missing",
    "wsl-runtime-invalid",
    "file-limit-exceeded",
-@@ -775,6 +777,12 @@ export class WindowsPackagedPayloadValidationError extends Schema.TaggedError<Wi
+@@ -775,6 +779,15 @@ export class WindowsPackagedPayloadValidationError extends Schema.TaggedError<Wi
      if (this.reason === "resource-monitor-missing") {
        return "Windows packaged payload is missing the resource monitor executable.";
      }
@@ -428,10 +488,13 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..511a535d150bae20ceaa50c0653f4150
 +    if (this.reason === "tessaya-art-missing") {
 +      return `Windows packaged payload is missing Tessaya's palette art: ${(this.missingFiles ?? []).join(", ")}.`;
 +    }
++    if (this.reason === "memory-model-missing") {
++      return `Windows packaged payload is missing the memory model (run node scripts/tessaya/fetch-memory-model.mjs): ${(this.missingFiles ?? []).join(", ")}.`;
++    }
      if (this.reason === "wsl-runtime-missing") {
        return "Windows packaged payload is missing the WSL runtime archive or SHA-256 sidecar.";
      }
-@@ -994,6 +1002,8 @@ export const DESKTOP_FILE_EXCLUSIONS = [
+@@ -994,6 +1007,8 @@ export const DESKTOP_FILE_EXCLUSIONS = [
    "!**/*.d.cts",
    "!apps/desktop/resources/browser-secret",
    "!apps/desktop/resources/browser-secret/**/*",
@@ -440,7 +503,7 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..511a535d150bae20ceaa50c0653f4150
    "!apps/desktop/prod-resources/browser-secret",
    "!apps/desktop/prod-resources/browser-secret/**/*",
    "!apps/desktop/prod-resources/windows-server",
-@@ -1024,6 +1034,21 @@ export function resolveMacFileExclusions(arch?: typeof BuildArch.Type) {
+@@ -1024,6 +1039,21 @@ export function resolveMacFileExclusions(arch?: typeof BuildArch.Type) {
    const unusedArch = arch === "arm64" ? "x64" : "arm64";
    return [...MAC_FILE_EXCLUSIONS, `!**/node_modules/**/prebuilds/darwin-${unusedArch}/**/*`];
  }
@@ -462,18 +525,18 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..511a535d150bae20ceaa50c0653f4150
  // Large ASAR sidecars avoid NSIS extracting thousands of loose files during installs and updates.
  export const WINDOWS_SERVER_ASAR_RESOURCE = "server.asar";
  // Native modules and executables need real paths, so place them in ASAR's .unpacked sibling.
-@@ -1061,7 +1086,9 @@ export function resolveWindowsServerAsarIgnoreGlobs(arch: typeof BuildArch.Type)
+@@ -1061,7 +1091,9 @@ export function resolveWindowsServerAsarIgnoreGlobs(arch: typeof BuildArch.Type)
    ];
  }
  
 -export const WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT = 80;
 +// Baton ships the voice sidecar, wake and speech runtimes and models beside the app: about 40 more files than upstream,
 +// and Tessaya's palette art (a sting and a taskbar icon per palette and theme) 12 more.
-+export const WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT = 152;
++export const WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT = 154;
  export const WINDOWS_SERVER_RESOURCE_SOURCE_DIR = "apps/desktop/prod-resources/windows-server";
  export const WINDOWS_SERVER_EXTRA_RESOURCES = [
    {
-@@ -1099,6 +1126,15 @@ export const DESKTOP_EXTRA_RESOURCES = [
+@@ -1099,6 +1131,20 @@ export const DESKTOP_EXTRA_RESOURCES = [
      from: "apps/desktop/prod-resources/resource-monitor",
      to: "resource-monitor",
    },
@@ -486,10 +549,15 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..511a535d150bae20ceaa50c0653f4150
 +    from: "apps/desktop/resources/tessaya",
 +    to: "tessaya",
 +  },
++  // The bundled server's memory recall model (MEM-13); fetched by scripts/tessaya/fetch-memory-model.mjs before a build.
++  {
++    from: "apps/server/resources/memory-model",
++    to: "memory-model",
++  },
  ] as const;
  export const LINUX_CAPTURE_EXTRA_RESOURCES = [
    {
-@@ -2347,6 +2383,128 @@ export const stageLinuxCaptureHelper = Effect.fn("stageLinuxCaptureHelper")(func
+@@ -2347,6 +2393,131 @@ export const stageLinuxCaptureHelper = Effect.fn("stageLinuxCaptureHelper")(func
    }
  });
  
@@ -500,6 +568,9 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..511a535d150bae20ceaa50c0653f4150
 +    `taskbar-${palette}-${theme}.ico`,
 +  ]),
 +);
++
++/** The bundled server's memory recall model (MEM-13). */
++export const MEMORY_MODEL_PAYLOAD_FILES = ["model_quantized.onnx", "vocab.txt"] as const;
 +
 +export const BATON_VOICE_PAYLOAD_FILES = [
 +  "tessaya-voice.exe",
@@ -618,7 +689,7 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..511a535d150bae20ceaa50c0653f4150
  export const stageResourceMonitor = Effect.fn("stageResourceMonitor")(function* (input: {
    readonly repoRoot: string;
    readonly stageResourcesDir: string;
-@@ -2792,6 +2950,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
+@@ -2792,6 +2963,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
          : platform === "linux"
            ? LINUX_FILE_EXCLUSIONS
            : []),
@@ -626,7 +697,27 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..511a535d150bae20ceaa50c0653f4150
      ],
      directories: {
        buildResources: "apps/desktop/resources",
-@@ -3411,6 +3570,33 @@ export const validateWindowsPackagedPayload = Effect.fn(
+@@ -3148,6 +3320,19 @@ export const stageWindowsServerSidecar = Effect.fn("stageWindowsServerSidecar")(
+     }),
+     { label: "vp install --prod (server sidecar)", verbose: input.verbose },
+   );
++  // The server's onnxruntime-node (memory recall, MEM-13) brings every OS's binaries: keep only this installer's.
++  const ortBin = path.join(serverStageDir, ONNXRUNTIME_BIN_DIR);
++  const installedOrt: string[] = [];
++  for (const os of yield* fs.readDirectory(ortBin).pipe(Effect.orElseSucceed((): string[] => []))) {
++    for (const arch of yield* fs
++      .readDirectory(path.join(ortBin, os))
++      .pipe(Effect.orElseSucceed((): string[] => []))) {
++      installedOrt.push(`${os}/${arch}`);
++    }
++  }
++  for (const dir of foreignOnnxRuntimeDirs(installedOrt, "win", input.arch)) {
++    yield* fs.remove(path.join(serverStageDir, dir), { recursive: true, force: true });
++  }
+ 
+   yield* Effect.log("[desktop-artifact] Packing server.asar...");
+   yield* fs.makeDirectory(path.dirname(input.asarPath), { recursive: true });
+@@ -3411,6 +3596,46 @@ export const validateWindowsPackagedPayload = Effect.fn(
      });
    }
  
@@ -657,10 +748,23 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..511a535d150bae20ceaa50c0653f4150
 +    });
 +  }
 +
++  const missingModel: string[] = [];
++  for (const file of MEMORY_MODEL_PAYLOAD_FILES) {
++    if (!(yield* isFile(path.join(resourcesDir, "memory-model", file))))
++      missingModel.push(`memory-model/${file}`);
++  }
++  if (missingModel.length > 0) {
++    return yield* new WindowsPackagedPayloadValidationError({
++      reason: "memory-model-missing",
++      packagedAppDir,
++      missingFiles: missingModel,
++    });
++  }
++
    const wslArchivePath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_NAME);
    const wslArchiveHashPath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_HASH_NAME);
    const [hasWslArchive, hasWslArchiveHash] = yield* Effect.all([
-@@ -3772,6 +3958,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
+@@ -3772,6 +3997,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
      arch: options.arch,
      verbose: options.verbose,
    });
@@ -733,6 +837,29 @@ index 68af7f32512c19565f9273101c05be347dc3362f..814ba45073f6bc53e296b9071c89cf26
  ] as const;
  
  export function isDesktopRuntimeExternalDependency(id: string): boolean {
+diff --git a/scripts/smoke-cli-archive.ts b/scripts/smoke-cli-archive.ts
+index 1318aa3c0c6dd4be6186c4b4839c2f0dc390413a..29b12de81df193c6d28333fa0af9e057e8be789c 100644
+--- a/scripts/smoke-cli-archive.ts
++++ b/scripts/smoke-cli-archive.ts
+@@ -65,6 +65,7 @@ const smokeCliArchive = Effect.fn("smokeCliArchive")(function* (input: {
+   const fs = yield* FileSystem.FileSystem;
+   const path = yield* Path.Path;
+   const platform = yield* HostProcess.Platform;
++  const arch = yield* HostProcess.Architecture;
+   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+   const scratch = yield* fs.makeTempDirectory({ prefix: "t3-cli-smoke-" });
+   // Windows can briefly retain executable locks; cleanup retries but must not fail a successful smoke check.
+@@ -102,6 +103,10 @@ const smokeCliArchive = Effect.fn("smokeCliArchive")(function* (input: {
+     executable,
+     path.join(contentDir, "client/index.html"),
+     ...(platform === "linux" ? [bundledLibatomic, `${bundledLibatomic}.LICENSE`] : []),
++    // Memory recall by meaning (MEM-13): the model beside the executable, and onnxruntime's binding for this target.
++    path.join(contentDir, "memory-model/model_quantized.onnx"),
++    path.join(contentDir, "memory-model/vocab.txt"),
++    path.join(contentDir, "node_modules/onnxruntime-node/bin/napi-v6", platform, arch),
+   ]) {
+     if (!(yield* fs.exists(required))) {
+       return yield* new CliArchiveSmokeError({
 diff --git a/scripts/tsconfig.json b/scripts/tsconfig.json
 index 61307d2992e025a13693a423d81907bc2d645487..3552cff95908c0faefda81e458c9fb803587ed91 100644
 --- a/scripts/tsconfig.json

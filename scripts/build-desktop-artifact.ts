@@ -15,6 +15,7 @@ import {
   type DirectoryRecord,
 } from "@electron/asar";
 
+import { ONNXRUNTIME_BIN_DIR, foreignOnnxRuntimeDirs } from "./lib/onnxruntime-binaries.ts";
 import { fromYaml } from "@t3tools/shared/schemaYaml";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { clerkFrontendApiHostnameFromPublishableKey } from "@t3tools/shared/relayAuth";
@@ -751,6 +752,7 @@ const WindowsPackagedPayloadValidationReason = Schema.Literals([
   "resource-monitor-missing",
   "baton-voice-missing",
   "tessaya-art-missing",
+  "memory-model-missing",
   "wsl-runtime-missing",
   "wsl-runtime-invalid",
   "file-limit-exceeded",
@@ -782,6 +784,9 @@ export class WindowsPackagedPayloadValidationError extends Schema.TaggedError<Wi
     }
     if (this.reason === "tessaya-art-missing") {
       return `Windows packaged payload is missing Tessaya's palette art: ${(this.missingFiles ?? []).join(", ")}.`;
+    }
+    if (this.reason === "memory-model-missing") {
+      return `Windows packaged payload is missing the memory model (run node scripts/tessaya/fetch-memory-model.mjs): ${(this.missingFiles ?? []).join(", ")}.`;
     }
     if (this.reason === "wsl-runtime-missing") {
       return "Windows packaged payload is missing the WSL runtime archive or SHA-256 sidecar.";
@@ -1088,7 +1093,7 @@ export function resolveWindowsServerAsarIgnoreGlobs(arch: typeof BuildArch.Type)
 
 // Baton ships the voice sidecar, wake and speech runtimes and models beside the app: about 40 more files than upstream,
 // and Tessaya's palette art (a sting and a taskbar icon per palette and theme) 12 more.
-export const WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT = 152;
+export const WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT = 154;
 export const WINDOWS_SERVER_RESOURCE_SOURCE_DIR = "apps/desktop/prod-resources/windows-server";
 export const WINDOWS_SERVER_EXTRA_RESOURCES = [
   {
@@ -1134,6 +1139,11 @@ export const DESKTOP_EXTRA_RESOURCES = [
   {
     from: "apps/desktop/resources/tessaya",
     to: "tessaya",
+  },
+  // The bundled server's memory recall model (MEM-13); fetched by scripts/tessaya/fetch-memory-model.mjs before a build.
+  {
+    from: "apps/server/resources/memory-model",
+    to: "memory-model",
   },
 ] as const;
 export const LINUX_CAPTURE_EXTRA_RESOURCES = [
@@ -2391,6 +2401,9 @@ export const TESSAYA_ART_PAYLOAD_FILES = ["woad", "damson", "madder"].flatMap((p
   ]),
 );
 
+/** The bundled server's memory recall model (MEM-13). */
+export const MEMORY_MODEL_PAYLOAD_FILES = ["model_quantized.onnx", "vocab.txt"] as const;
+
 export const BATON_VOICE_PAYLOAD_FILES = [
   "tessaya-voice.exe",
   "models/melspectrogram.onnx",
@@ -3307,6 +3320,19 @@ export const stageWindowsServerSidecar = Effect.fn("stageWindowsServerSidecar")(
     }),
     { label: "vp install --prod (server sidecar)", verbose: input.verbose },
   );
+  // The server's onnxruntime-node (memory recall, MEM-13) brings every OS's binaries: keep only this installer's.
+  const ortBin = path.join(serverStageDir, ONNXRUNTIME_BIN_DIR);
+  const installedOrt: string[] = [];
+  for (const os of yield* fs.readDirectory(ortBin).pipe(Effect.orElseSucceed((): string[] => []))) {
+    for (const arch of yield* fs
+      .readDirectory(path.join(ortBin, os))
+      .pipe(Effect.orElseSucceed((): string[] => []))) {
+      installedOrt.push(`${os}/${arch}`);
+    }
+  }
+  for (const dir of foreignOnnxRuntimeDirs(installedOrt, "win", input.arch)) {
+    yield* fs.remove(path.join(serverStageDir, dir), { recursive: true, force: true });
+  }
 
   yield* Effect.log("[desktop-artifact] Packing server.asar...");
   yield* fs.makeDirectory(path.dirname(input.asarPath), { recursive: true });
@@ -3594,6 +3620,19 @@ export const validateWindowsPackagedPayload = Effect.fn(
       reason: "tessaya-art-missing",
       packagedAppDir,
       missingFiles: missingArt,
+    });
+  }
+
+  const missingModel: string[] = [];
+  for (const file of MEMORY_MODEL_PAYLOAD_FILES) {
+    if (!(yield* isFile(path.join(resourcesDir, "memory-model", file))))
+      missingModel.push(`memory-model/${file}`);
+  }
+  if (missingModel.length > 0) {
+    return yield* new WindowsPackagedPayloadValidationError({
+      reason: "memory-model-missing",
+      packagedAppDir,
+      missingFiles: missingModel,
     });
   }
 

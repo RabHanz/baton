@@ -58,6 +58,7 @@ import {
   stageCursorSdkPlatformPackages,
   BATON_VOICE_PAYLOAD_FILES,
   TESSAYA_ART_PAYLOAD_FILES,
+  MEMORY_MODEL_PAYLOAD_FILES,
   batonSidecarBuild,
   WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT,
   WINDOWS_SERVER_ASAR_IGNORE_GLOBS,
@@ -168,6 +169,10 @@ const makeWindowsPayloadFixture = Effect.fn("test.makeWindowsPayloadFixture")(fu
   yield* fs.makeDirectory(path.join(resourcesDir, "tessaya"), { recursive: true });
   for (const file of TESSAYA_ART_PAYLOAD_FILES) {
     yield* fs.writeFileString(path.join(resourcesDir, "tessaya", file), "art");
+  }
+  yield* fs.makeDirectory(path.join(resourcesDir, "memory-model"), { recursive: true });
+  for (const file of MEMORY_MODEL_PAYLOAD_FILES) {
+    yield* fs.writeFileString(path.join(resourcesDir, "memory-model", file), "model");
   }
   yield* fs.makeDirectory(path.join(resourcesDir, "resource-monitor"), { recursive: true });
   yield* fs.copyFile(generatedAsarPath, path.join(resourcesDir, WINDOWS_SERVER_ASAR_RESOURCE));
@@ -1335,6 +1340,24 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         assert.instanceOf(artError, WindowsPackagedPayloadValidationError);
         assert.equal(artError.reason, "tessaya-art-missing");
         assert.deepStrictEqual(artError.missingFiles, ["tessaya/sting-madder-dark.webp"]);
+
+        // A build that never fetched the memory model (MEM-13) is refused, naming the file.
+        yield* fs.writeFileString(
+          path.join(fixture.packagedAppDir, "resources/tessaya/sting-madder-dark.webp"),
+          "art",
+        );
+        yield* fs.remove(
+          path.join(fixture.packagedAppDir, "resources/memory-model/model_quantized.onnx"),
+        );
+        const modelError = yield* validateWindowsPackagedPayload({
+          stageDistDir: fixture.stageDistDir,
+          appExecutableName: fixture.appExecutableName,
+          targetArch: "x64",
+          appVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
+        }).pipe(Effect.flip);
+        assert.instanceOf(modelError, WindowsPackagedPayloadValidationError);
+        assert.equal(modelError.reason, "memory-model-missing");
+        assert.deepStrictEqual(modelError.missingFiles, ["memory-model/model_quantized.onnx"]);
       }),
     ),
   );
