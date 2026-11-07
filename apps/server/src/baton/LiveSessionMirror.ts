@@ -70,6 +70,8 @@ import {
 } from "@t3tools/baton-shared/liveTranscript";
 import { derive as deriveIds } from "@t3tools/provider-core/server/IdAllocator";
 import * as DateTime from "effect/DateTime";
+
+import { BATON_LIVE_INSTANCE } from "./BatonLiveInstance.ts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
@@ -111,7 +113,7 @@ import { readAllProfileLiveSessions } from "./ClaudeLiveSessions.ts";
 import { projectRefFor } from "./ProjectRef.ts";
 import { stateFile } from "@t3tools/baton-shared/stateDir";
 
-export const LIVE_INSTANCE_ID = ProviderInstanceId.make("baton-live");
+export const LIVE_INSTANCE_ID = ProviderInstanceId.make(BATON_LIVE_INSTANCE);
 const DRIVER = ProviderDriverKind.make("acpRegistry");
 const MODEL = "live";
 /**
@@ -775,6 +777,30 @@ interface Follow {
   >;
 }
 
+/**
+ * A live thread's Claude Code session holds its own context, so it never takes a T3 context handoff. Each one still
+ * ready is marked superseded: delivered to a live session it is either empty or, after a rebind, the whole history,
+ * which fails the handoff budget and every turn with it. Returns how many were marked.
+ */
+export const supersedeLiveHandoffs = (engine: BatonEngineShape, threadId: ThreadId) =>
+  Effect.gen(function* () {
+    const ready = (yield* engine.contextHandoffs(threadId)).filter((h) => h.status === "ready");
+    if (ready.length === 0) return 0;
+    const now = yield* DateTime.now;
+    yield* engine.writeEvents({
+      events: ready.map((handoff) => ({
+        id: EventId.make(`${PREFIX}:handoff:${handoff.id}:${DateTime.toEpochMillis(now)}`),
+        type: "context-handoff.updated" as const,
+        threadId,
+        runId: handoff.targetRunId,
+        providerInstanceId: LIVE_INSTANCE_ID,
+        occurredAt: now,
+        payload: { ...handoff, status: "superseded" as const, updatedAt: now },
+      })),
+    });
+    return ready.length;
+  }).pipe(Effect.catchCause(() => Effect.succeed(0)));
+
 /** Puts a live thread back on the live instance and/or points it at `sessionId`; the one place a binding is written. */
 export const rebindThread = (
   engine: BatonEngineShape,
@@ -815,6 +841,7 @@ export const rebindThread = (
         ],
       });
     }
+    yield* supersedeLiveHandoffs(engine, input.threadId);
   });
 
 /**
@@ -2003,6 +2030,13 @@ const make = Effect.gen(function* () {
   yield* retireOld.pipe(
     Effect.catchCause((cause) => Effect.logWarning("Tessaya live threads: retiring failed", cause)),
   );
+  // Once per start: handoffs left ready on live threads by earlier rebinds (they fail every turn's budget).
+  for (const shell of yield* engine.threadShells) {
+    if (shell.providerInstanceId !== LIVE_INSTANCE_ID) continue;
+    const cleared = yield* supersedeLiveHandoffs(engine, shell.id);
+    if (cleared > 0)
+      mirrorLog(null, { event: "handoffs-superseded", thread: String(shell.id), count: cleared });
+  }
   yield* tick.pipe(
     Effect.catchCause((cause) => Effect.logWarning("Tessaya live threads: tick failed", cause)),
     Effect.repeat(Schedule.spaced(TICK)),

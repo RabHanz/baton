@@ -17,6 +17,7 @@ import {
   type ModelSelection,
   type OrchestrationProjectShell,
   type OrchestrationV2ConversationMessage,
+  type OrchestrationV2ContextHandoff,
   type OrchestrationV2ProviderThread,
   type OrchestrationV2Run,
   type OrchestrationV2RuntimeRequest,
@@ -132,6 +133,10 @@ export interface BatonEngineShape {
     threadId: ThreadId,
     itemId: TurnItemId,
   ) => Effect.Effect<OrchestrationV2TurnItem | null>;
+  /** The thread's context handoffs, for live threads that must never carry one. Empty on an engine error. */
+  readonly contextHandoffs: (
+    threadId: ThreadId,
+  ) => Effect.Effect<ReadonlyArray<OrchestrationV2ContextHandoff>>;
   /** The thread's active provider thread, for live-session working state (D85). */
   readonly activeProviderThread: (
     threadId: ThreadId,
@@ -486,6 +491,12 @@ export const make = Effect.gen(function* () {
       .getTurnItem({ threadId, itemId })
       .pipe(Effect.catchCause(() => Effect.succeed(null)));
 
+  const contextHandoffs: BatonEngineShape["contextHandoffs"] = (threadId) =>
+    orchestrator.getThreadRecords(threadId, ["contextHandoffs"]).pipe(
+      Effect.map((records) => records.contextHandoffs),
+      Effect.catchCause(() => Effect.succeed([])),
+    );
+
   const threadRuns: BatonEngineShape["threadRuns"] = (threadId) =>
     orchestrator.getThreadRecords(threadId, ["runs"]).pipe(
       Effect.map((records) => records.runs),
@@ -590,6 +601,7 @@ export const make = Effect.gen(function* () {
     writeEvents,
     threadMessages,
     threadRuns,
+    contextHandoffs,
     runtimeRequestStatus,
     pendingRuntimeRequests,
     turnItem,
@@ -626,6 +638,7 @@ export const layerStatic = (input: {
   readonly messages?: ReadonlyArray<{ readonly role: "user" | "assistant"; readonly text: string }>;
   /** Runs per thread, for the job caps. */
   readonly runs?: ReadonlyMap<string, ReadonlyArray<{ readonly status: string }>>;
+  readonly contextHandoffs?: ReadonlyMap<string, ReadonlyArray<unknown>>;
   /** Collects the threads that were interrupted. */
   readonly interrupted?: Array<ThreadId>;
   /** Collects the provider switches (handoffs). */
@@ -662,6 +675,8 @@ export const layerStatic = (input: {
     writeEvents: (write) => Effect.succeed(write.events.length),
     threadMessages: () => Effect.succeed([]),
     threadRuns: (threadId) => Effect.succeed((input.runs?.get(threadId) ?? []) as never),
+    contextHandoffs: (threadId) =>
+      Effect.succeed((input.contextHandoffs?.get(threadId) ?? []) as never),
     runtimeRequestStatus: () => Effect.succeed(null),
     pendingRuntimeRequests: () => Effect.succeed([]),
     turnItem: () => Effect.succeed(null),
